@@ -1,20 +1,52 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
+from typing import Optional, List
 from entities.event import Event
 
 class EventRepository(ABC):
     @abstractmethod
-    def add(self, title: str, start: datetime, end: datetime) -> Event:
-        raise NotImplementedError
+    def add(
+        self,
+        *,
+        calendar_id: str,
+        title: str,
+        start: datetime,
+        end: datetime,
+        description: Optional[str],
+        location: Optional[str],
+        attendees: List[str],
+        requested_by_role: Optional[str],
+        requested_by_email: Optional[str],
+    ) -> Event: ...
 
     @abstractmethod
-    def list(self) -> list[Event]:
-        raise NotImplementedError
+    def list(
+        self,
+        *,
+        calendar_id: str,
+        time_min: Optional[datetime] = None,
+        time_max: Optional[datetime] = None,
+        q: Optional[str] = None,
+        max_results: int = 100,
+    ) -> List[Event]: ...
 
     @abstractmethod
-    def get(self, id: str) -> Event | None:
-        raise NotImplementedError
+    def get(self, *, calendar_id: str, event_id: str) -> Optional[Event]: ...
 
     @abstractmethod
-    def delete(self, id: str) -> None:
+    def delete(self, *, calendar_id: str, event_id: str) -> None: ...
+
+    @abstractmethod
+    def update(
+        self,
+        *,
+        calendar_id: str,
+        event_id: str,
+        title: Optional[str] = None,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+        description: Optional[str] = None,
+        location: Optional[str] = None,
+        attendees: Optional[List[str]] = None,
+    ) -> Event:
         raise NotImplementedError
