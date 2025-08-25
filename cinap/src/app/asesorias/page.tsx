@@ -1,14 +1,16 @@
+// src/app/asesorias/page.tsx
 
-//  componentes de la página de reservas de asesorías
+import ReservationsHeader from "@presentation/components/asesorias/ReservationsHeader";
+import ReservationsView from "@presentation/components/asesorias/ReservationsView";
+import ChatWidget from "@presentation/components/shared/widgets/ChatWidget";
 
-import ReservationsHeader from "@/presentation/components/asesorias/ReservationsHeader";
-import ReservationsView from "@/presentation/components/asesorias/ReservationsView";
-import { getReservationsData } from "@/application/asesorias/getReservationsData";
+import { GetReservations } from "@app/asesorias/usecases/GetReservations";
+import { InMemoryReservationsRepo } from "@infrastructure/asesorias/InMemoryReservationsRepo";
 
-
-import ChatWidget from "@/presentation/components/chat/ChatWidget";
+// Server Component (App Router)
 export default async function ReservationsPage() {
-  const { upcoming, past } = await getReservationsData();
+  const usecase = new GetReservations(new InMemoryReservationsRepo());
+  const { upcoming, past } = await usecase.exec();
 
   return (
     <main className="bg-[linear-gradient(135deg,#f8fafc_0%,#e2e8f0_100%)]">
