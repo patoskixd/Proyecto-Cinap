@@ -10,6 +10,7 @@ type Props =
   & Pick<DashboardData, "isCalendarConnected" | "monthCount" | "pendingCount" | "adminMetrics">
   & { role: Role };
 
+// src/presentation/components/dashboard/StatusCards.tsx
 export default function StatusCards({
   role,
   isCalendarConnected,
@@ -17,6 +18,7 @@ export default function StatusCards({
   pendingCount,
   adminMetrics,
 }: Props) {
+  // Condicional de roles para las tarjetas de estado
   if (role === "admin" && adminMetrics) {
     return (
       <AdminStatusCards
@@ -39,7 +41,6 @@ export default function StatusCards({
     );
   }
 
-  // teacher 
   return (
     <TeacherStatusCards
       isCalendarConnected={isCalendarConnected}

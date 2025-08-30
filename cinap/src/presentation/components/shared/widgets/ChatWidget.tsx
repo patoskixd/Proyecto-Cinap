@@ -101,16 +101,24 @@ export default function ChatWidget() {
     }));
   };
 
-  const generateResponse = (userText: string) => {
-    const responses = [
-      "Entiendo tu consulta. Te ayudo a encontrar la mejor opción de asesoría.",
-      "Perfecto, puedo ayudarte con eso. ¿Podrías darme más detalles?",
-      "Excelente pregunta. Déjame revisar las opciones disponibles para ti.",
-      "¿Hay algún horario específico que prefieras?",
-      "Claro, puedo asistirte con la programación de tu asesoría.",
-      "Busquemos el asesor ideal para tu necesidad.",
-    ];
-    return responses[Math.floor(Math.random() * responses.length)];
+  // El endpoint de tu backend FastAPI
+  const BACKEND_URL = "http://localhost:8000/assistant/chat"; // <-- usa este endpoint
+
+  // Llama al backend para obtener la respuesta de la IA
+  const fetchAIResponse = async (userText: string): Promise<string> => {
+    try {
+      const res = await fetch(BACKEND_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: userText }),
+      });
+      if (!res.ok) throw new Error("Error de red");
+      const data = await res.json();
+      // El backend debe responder: { reply: "texto generado" }
+      return data.reply || "No se pudo obtener respuesta.";
+    } catch (err) {
+      return "Hubo un problema al conectar con el asistente.";
+    }
   };
 
   // abrir/cerrar chat
@@ -204,19 +212,19 @@ export default function ChatWidget() {
     const text = input.trim();
     if (!text || isLoading) return;
 
-    // agrega mensaje del usuario
     addMessage("user", text);
     setInput("");
     autoResize();
     setIsLoading(true);
 
-    // “typing” simulado + respuesta
-    setTimeout(() => {
-      const reply = generateResponse(text);
+    // Llama al backend y muestra la respuesta
+    try {
+      const reply = await fetchAIResponse(text);
       addMessage("assistant", reply);
+    } finally {
       setIsLoading(false);
       if (!isOpen) setUnread((u) => Math.min(u + 1, 99));
-    }, 900 + Math.random() * 800);
+    }
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
