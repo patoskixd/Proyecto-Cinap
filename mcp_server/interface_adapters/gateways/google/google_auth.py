@@ -28,7 +28,7 @@ def _resolve(path_str: str) -> Path:
 def _credentials_file_exists(credentials_path: Path) -> None:
     if not credentials_path.exists():
         raise FileNotFoundError(
-            f"No se encontró el archivo de credenciales OAuth en: {credentials_path}\n"
+            f"No se encontrÃ³ el archivo de credenciales OAuth en: {credentials_path}\n"
         )
 
 def _scopes_changed(existing: Credentials, desired_scopes: Sequence[str]) -> bool:
@@ -73,7 +73,12 @@ def get_credentials(
                 str(cred_path), scopes=list(scopes)
             )
             if headless:
-                creds = flow.run_console()
+                creds = flow.run_local_server(
+                    port=0,
+                    open_browser=(not headless),
+                    prompt='consent',
+                    access_type='offline'
+                )
             else:
                 creds = flow.run_local_server(port=0)
 

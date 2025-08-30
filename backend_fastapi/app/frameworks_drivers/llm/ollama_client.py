@@ -28,6 +28,12 @@ class OllamaClient(LLMPort):
         msg: Dict[str, Any] = choice.get("message") or {}
 
         content: Optional[str] = msg.get("content")
+
+        if content and content.lstrip().startswith("<think>"):
+            import re
+            content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+            msg["content"] = content
+
         tool_calls_raw = msg.get("tool_calls") or []
 
         tool_calls: List[ToolCall] = []

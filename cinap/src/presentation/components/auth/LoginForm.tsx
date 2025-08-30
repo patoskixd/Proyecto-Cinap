@@ -76,7 +76,8 @@ export default function LoginForm() {
   const onGoogle = () => {
     // Si tienes OAuth en FastAPI, probablemente /auth/google/login devuelve un redirect
     // Al ser flujo externo, aquí conviene navegar directo:
-    window.location.href = `${API_BASE}/auth/google/login`;
+   window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/auth/google/login`;
+
   };
 
   return (

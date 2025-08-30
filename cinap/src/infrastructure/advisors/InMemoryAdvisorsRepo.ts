@@ -1,8 +1,6 @@
 import type { AdvisorsRepo, UpdateAdvisorDTO } from "@application/advisors/ports/AdvisorsRepo";
 import type { Advisor, AdvisorBasicInfo, AdvisorServiceRef, CategoryId } from "@domain/advisors";
 
-// ❌ elimina esto:
-// import { randomUUID } from "crypto";
 
 // Pequeña utilidad segura para cliente:
 const genId = () =>

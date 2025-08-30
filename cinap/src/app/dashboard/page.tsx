@@ -1,89 +1,179 @@
-// src/app/dashboard/page.tsx
+// app/dashboard/page.tsx
+"use client";
+
 import DashboardHeader from "@/presentation/components/shared/DashboardHeader";
 import StatusCards from "@presentation/components/dashboard/StatusCards";
 import EmptyState from "@/presentation/components/shared/EmptyState";
 import ChatWidget from "@/presentation/components/shared/widgets/ChatWidget";
 import { RoleSections } from "@presentation/components/dashboard/RoleSections";
 
-import { normalizeRole, type Role } from "@domain/auth";
-import { GetDashboard } from "@application/dashboard/usecases/GetDashboard";
-import { InMemoryDashboardRepo } from "@infrastructure/dashboard/InMemoryDashboardRepo";
+import type { Role } from "@domain/auth";
+import { useAuth } from "@/presentation/hooks/useAuth";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo } from "react";
 
-type Search = Promise<{ role?: string }>;
+// --- helpers ---
+function normalizeRoleName(raw: string): Role {
+  const r = (raw || "").toLowerCase();
+  if (r.includes("admin") || r === "administrador") return "admin" as Role;
+  if (r.includes("advisor") || r.includes("asesor") || r.includes("tutor")) return "advisor" as Role;
+  return "teacher" as Role;
+}
 
-export default async function DashboardPage({ searchParams }: { searchParams: Search }) {
-  const params = await searchParams;
-  const role: Role = normalizeRole(params?.role);
+type DashboardData = {
+  isCalendarConnected: boolean;
+  monthCount: number;
+  pendingCount: number;
+  upcoming: any[];
+  drafts: any[];
+  adminMetrics?: {
+    advisorsTotal: number;
+    advisorsAvailable: number;
+    teachersTotal: number;
+    appointmentsThisMonth: number;
+    approvalsPending: number;
+  };
+};
 
-  // Simulación de sesión por rol (mientras no haya auth real)
-  const userId =
-    role === "teacher" ? "t-10" :
-    role === "advisor" ? "adv-1" :
-    undefined;
+const EMPTY_DATA: DashboardData = {
+  isCalendarConnected: false,
+  monthCount: 0,
+  pendingCount: 0,
+  upcoming: [],
+  drafts: [],
+};
 
-  const usecase = new GetDashboard(new InMemoryDashboardRepo());
-  const data = await usecase.exec({ role, userId });
+function buildData(role: Role, userId: string) {
+  // === Mock compatibles con <UpcomingList /> ===
+  // Mismo formato que usas en Advisor:
+  // { id, time, dateLabel, title, student, status }
+  const commonUpcoming = [
+    {
+      id: "adm-1",
+      time: "10:30",
+      dateLabel: "Hoy",
+      title: "Revisión syllabus",
+      student: "M. Soto",
+      status: "confirmada",
+    },
+    {
+      id: "adm-2",
+      time: "16:00",
+      dateLabel: "Mañana",
+      title: "Diseño de rúbricas",
+      student: "L. Fuentes",
+      status: "confirmada",
+    },
+  ];
 
-  const showEmpty = data.upcoming.length === 0 && data.drafts.length === 0;
+  if (role === "admin") {
+    // Admin: mismo layout que advisor/teacher → izquierda UpcomingList, derecha AdminPanel
+    // Aquí mockeamos “todas las asesorías agendadas” con el mismo shape
+    return {
+      isCalendarConnected: true,
+      monthCount: 86,   // lo que ya muestras en la tarjeta
+      pendingCount: 5,  // idem
+      upcoming: commonUpcoming, // 👈 ahora el Admin también ve UpcomingList
+      drafts: [],             // admin no usa borradores
+      adminMetrics: {
+        advisorsTotal: 12,
+        advisorsAvailable: 9,
+        teachersTotal: 120,
+        appointmentsThisMonth: 86,
+        approvalsPending: 5,
+      },
+    };
+  }
 
-  // CTA por rol
-  const cta =
-    role === "teacher"
-      ? { href: "/asesorias/agendar", label: "Nueva Asesoría", icon: "➕" }
-      : role === "advisor"
-      ? { href: "/asesorias/crear-cupos", label: "Abrir cupos", icon: "➕" }
-      : { href: "/admin/registrar-asesor", label: "Crear asesor", icon: "👤" };
+  // === mocks para teacher/advisor (igual que ya tenías) ===
+  const baseSeed = userId ? userId.charCodeAt(0) % 5 : 2;
+  return {
+    isCalendarConnected: true,
+    monthCount: 4 + baseSeed,
+    pendingCount: 1 + (baseSeed % 3),
+    upcoming: [
+      {
+        id: "t-1",
+        time: "10:30",
+        dateLabel: "Hoy",
+        title: "Revisión syllabus",
+        student: "M. Soto",
+        status: "confirmada",
+      },
+      {
+        id: "t-2",
+        time: "16:00",
+        dateLabel: "Mañana",
+        title: "Diseño de rúbricas",
+        student: "L. Fuentes",
+        status: "confirmada",
+      },
+    ],
+    drafts: role === "teacher"
+      ? [
+          { id: "d1", icon: "📝", title: "Borrador asesoría TIC", status: "incompleto",      dateLabel: "Creado hoy" },
+          { id: "d2", icon: "🧪", title: "Solicitud laboratorio", status: "falta confirmar", dateLabel: "Ayer" },
+        ]
+      : [],
+  };
+}
+
+
+// --- component ---
+export default function DashboardPage() {
+  const router = useRouter();
+  const { me, mounted } = useAuth();
+
+  // ⚠️ Todos los hooks arriba, sin returns antes:
+  const isAuthed = me.authenticated === true;
+  const user = isAuthed ? me.user : undefined;
+  const role = normalizeRoleName(user?.role || "");
+
+  const data = useMemo(
+    () => (isAuthed && user ? buildData(role, user.id) : EMPTY_DATA),
+    [isAuthed, role, user]
+  );
+
+  useEffect(() => {
+    if (mounted && !isAuthed) {
+      router.replace("/auth/login");
+    }
+  }, [mounted, isAuthed, router]);
+
+  // Recién aquí hacemos returns condicionales
+  if (!mounted) return null;
+  if (!isAuthed) return null;
+
+  const headers = {
+    teacher: { title: "Panel Docente",      subtitle: "Tus próximas asesorías y recomendaciones", ctaHref: "/asesorias/agendar", ctaLabel: "Agendar asesoría" },
+    advisor: { title: "Panel Asesor",       subtitle: "Gestiona cupos y solicitudes",             ctaHref: "/asesorias/crear-cupos",     ctaLabel: "Abrir cupo" },
+    admin:   { title: "Panel Administrador", subtitle: "Visión general del sistema",              ctaHref: "/admin/registrar-asesor",  ctaLabel: "Gestionar usuarios" },
+  } as const;
 
   return (
-    <main className="bg-slate-50">
-      <div className="mx-auto max-w-[1200px] px-4 py-6 md:py-8">
-        <DashboardHeader
-          title="Dashboard"
-          subtitle={
-            role === "teacher"
-              ? "Gestiona tus asesorías como docente"
-              : role === "advisor"
-              ? "Tu agenda y pendientes como asesor"
-              : "Panel global de administración"
-          }
-          ctaHref={cta.href}
-          ctaLabel={cta.label}
-          ctaIcon={cta.icon}
-        />
+    <div className="mx-auto max-w-[1200px] px-6 py-8">
+      <DashboardHeader
+        title={headers[role].title}
+        subtitle={headers[role].subtitle}
+        ctaHref={headers[role].ctaHref}
+        ctaLabel={headers[role].ctaLabel}
+      />
 
-        <StatusCards
-          role={role}
-          isCalendarConnected={data.isCalendarConnected}
-          monthCount={data.monthCount}
-          pendingCount={data.pendingCount}
-          adminMetrics={data.adminMetrics}
-        />
+      <StatusCards
+        role={role}
+        isCalendarConnected={data.isCalendarConnected}
+        monthCount={data.monthCount}
+        pendingCount={data.pendingCount}
+        adminMetrics={data.adminMetrics}
+      />
 
-        {showEmpty ? (
-          <EmptyState
-            title={
-              role === "teacher"
-                ? "¡Comienza a programar tus asesorías!"
-                : role === "advisor"
-                ? "No tienes atenciones asignadas por ahora."
-                : "No hay elementos para mostrar"
-            }
-            description={
-              role === "teacher"
-                ? "Utiliza nuestra IA para programar, modificar y gestionar tus asesorías."
-                : role === "advisor"
-                ? "Revisa tus asignaciones y confirma pendientes."
-                : "Configura categorías, servicios o revisa reportes."
-            }
-            actionHref={cta.href}
-            actionLabel={cta.label}
-          />
-        ) : (
-          <RoleSections role={role} data={data} />
-        )}
+      <RoleSections role={role} data={data} />
 
-      <ChatWidget />
-      </div>
-    </main>
+      {role !== "admin" && <ChatWidget />}
+
+      {data.upcoming.length === 0 && data.drafts.length === 0 && (
+        <EmptyState icon="👋" title="Sin datos por ahora" description="Vuelve más tarde o crea tu primera solicitud." />
+      )}
+    </div>
   );
 }
