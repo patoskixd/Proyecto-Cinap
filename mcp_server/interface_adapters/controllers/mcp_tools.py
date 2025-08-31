@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Optional, List, Union
 
 class EventCreateIn(BaseModel):
@@ -43,6 +43,12 @@ class UpdatePatch(BaseModel):
     attendees: Optional[List[str]] = None
     location: Optional[str] = None
     description: Optional[str] = None
+    shift_minutes: Optional[int] = None
+    shift_days: Optional[int] = None
+    new_date: Optional[date] = None
+    new_start_time: Optional[time] = None
+    new_end_time: Optional[time] = None
+    keep_duration: bool = True
 
 class EventUpdateFlexibleIn(BaseModel):
     selector: Union[UpdateSelectorById, UpdateSelectorByTitle]

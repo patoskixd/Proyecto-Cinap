@@ -73,7 +73,12 @@ def get_credentials(
                 str(cred_path), scopes=list(scopes)
             )
             if headless:
-                creds = flow.run_console()
+                creds = flow.run_local_server(
+                    port=0,
+                    open_browser=(not headless),
+                    prompt='consent',
+                    access_type='offline'
+                )
             else:
                 creds = flow.run_local_server(port=0)
 

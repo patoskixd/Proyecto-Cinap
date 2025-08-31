@@ -1,4 +1,5 @@
 import os, shlex
+import json
 from typing import Any, Dict, List
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client, StdioServerParameters
@@ -37,7 +38,24 @@ class MCPStdioClient(MCPPort):
     async def call_tool(self, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
         assert self.session is not None
         result = await self.session.call_tool(name, args)
-        return result.model_dump()
+        r = result.model_dump()
+
+        sc = r.get("structuredContent")
+        if isinstance(sc, dict) and isinstance(sc.get("result"), dict):
+            return sc["result"]
+
+        for c in r.get("content", []) or []:
+            if isinstance(c, dict) and c.get("type") == "text":
+                t = c.get("text")
+                if isinstance(t, str):
+                    try:
+                        obj = json.loads(t)
+                        if isinstance(obj, dict) and ("ok" in obj or "error" in obj):
+                            return obj
+                    except Exception:
+                        pass
+
+        return r
 
     async def close(self):
         if self._session_ctx:

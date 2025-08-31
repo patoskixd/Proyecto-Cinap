@@ -1,12 +1,30 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from __future__ import annotations
+
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from app.frameworks_drivers.config.settings import API_DEBUG, CORS_ORIGINS
+import jwt
+
+from app.frameworks_drivers.config.settings import API_DEBUG, CORS_ORIGINS, JWT_SECRET
 from app.frameworks_drivers.di.container import container, startup, shutdown
+
 from app.interface_adapters.controllers.assistant_controller import AssistantController
 from app.interface_adapters.presenters.assistant_presenter import AssistantPresenter
+from app.interface_adapters.controllers.auth_controller import router as auth_router
+
+def require_auth(request: Request):
+    token = request.cookies.get("app_session")
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    try:
+        data = jwt.decode(token, JWT_SECRET, algorithms=["HS256"], options={"verify_aud": False})
+        request.state.user = data
+        return data
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
 app = FastAPI(title="MCP Assistant", debug=API_DEBUG)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
@@ -14,6 +32,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/health")
+async def health():
+    return {"ok": True}
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
 
@@ -28,10 +50,27 @@ async def chat(req: ChatRequest):
     vm = await controller.chat(req.message)
     return vm
 
+graph_router = APIRouter(prefix="/assistant/graph", tags=["assistant-graph"])
+
+class GraphChatRequest(BaseModel):
+    message: str
+    thread_id: str = "default-thread"
+
+@graph_router.post("/chat")
+async def graph_chat(req: GraphChatRequest):
+    if not container.graph_agent:
+        raise HTTPException(status_code=503, detail="LangGraph agent no disponible")
+    reply = await container.graph_agent.invoke(req.message, thread_id=req.thread_id)
+    return {"reply": reply, "thread_id": req.thread_id}
+
 app.include_router(router)
+app.include_router(auth_router)
+app.include_router(graph_router)
 
 @app.on_event("startup")
-async def _startup(): await startup(app)
+async def _startup():
+    await startup(app)
 
 @app.on_event("shutdown")
-async def _shutdown(): await shutdown(app)
+async def _shutdown():
+    await shutdown(app)
