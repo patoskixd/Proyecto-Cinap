@@ -11,3 +11,6 @@ wheels/
 
 # Config files
 .env
+
+# DB
+checkpoints.db
