@@ -7,7 +7,6 @@ from langchain.tools import StructuredTool
 from pydantic import BaseModel, create_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
-
 from app.frameworks_drivers.mcp.stdio_client import MCPStdioClient
 
 _TOOL_JSON_RE = re.compile(
@@ -117,8 +116,10 @@ def _format_mcp_result(res: dict, tool_name: str) -> str:
             return header + "\n" + _render_numbered(items)
         ev = data.get("event")
         if isinstance(ev, dict):
-            line = _fmt_event_line(ev)
-            return f"{res.get('say')}\n{line}" if res.get("say") else line
+            say = (res.get("say") or "").strip()
+            if say:
+                return say
+            return _fmt_event_line(ev)
         if res.get("say"):
             return str(res["say"])
         return "Operación completada."

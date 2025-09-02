@@ -3,7 +3,7 @@ import uuid
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, Mapped
-from app.frameworks_drivers.config.db import Base
+from .base import Base
 
 class RolModel(Base):
     __tablename__ = "rol"
@@ -25,12 +25,12 @@ class UsuarioModel(Base):
     creado_en = sa.Column(sa.DateTime(timezone=True), server_default=sa.text("now()"))
     actualizado_en = sa.Column(sa.DateTime(timezone=True), server_default=sa.text("now()"))
 
-    rol = relationship("RolModel", lazy="selectin")
+    rol = relationship("RolModel", lazy="raise")
     identities = relationship(
         "UserIdentityModel",
         back_populates="usuario",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        lazy="raise",
     )
 
 class UserIdentityModel(Base):
@@ -49,7 +49,7 @@ class UserIdentityModel(Base):
     refresh_token_hash: Mapped[str | None] = sa.Column(sa.Text)
     ultimo_sync = sa.Column(sa.DateTime(timezone=True))
 
-    usuario = relationship("UsuarioModel", back_populates="identities", lazy="selectin")
+    usuario = relationship("UsuarioModel", back_populates="identities", lazy="raise")
 
     __table_args__ = (
         sa.UniqueConstraint("usuario_id", "provider", name="uq_identity_user_provider"),

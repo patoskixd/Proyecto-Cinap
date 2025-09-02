@@ -1,37 +1,90 @@
-from fastapi import FastAPI
+from __future__ import annotations
+import uuid
 import asyncio
-from app.frameworks_drivers.config.settings import OLLAMA_URL, MODEL, LLM_TIMEOUT, MCP_COMMAND, MCP_ARGS, MCP_CWD
-from app.frameworks_drivers.llm.ollama_client import OllamaClient
+from typing import Union
+from app.interface_adapters.gateways.oauth.google_oauth_client import GoogleOAuthClient
+from app.interface_adapters.gateways.token.jwt_service import PyJWTService
+from app.interface_adapters.gateways.db.sqlalchemy_user_repo import SqlAlchemyUserRepo
+from app.use_cases.auth.google_callback import GoogleCallbackUseCase
 from app.frameworks_drivers.mcp.stdio_client import MCPStdioClient
-from app.use_cases.orchestrate_chat.interactor import OrchestrateChatInteractor
 from app.frameworks_drivers.llm.langgraph_agent import LangGraphAgent
+from sqlalchemy.ext.asyncio import AsyncSession
 
 class Container:
-    llm = None
-    mcp = None
-    orchestrate = None
-    graph_agent: LangGraphAgent | None = None
-    main_loop: asyncio.AbstractEventLoop | None = None
+    oauth: GoogleOAuthClient
+    jwt: PyJWTService
 
-container = Container()
+    mcp: MCPStdioClient | None
+    graph_agent: LangGraphAgent | None
+    main_loop: asyncio.AbstractEventLoop | None
 
-async def startup(_: FastAPI):
-    container.main_loop = asyncio.get_running_loop()
+    _google_redirect_uri: str
+    _jwt_minutes: int
+    _default_role_id: uuid.UUID
 
-    container.llm = OllamaClient(OLLAMA_URL, MODEL, LLM_TIMEOUT)
-    container.mcp = MCPStdioClient(MCP_COMMAND, MCP_ARGS, MCP_CWD)
-    await container.mcp.connect()
+    def __init__(
+        self,
+        *,
+        google_client_id: str,
+        google_client_secret: str,
+        google_redirect_uri: str,
+        jwt_secret: str,
+        jwt_issuer: str,
+        jwt_minutes: int,
+        teacher_role_id: Union[str, uuid.UUID],
 
-    container.orchestrate = OrchestrateChatInteractor(container.llm, container.mcp)
+        mcp_command: str = "node",
+        mcp_args: str = "index.js",
+        mcp_cwd: str = ".",
+        llm_model_name: str = "qwen3:4b",
+        langgraph_db_path: str = "checkpoints.db",
+    ):
+        self._google_redirect_uri = google_redirect_uri
+        self._jwt_minutes = int(jwt_minutes)
+        self._default_role_id = uuid.UUID(str(teacher_role_id))
 
-    container.graph_agent = LangGraphAgent(
-        container.mcp,
-        model_name="qwen3:4b",
-        db_path="checkpoints.db",
-        main_loop=container.main_loop,
-    )
-    await container.graph_agent.startup()
+        self.oauth = GoogleOAuthClient(
+            client_id=google_client_id,
+            client_secret=google_client_secret,
+            scope="openid email profile https://www.googleapis.com/auth/calendar",
+        )
+        self.jwt = PyJWTService(secret=jwt_secret, issuer=jwt_issuer, minutes=int(jwt_minutes))
 
-async def shutdown(_: FastAPI):
-    if container.mcp:
-        await container.mcp.close()
+        self.mcp = MCPStdioClient(mcp_command, mcp_args, mcp_cwd)
+        self.graph_agent = None
+        self.main_loop = None
+        self._llm_model_name = llm_model_name
+        self._langgraph_db_path = langgraph_db_path
+
+    def uc_google_callback(self, session: AsyncSession) -> GoogleCallbackUseCase:
+        user_repo = SqlAlchemyUserRepo(session, default_role_id=self._default_role_id)
+
+        from datetime import datetime, timezone
+
+        class _Clock:
+            def now_utc(self):
+                return datetime.now(timezone.utc)
+
+        return GoogleCallbackUseCase(
+            user_repo=user_repo,
+            oauth=self.oauth,
+            jwt=self.jwt,
+            clock=_Clock(),
+            redirect_uri=self._google_redirect_uri,
+            jwt_minutes=self._jwt_minutes,
+        )
+
+    async def startup(self):
+        self.main_loop = asyncio.get_running_loop()
+        await self.mcp.connect()
+        self.graph_agent = LangGraphAgent(
+            self.mcp,
+            model_name=self._llm_model_name,
+            db_path=self._langgraph_db_path,
+            main_loop=self.main_loop,
+        )
+        await self.graph_agent.startup()
+
+    async def shutdown(self):
+        if self.mcp:
+            await self.mcp.close()
