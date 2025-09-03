@@ -3,13 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-// 1) Lee la URL del backend desde el .env local
-// NEXT_PUBLIC_API_URL="http://localhost:8000"
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
 type LoginResponse =
-  | { access_token: string; token_type?: string; user?: any } // JWT en body
-  | { detail?: string }; // error shape típico
+  | { access_token: string; token_type?: string; user?: any }
+  | { detail?: string };
 
 export default function LoginForm() {
   const router = useRouter();
@@ -24,47 +20,32 @@ export default function LoginForm() {
     setError(null);
     setLoading(true);
     try {
-      // 2) Llamada al backend FastAPI
-      const res = await fetch(`${API_BASE}/auth/login`, {
+      const res = await fetch("/api/auth/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        // IMPORTANTE: incluye credenciales por si FastAPI setea cookie HttpOnly
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
 
-      // Si FastAPI devuelve 4xx/5xx
       if (!res.ok) {
         let message = "Credenciales inválidas";
         try {
           const data = (await res.json()) as LoginResponse;
           if ("detail" in data && data.detail) message = data.detail;
-        } catch {
-          // ignore parse error
-        }
+        } catch {}
         throw new Error(message);
       }
 
-      // 3) Intenta leer JSON (por si viene JWT en body)
-      let data: LoginResponse | null = null;
       try {
-        data = (await res.json()) as LoginResponse;
+        const data = (await res.json()) as LoginResponse;
+        if (data && "access_token" in data && data.access_token) {
+          const storage = remember ? localStorage : sessionStorage;
+          storage.setItem("token", data.access_token);
+          if (data.user) storage.setItem("user", JSON.stringify(data.user));
+        }
       } catch {
-        // Puede que el backend no devuelva body (solo Set-Cookie)
       }
 
-      // 4) Si viene JWT en el body, persiste según "remember"
-      if (data && "access_token" in data && data.access_token) {
-        const storage = remember ? localStorage : sessionStorage;
-        storage.setItem("token", data.access_token);
-        if (data.user) storage.setItem("user", JSON.stringify(data.user));
-      }
-      // Nota: si usas cookie HttpOnly, NO guardes nada en el front.
-      // Bastará con que el backend setee la cookie (por eso usamos credentials:"include").
-
-      // 5) Redirige
       router.push("/dashboard");
     } catch (err: any) {
       setError(err?.message ?? "Error al iniciar sesión");
@@ -74,10 +55,8 @@ export default function LoginForm() {
   };
 
   const onGoogle = () => {
-    // Si tienes OAuth en FastAPI, probablemente /auth/google/login devuelve un redirect
-    // Al ser flujo externo, aquí conviene navegar directo:
-   window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/auth/google/login`;
-
+    window.location.href =
+      `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/auth/google/login`;
   };
 
   return (
@@ -200,3 +179,7 @@ export default function LoginForm() {
     </section>
   );
 }
+
+
+  
+

@@ -3,7 +3,6 @@ import type { PendingConfirmation } from "@domain/confirmations";
 
 export class InMemoryConfirmationsRepo implements ConfirmationsRepo {
   async getPending(): Promise<PendingConfirmation[]> {
-    // mock basado en tu HTML
     return [
       {
         id: 1,

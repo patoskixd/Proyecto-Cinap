@@ -1,10 +1,14 @@
+
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChatHttpAgent } from "@/infrastructure/chat/chatHttpAgent";
+import { makeSendChatMessage } from "@/application/chat/usecases/SendChatMessage";
 
 type Role = "user" | "assistant";
 type ChatMessage = { id: string; role: Role; content: string; createdAt: string };
 type ChatSession = { id: string; messages: ChatMessage[] };
+
 
 const genId = () =>
   (typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -15,8 +19,10 @@ function classNames(...xs: (string | false | null | undefined)[]) {
   return xs.filter(Boolean).join(" ");
 }
 
+
+const sendChatMessage = makeSendChatMessage(new ChatHttpAgent());
+
 export default function ChatWidget() {
-  //  estado del chat
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -27,20 +33,17 @@ export default function ChatWidget() {
       {
         id: genId(),
         role: "assistant",
-        content:
-          "¡Hola! Soy el asistente virtual del CINAP. ¿En qué puedo ayudarte hoy?",
+        content: "¡Hola! Soy el asistente virtual del CINAP. ¿En qué puedo ayudarte hoy?",
         createdAt: new Date().toISOString(),
       },
     ],
   }));
 
-  //  refs 
   const panelRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // persistencia en localStorage
-  // (para mantener el estado entre recargas)
+
   const STORAGE_KEY = "cinap-chat-session-v1";
   const UNREAD_KEY = "cinap-chat-unread-v1";
 
@@ -53,36 +56,23 @@ export default function ChatWidget() {
         if (parsed?.id && Array.isArray(parsed.messages)) setSession(parsed);
       }
       if (rawUnread) setUnread(Number(rawUnread) || 0);
-    } catch {
-    }
+    } catch {}
   }, []);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-    } catch {
-    }
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(session)); } catch {}
   }, [session]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(UNREAD_KEY, String(unread));
-    } catch {
-    }
+    try { localStorage.setItem(UNREAD_KEY, String(unread)); } catch {}
   }, [unread]);
 
-  // derivar mensajes del estado
   const messages = session.messages;
 
-  // ayuda a mantener el scroll al final
-  const scrollToBottom = () => {
-    // pequeño delay para esperar al paint
-    requestAnimationFrame(() => {
-      if (listRef.current) {
-        listRef.current.scrollTop = listRef.current.scrollHeight;
-      }
-    });
-  };
+
+  const scrollToBottom = () => requestAnimationFrame(() => {
+    if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+  });
 
   const autoResize = () => {
     const el = textareaRef.current;
@@ -94,71 +84,32 @@ export default function ChatWidget() {
   const addMessage = (role: Role, content: string) => {
     setSession((s) => ({
       ...s,
-      messages: [
-        ...s.messages,
-        { id: genId(), role, content, createdAt: new Date().toISOString() },
-      ],
+      messages: [...s.messages, { id: genId(), role, content, createdAt: new Date().toISOString() }],
     }));
   };
 
-  // El endpoint de tu backend FastAPI
-  const BACKEND_URL = "http://localhost:8000/assistant/chat"; // <-- usa este endpoint
 
-  // Llama al backend para obtener la respuesta de la IA
-  const fetchAIResponse = async (userText: string): Promise<string> => {
-    try {
-      const res = await fetch(BACKEND_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userText }),
-      });
-      if (!res.ok) throw new Error("Error de red");
-      const data = await res.json();
-      // El backend debe responder: { reply: "texto generado" }
-      return data.reply || "No se pudo obtener respuesta.";
-    } catch (err) {
-      return "Hubo un problema al conectar con el asistente.";
-    }
-  };
-
-  // abrir/cerrar chat
-  const openChat = () => {
-    setIsOpen(true);
-    setUnread(0);
-    // focus al input
-    setTimeout(() => textareaRef.current?.focus(), 50);
-    scrollToBottom();
-  };
+  const openChat = () => { setIsOpen(true); setUnread(0); setTimeout(() => textareaRef.current?.focus(), 50); scrollToBottom(); };
   const closeChat = () => setIsOpen(false);
   const toggleChat = () => (isOpen ? closeChat() : openChat());
 
-  // ESC para cerrar
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) {
-        e.preventDefault();
-        closeChat();
-      }
-    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && isOpen) { e.preventDefault(); closeChat(); } };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [isOpen]);
 
-  // Click fuera 
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e: MouseEvent) => {
       if (!panelRef.current) return;
       const target = e.target as Node;
-      if (!panelRef.current.contains(target)) {
-        closeChat();
-      }
+      if (!panelRef.current.contains(target)) closeChat();
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [isOpen]);
 
-  // focus trap (para accesibilidad)
   useEffect(() => {
     if (!isOpen) return;
     const trap = (e: KeyboardEvent) => {
@@ -170,44 +121,22 @@ export default function ChatWidget() {
       const first = focusables[0];
       const last = focusables[focusables.length - 1];
       const active = document.activeElement as HTMLElement | null;
-
-      if (e.shiftKey) {
-        if (active === first) {
-          last.focus();
-          e.preventDefault();
-        }
-      } else {
-        if (active === last) {
-          first.focus();
-          e.preventDefault();
-        }
-      }
+      if (e.shiftKey) { if (active === first) { last.focus(); e.preventDefault(); } }
+      else { if (active === last) { first.focus(); e.preventDefault(); } }
     };
     panelRef.current?.addEventListener("keydown", trap as any);
     return () => panelRef.current?.removeEventListener("keydown", trap as any);
   }, [isOpen]);
 
-  // auto-scroll cuando cambian mensajes o abres
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages.length, isOpen]);
+  useEffect(() => { scrollToBottom(); }, [messages.length, isOpen]);
+  useEffect(() => { autoResize(); }, [input, isOpen]);
 
-  // auto-resize del textarea
   useEffect(() => {
-    autoResize();
-  }, [input, isOpen]);
-
-  // Simular mensajes entrantes si está cerrado 
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (!isOpen && Math.random() < 0.1) {
-        setUnread((u) => Math.min(u + 1, 99));
-      }
-    }, 10000);
+    const id = setInterval(() => { if (!isOpen && Math.random() < 0.1) setUnread((u) => Math.min(u + 1, 99)); }, 10000);
     return () => clearInterval(id);
   }, [isOpen]);
 
-  // enviar mensaje al presionar Enter
+
   const handleSend = async () => {
     const text = input.trim();
     if (!text || isLoading) return;
@@ -217,9 +146,8 @@ export default function ChatWidget() {
     autoResize();
     setIsLoading(true);
 
-    // Llama al backend y muestra la respuesta
     try {
-      const reply = await fetchAIResponse(text);
+      const reply = await sendChatMessage({ message: text, sessionId: session.id });
       addMessage("assistant", reply);
     } finally {
       setIsLoading(false);
@@ -228,11 +156,9 @@ export default function ChatWidget() {
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
+
 
   
   return (
@@ -424,7 +350,6 @@ export default function ChatWidget() {
   );
 }
 
-/* ---------- Presentational bits ---------- */
 
 function Avatar({ role }: { role: Role }) {
   return (
