@@ -5,12 +5,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import jwt
 
-from app.frameworks_drivers.config.settings import API_DEBUG, CORS_ORIGINS, JWT_SECRET
-from app.frameworks_drivers.di.container import container, startup, shutdown
-
-from app.interface_adapters.controllers.assistant_controller import AssistantController
-from app.interface_adapters.presenters.assistant_presenter import AssistantPresenter
-from app.interface_adapters.controllers.auth_controller import router as auth_router
+from app.frameworks_drivers.config.settings import (
+    API_DEBUG, CORS_ORIGINS,
+    GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI,
+    JWT_SECRET, JWT_ISSUER, JWT_MINUTES, FRONTEND_ORIGIN, TEACHER_ROLE_ID,
+    MCP_COMMAND, MCP_ARGS, MCP_CWD,
+)
+from app.frameworks_drivers.config.db import get_session
+from app.frameworks_drivers.di.container import Container
+from app.interface_adapters.controllers.auth_router_factory import make_auth_router
 
 def require_auth(request: Request):
     token = request.cookies.get("app_session")
@@ -33,24 +36,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+container = Container(
+    google_client_id=GOOGLE_CLIENT_ID,
+    google_client_secret=GOOGLE_CLIENT_SECRET,
+    google_redirect_uri=GOOGLE_REDIRECT_URI,
+    jwt_secret=JWT_SECRET,
+    jwt_issuer=JWT_ISSUER,
+    jwt_minutes=JWT_MINUTES,
+    teacher_role_id=TEACHER_ROLE_ID,
+    mcp_command=MCP_COMMAND,
+    mcp_args=MCP_ARGS,
+    mcp_cwd=MCP_CWD,
+)
+
+auth_router = make_auth_router(
+    oauth=container.oauth,
+    redirect_uri=GOOGLE_REDIRECT_URI,
+    frontend_origin=FRONTEND_ORIGIN,
+    uc_factory_google_callback=container.uc_google_callback,
+    get_session_dep=get_session,
+    jwt_port=container.jwt,
+)
+
 @app.get("/health")
 async def health():
     return {"ok": True}
 
-router = APIRouter(prefix="/assistant", tags=["assistant"])
-
-class ChatRequest(BaseModel):
-    message: str
-
-@router.post("/chat")
-async def chat(req: ChatRequest):
-    if not container.orchestrate:
-        raise HTTPException(status_code=503, detail="Interactor no disponible")
-    controller = AssistantController(container.orchestrate, AssistantPresenter())
-    vm = await controller.chat(req.message)
-    return vm
-
-graph_router = APIRouter(prefix="/assistant/graph", tags=["assistant-graph"])
+graph_router = APIRouter(prefix="/assistant", tags=["assistant"])
 
 class GraphChatRequest(BaseModel):
     message: str
@@ -63,14 +75,13 @@ async def graph_chat(req: GraphChatRequest):
     reply = await container.graph_agent.invoke(req.message, thread_id=req.thread_id)
     return {"reply": reply, "thread_id": req.thread_id}
 
-app.include_router(router)
 app.include_router(auth_router)
 app.include_router(graph_router)
 
 @app.on_event("startup")
 async def _startup():
-    await startup(app)
+    await container.startup()
 
 @app.on_event("shutdown")
 async def _shutdown():
-    await shutdown(app)
+    await container.shutdown()
