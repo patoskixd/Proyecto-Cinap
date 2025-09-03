@@ -1,4 +1,3 @@
-// app/asesor/cupos/page.tsx  (ajusta la ruta si usas otra)
 import CreateSlotsWizard from "@/presentation/components/advisor/slots/CreateSlotsWizard";
 import { GetCreateSlotsData } from "@application/slots/usecases/GetCreateSlotsData";
 import { InMemorySlotsRepo } from "@infrastructure/slots/InMemorySlotsRepo";

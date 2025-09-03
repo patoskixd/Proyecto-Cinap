@@ -1,4 +1,3 @@
-// src/presentation/components/dashboard/AdvisorStatusCards.tsx
 type Props = {
   isCalendarConnected: boolean;
   monthCount: number;

@@ -7,7 +7,7 @@ type Props = {
   open: boolean;
   teacher: Teacher | null;
   onCancel: () => void;
-  // No guardamos directo: devolvemos los datos para que el padre confirme
+
   onSubmitRequest: (draft: Teacher) => void;
 };
 

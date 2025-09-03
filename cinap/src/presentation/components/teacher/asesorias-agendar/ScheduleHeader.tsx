@@ -1,4 +1,3 @@
-// src/presentation/components/asesoria-agendar/ScheduleHeader.tsx
 export default function ScheduleHeader() {
   return (
     <div className="mb-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-100 md:mb-8 md:p-8">

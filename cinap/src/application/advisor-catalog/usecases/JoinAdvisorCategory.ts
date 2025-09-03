@@ -5,7 +5,6 @@ export class JoinAdvisorCategory {
   constructor(private readonly repo: AdvisorCatalogRepo) {}
 
   async exec(input: JoinCategoryInput): Promise<void> {
-    // aquí podrías validar políticas (máximo categorías, etc.)
     return this.repo.joinCategory(input);
   }
 }

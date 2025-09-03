@@ -1,5 +1,3 @@
-// Domain ───────────────
-
 export type AdvisorId = string;
 export type CategoryId = string;
 export type ServiceId = string;

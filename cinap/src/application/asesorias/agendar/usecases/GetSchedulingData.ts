@@ -6,7 +6,7 @@ export class GetSchedulingData {
   async exec(): Promise<SchedulingData> {
     const data = await this.repo.getSchedulingData();
 
-    // (Opcional) Ordenamos para una UI consistente
+
     const sortByName = <T extends { name: string }>(arr: T[]) =>
       [...arr].sort((a, b) => a.name.localeCompare(b.name, "es"));
 

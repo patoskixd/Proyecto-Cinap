@@ -1,4 +1,3 @@
-// src/presentation/components/dashboard/TeacherStatusCards.tsx
 type Props = {
   isCalendarConnected: boolean;
   monthCount: number;

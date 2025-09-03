@@ -1,6 +1,6 @@
-// src/presentation/components/dashboard/StatusCards.tsx
+
 import type { Role } from "@domain/auth";
-import type { DashboardData } from "@app/dashboard/ports/DashboardRepo";
+import type { DashboardData } from "@application/dashboard/ports/DashboardRepo";
 
 import AdminStatusCards from "@/presentation/components/admin/dashboard/AdminStatusCards";
 import AdvisorStatusCards from "@/presentation/components/advisor/dashboard/AdvisorStatusCards";
@@ -10,7 +10,7 @@ type Props =
   & Pick<DashboardData, "isCalendarConnected" | "monthCount" | "pendingCount" | "adminMetrics">
   & { role: Role };
 
-// src/presentation/components/dashboard/StatusCards.tsx
+
 export default function StatusCards({
   role,
   isCalendarConnected,
@@ -18,7 +18,7 @@ export default function StatusCards({
   pendingCount,
   adminMetrics,
 }: Props) {
-  // Condicional de roles para las tarjetas de estado
+ 
   if (role === "admin" && adminMetrics) {
     return (
       <AdminStatusCards

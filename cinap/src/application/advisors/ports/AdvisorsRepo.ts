@@ -1,4 +1,3 @@
-// src/application/advisors/ports/AdvisorsRepo.ts
 import type { Advisor, AdvisorBasicInfo, AdvisorServiceRef, CategoryId } from "@domain/advisors";
 
 export type UpdateAdvisorDTO = {

@@ -12,10 +12,10 @@ export type AdminMetrics = {
 export type DashboardData = {
   upcoming: Appointment[];
   drafts: Draft[];
-  monthCount: number;          // usadas por teacher/advisor
-  pendingCount: number;        // usadas por teacher/advisor
+  monthCount: number;         
+  pendingCount: number;       
   isCalendarConnected: boolean;
-  adminMetrics?: AdminMetrics; // solo para admin
+  adminMetrics?: AdminMetrics;
 };
 
 export type DashboardInput = {

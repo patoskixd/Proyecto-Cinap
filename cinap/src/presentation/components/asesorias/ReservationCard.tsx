@@ -1,4 +1,3 @@
-// src/presentation/components/asesorias/ReservationCard.tsx
 import type { Reservation } from "@/domain/reservation";
 
 export default function ReservationCard({ r }: { r: Reservation }) {

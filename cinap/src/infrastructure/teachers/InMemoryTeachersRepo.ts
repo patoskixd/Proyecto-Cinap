@@ -12,7 +12,7 @@ export class InMemoryTeachersRepo implements TeachersRepo {
 
   async list(): Promise<Teacher[]> {
     await delay(120);
-    // copia defensiva
+
     return this.data.map((t) => ({ ...t }));
   }
 

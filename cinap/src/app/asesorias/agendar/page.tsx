@@ -2,7 +2,7 @@ import ScheduleHeader from "@/presentation/components/teacher/asesorias-agendar/
 import ScheduleWizard from "@/presentation/components/teacher/asesorias-agendar/ScheduleWizard";
 import ChatWidget from "@/presentation/components/shared/widgets/ChatWidget";
 
-import { GetSchedulingData } from "@app/asesorias/agendar/usecases/GetSchedulingData";
+import { GetSchedulingData } from "@application/asesorias/agendar/usecases/GetSchedulingData";
 import { InMemorySchedulingRepo } from "@infrastructure/asesorias/agendar/InMemorySchedulingRepo";
 
 export default async function NewAppointmentPage() {

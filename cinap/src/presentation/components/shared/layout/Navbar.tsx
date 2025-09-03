@@ -31,7 +31,7 @@ export default function Navbar() {
       <span className="text-sm text-neutral-600">
         Rol: <strong>{isAuthed ? me.user?.role : "Invitado" }</strong>
       </span>
-      <Link href={{ pathname: "/dashboard", hash: "inicio" }} className="hidden text-neutral-700 transition-colors hover:text-blue-600 md:inline">Inicio</Link>
+      <Link href={{ pathname: "/dashboard"}} className="hidden text-neutral-700 transition-colors hover:text-blue-600 md:inline">Inicio</Link>
       <Link href="/dashboard" className="inline-flex items-center gap-2 rounded-full border-2 border-neutral-200 px-4 py-2 text-sm font-semibold text-neutral-700 transition-all hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow">
         Perfil
       </Link>

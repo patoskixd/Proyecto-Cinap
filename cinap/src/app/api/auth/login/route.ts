@@ -1,4 +1,3 @@
-// src/app/api/auth/login/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { forwardSetCookies } from "@/app/api/_utils/cookies";
 

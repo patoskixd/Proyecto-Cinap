@@ -1,8 +1,8 @@
 import type { Category, Service, CategoryId } from "@domain/scheduling";
 
 export type AdvisorCategory = {
-  category: Category;        // { id, name, description, icon }
-  services: Service[];       // servicios que puede/da en esa categoría
+  category: Category;       
+  services: Service[];       
   status: "active" | "available";
 };
 

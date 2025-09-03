@@ -21,7 +21,7 @@ export default function ManageTeachersView() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [editing, setEditing] = useState<Teacher | null>(null);
 
-  // confirm state
+
   const [confirm, setConfirm] = useState<
     | { kind: "edit"; draft: Teacher }
     | { kind: "delete"; id: string; teacher?: Teacher }
@@ -52,9 +52,8 @@ export default function ManageTeachersView() {
     );
   }, [teachers, query]);
 
-  // actions
+
   const requestEdit = (draft: Teacher) => {
-    // cerramos modal y abrimos confirmación
     setEditing(null);
     setConfirm({ kind: "edit", draft });
   };

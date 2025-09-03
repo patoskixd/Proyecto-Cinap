@@ -1,4 +1,4 @@
-import type { DashboardRepo, DashboardData, DashboardInput } from "@app/dashboard/ports/DashboardRepo";
+import type { DashboardRepo, DashboardData, DashboardInput } from "@application/dashboard/ports/DashboardRepo";
 import type { Appointment, Draft } from "@domain/appointment";
 
 

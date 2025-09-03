@@ -6,6 +6,6 @@ export type ReservationsData = {
 };
 
 export interface ReservationsRepo {
-  // Si luego necesitas filtrar por usuario/docente, puedes añadir parámetros aquí
+
   list(): Promise<ReservationsData>;
 }

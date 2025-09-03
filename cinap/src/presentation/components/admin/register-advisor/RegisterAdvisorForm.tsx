@@ -335,7 +335,7 @@ export default function RegisterAdvisorForm() {
   );
 }
 
-/* ─────────── UI helpers internos ─────────── */
+
 
 function SectionCard({ children }: { children: React.ReactNode }) {
   return <section className="p-6">{children}</section>;

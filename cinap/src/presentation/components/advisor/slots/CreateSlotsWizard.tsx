@@ -24,7 +24,6 @@ const DAY_LABEL: Record<WeekdayId, string> = {
   friday: "Viernes",
 };
 
-/* ===== helpers calendario (LOCAL) ===== */
 const WEEKDAYS_UI = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const weekIndexMon0 = (d: Date) => (d.getDay() + 6) % 7;
 
@@ -73,7 +72,7 @@ const formatEsDate = (iso: string) =>
   dateFromLocalISO(iso)
     .toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })
     .replace(",", "");
-/* ===================================== */
+
 
 export default function CreateSlotsWizard({
   categories,
@@ -82,23 +81,22 @@ export default function CreateSlotsWizard({
 }: Props) {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
-  // estado base
+
   const [categoryId, setCategoryId] = useState<CategoryId | undefined>();
   const [serviceId, setServiceId] = useState<string | undefined>();
 
-  // inputs sala
+
   const [location, setLocation] = useState("");
   const [room, setRoom] = useState("");
   const [roomNotes, setRoomNotes] = useState("");
 
-  // reglas (sin merge en UI)
   const [schedules, setSchedules] = useState<UIRule[]>([]);
 
-  // mock modal
+
   const [showSuccess, setShowSuccess] = useState(false);
   const [createdCount, setCreatedCount] = useState<number>(0);
 
-  // derivados
+ 
   const services = useMemo<Service[]>(() => {
     return categoryId ? servicesByCategory[categoryId] ?? [] : [];
   }, [categoryId, servicesByCategory]);
@@ -106,7 +104,7 @@ export default function CreateSlotsWizard({
   const selectedService = services.find((s) => s.id === serviceId);
   const durationMin = selectedService ? parseInt(selectedService.duration, 10) || 60 : 60;
 
-  /* -------- Progress -------- */
+
   const Progress = () => (
     <div className="flex items-center justify-center gap-3 border-b border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-5">
       {[
@@ -269,7 +267,7 @@ export default function CreateSlotsWizard({
   const [multiStart, setMultiStart] = useState("09:00");
   const [multiEnd, setMultiEnd] = useState("16:00");
 
-  // 👉 ya NO hacemos merge aquí; solo agregamos
+ 
   const addSingleFromDate = () => {
     if (!selectedDate) return;
     const day = weekdayFromDate(selectedDate);
@@ -298,7 +296,7 @@ export default function CreateSlotsWizard({
 
   const removeSchedule = (idx: number) => setSchedules((xs) => xs.filter((_, i) => i !== idx));
 
-  // Normalización/validación centralizada
+ 
   const normalized = useMemo(() => normalizeSchedules(schedules), [schedules]);
 
   const renderStep3 = () => {
@@ -495,8 +493,7 @@ export default function CreateSlotsWizard({
   const slotsFor = (start: string, end: string) =>
     Math.max(0, Math.floor((toMin(end) - toMin(start)) / durationMin));
 
-  const normalizedForSubmit = normalized; // mismo objeto; aquí podrías volver a llamar si quisieras
-
+  const normalizedForSubmit = normalized; 
   const totalSlots = useMemo(
     () => normalizedForSubmit.merged.reduce((acc, s) => acc + slotsFor(s.startTime, s.endTime), 0),
     [normalizedForSubmit.merged, durationMin]
@@ -563,8 +560,6 @@ export default function CreateSlotsWizard({
     (step === 3 && normalized.merged.length > 0);
 
   const submit = async () => {
-    // Mock local: en la integración real harías fetch a /api/slots,
-    // el use case CreateSlots hará el normalize de nuevo antes de guardar.
     setCreatedCount(totalSlots);
     setShowSuccess(true);
   };

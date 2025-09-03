@@ -1,4 +1,4 @@
-import type { ReservationsRepo, ReservationsData } from "@app/asesorias/ports/ReservationsRepo";
+import type { ReservationsRepo, ReservationsData } from "@application/asesorias/ports/ReservationsRepo";
 import type { Reservation } from "@domain/reservation";
 
 export class InMemoryReservationsRepo implements ReservationsRepo {

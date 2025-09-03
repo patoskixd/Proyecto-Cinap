@@ -1,4 +1,3 @@
-// src/infrastructure/advisor-catalog/InMemoryAdvisorCatalogRepo.ts
 import type { AdvisorCatalogRepo } from "@application/advisor-catalog/ports/AdvisorCatalogRepo";
 import type { AdvisorCatalog, AdvisorCategory } from "@domain/advisorCatalog";
 import type { Category, Service, CategoryId } from "@domain/scheduling";
@@ -7,7 +6,7 @@ const mkCat = (id: CategoryId, name: string, description: string, icon: string):
   id, name, description, icon,
 });
 
-// ⬇️ AHORA incluye categoryId (requerido por Service)
+
 const mkSvc = (
   id: string,
   categoryId: CategoryId,
@@ -16,10 +15,10 @@ const mkSvc = (
   duration: string = "60"
 ): Service => ({
   id,
-  categoryId,   // <-- requerido
+  categoryId,  
   name,
   description,
-  duration,     // si tu Service usa number, cambia a: Number(duration)
+  duration,    
 });
 
 export class InMemoryAdvisorCatalogRepo implements AdvisorCatalogRepo {

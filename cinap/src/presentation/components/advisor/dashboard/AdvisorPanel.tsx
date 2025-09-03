@@ -1,10 +1,9 @@
-// src/presentation/components/dashboard/AdvisorPanel.tsx
 import Link from "next/link";
 
 type Stats = {
-  slotsSelected?: number;   // cupos seleccionados (ej. 8)
-  pending?: number;         // asesorías por confirmar (ej. 3)
-  cancelled?: number;       // canceladas (ej. 1)
+  slotsSelected?: number;   
+  pending?: number;         
+  cancelled?: number;       
 };
 
 export default function AdvisorPanel({ stats }: { stats?: Stats }) {

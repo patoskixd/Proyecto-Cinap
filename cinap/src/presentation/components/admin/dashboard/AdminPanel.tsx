@@ -15,7 +15,7 @@ export default function AdminPanel() {
     <aside className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
       <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
         <h3 className="text-lg font-semibold text-slate-900">Panel de administración</h3>
-        {/* badge en azul (branding) */}
+        {/* badge en azul */}
         <span className="rounded-full bg-gradient-to-r from-blue-600 to-blue-700 px-2.5 py-0.5 text-xs font-semibold text-white">
           Admin
         </span>

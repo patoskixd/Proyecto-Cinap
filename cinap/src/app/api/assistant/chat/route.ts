@@ -1,4 +1,3 @@
-// src/app/api/assistant/chat/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { forwardSetCookies } from "@/app/api/_utils/cookies";
 
@@ -19,13 +18,13 @@ export async function POST(req: NextRequest) {
     const upstream = await fetch(`${BASE}/assistant/chat`, {
       method: "POST",
       headers,
-      body: JSON.stringify(body),
+      body: JSON.stringify({ message: body?.message, thread_id: body?.thread_id }),
       cache: "no-store",
     });
 
     const data = await upstream.json().catch(() => ({}));
     const resp = NextResponse.json(
-      { reply: data?.reply ?? "Sin respuesta del asistente." },
+      { reply: data?.reply ?? "Sin respuesta del asistente.",  thread_id: data?.thread_id },
       { status: upstream.ok ? 200 : upstream.status, headers: { "Cache-Control": "no-store" } }
     );
 

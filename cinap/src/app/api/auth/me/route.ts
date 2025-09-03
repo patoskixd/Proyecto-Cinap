@@ -20,10 +20,8 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await res.json();
-    // devolvemos tal cual al cliente
     return NextResponse.json(data, { status: 200 });
   } catch (e) {
-    // ante cualquier error devolvemos no autenticado
     return NextResponse.json({ authenticated: false }, { status: 200 });
   }
 }

@@ -8,9 +8,9 @@ import { UpdateMySlot } from "@application/my-slots/usecases/UpdateMySlot";
 import { DeleteMySlot } from "@application/my-slots/usecases/DeleteMySlot";
 import Link from "next/link";
 
-/* ===== util ===== */
-const WORK_START = 9;  // 09:00
-const WORK_END   = 18; // 18:00
+
+const WORK_START = 9;  
+const WORK_END   = 18; 
 
 function endTime(start: string, duration: number) {
   const [h, m] = start.split(":").map(Number);
@@ -35,7 +35,7 @@ function todayLocalISO() {
 function isWeekendISO(iso: string) {
   const [y, m, d] = iso.split("-").map(Number);
   const dt = new Date(y, (m ?? 1) - 1, d ?? 1);
-  const wd = dt.getDay(); // 0=Dom .. 6=Sab
+  const wd = dt.getDay(); 
   return wd === 0 || wd === 6;
 }
 function isPastISO(iso: string) {
@@ -53,7 +53,7 @@ function validStartWithinShift(hhmm: string, duration: number) {
   const end = start + duration;
   return start >= WORK_START * 60 && end <= WORK_END * 60;
 }
-/* =============== */
+
 
 type Filters = { category: string; service: string; status: "" | SlotStatus; date: string };
 
@@ -64,7 +64,7 @@ export default function MySlotsManager() {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<Filters>({ category: "", service: "", status: "", date: "" });
 
-  // edición / confirmaciones
+
   const [editing, setEditing] = useState<MySlot | null>(null);
   const [confirmPatch, setConfirmPatch] = useState<MySlot | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<MySlot | null>(null);
@@ -98,7 +98,6 @@ export default function MySlotsManager() {
   const stats = useMemo(() => {
     const disponibles = slots.filter(s => s.status === "disponible").length;
 
-    // minutos ocupados = suma de las duraciones de los slots con estado "ocupado"
     const ocupadasMin = slots
       .filter(s => s.status === "ocupado")
       .reduce((acc, s) => acc + s.duration, 0);
@@ -112,7 +111,7 @@ export default function MySlotsManager() {
     return { disponibles, ocupadasMin, ocupadasHM };
   }, [slots]);
 
-  /* === acciones === */
+
   const startEdit = (id: number) => {
     const s = slots.find(x => x.id === id);
     if (s) setEditing({ ...s });
@@ -138,7 +137,6 @@ export default function MySlotsManager() {
   const saveEdit = () => {
     if (!editing) return;
 
-    // Validaciones UX:
     if (isPastISO(editing.date)) {
       notify("No puedes seleccionar fechas pasadas", "error");
       return;
@@ -154,7 +152,7 @@ export default function MySlotsManager() {
       return;
     }
 
-    // Abrimos confirmación antes de guardar:
+
     setConfirmPatch({ ...editing });
   };
 
@@ -167,7 +165,7 @@ export default function MySlotsManager() {
     notify("Cambios confirmados y guardados", "success");
   };
 
-  /* === UI === */
+
   return (
     <div className="py-6">
       {/* encabezado  */}

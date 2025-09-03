@@ -1,4 +1,3 @@
-// app/dashboard/page.tsx
 "use client";
 
 import DashboardHeader from "@/presentation/components/shared/DashboardHeader";
@@ -12,7 +11,6 @@ import { useAuth } from "@/presentation/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo } from "react";
 
-// --- helpers ---
 function normalizeRoleName(raw: string): Role {
   const r = (raw || "").toLowerCase();
   if (r.includes("admin") || r === "administrador") return "admin" as Role;
@@ -44,9 +42,7 @@ const EMPTY_DATA: DashboardData = {
 };
 
 function buildData(role: Role, userId: string) {
-  // === Mock compatibles con <UpcomingList /> ===
-  // Mismo formato que usas en Advisor:
-  // { id, time, dateLabel, title, student, status }
+
   const commonUpcoming = [
     {
       id: "adm-1",
@@ -67,14 +63,13 @@ function buildData(role: Role, userId: string) {
   ];
 
   if (role === "admin") {
-    // Admin: mismo layout que advisor/teacher → izquierda UpcomingList, derecha AdminPanel
-    // Aquí mockeamos “todas las asesorías agendadas” con el mismo shape
+
     return {
       isCalendarConnected: true,
-      monthCount: 86,   // lo que ya muestras en la tarjeta
-      pendingCount: 5,  // idem
-      upcoming: commonUpcoming, // 👈 ahora el Admin también ve UpcomingList
-      drafts: [],             // admin no usa borradores
+      monthCount: 86,   
+      pendingCount: 5,  
+      upcoming: commonUpcoming, 
+      drafts: [],             
       adminMetrics: {
         advisorsTotal: 12,
         advisorsAvailable: 9,
@@ -85,7 +80,7 @@ function buildData(role: Role, userId: string) {
     };
   }
 
-  // === mocks para teacher/advisor (igual que ya tenías) ===
+
   const baseSeed = userId ? userId.charCodeAt(0) % 5 : 2;
   return {
     isCalendarConnected: true,
@@ -119,12 +114,11 @@ function buildData(role: Role, userId: string) {
 }
 
 
-// --- component ---
 export default function DashboardPage() {
   const router = useRouter();
   const { me, mounted } = useAuth();
 
-  // ⚠️ Todos los hooks arriba, sin returns antes:
+
   const isAuthed = me.authenticated === true;
   const user = isAuthed ? me.user : undefined;
   const role = normalizeRoleName(user?.role || "");
@@ -140,7 +134,7 @@ export default function DashboardPage() {
     }
   }, [mounted, isAuthed, router]);
 
-  // Recién aquí hacemos returns condicionales
+
   if (!mounted) return null;
   if (!isAuthed) return null;
 
