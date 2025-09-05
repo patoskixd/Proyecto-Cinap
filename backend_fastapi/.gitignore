@@ -6,6 +6,10 @@ dist/
 wheels/
 *.egg-info
 
+
+uv.lock
+.python-version
+
 # Virtual environments
 .venv
 
@@ -14,3 +18,5 @@ wheels/
 
 # DB
 checkpoints.db
+*.db-shm
+*.db-wal

@@ -9,6 +9,7 @@ from app.use_cases.auth.google_callback import GoogleCallbackUseCase
 from app.frameworks_drivers.mcp.stdio_client import MCPStdioClient
 from app.frameworks_drivers.llm.langgraph_agent import LangGraphAgent
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.use_cases.auth.logout import LogoutUseCase
 
 class Container:
     oauth: GoogleOAuthClient
@@ -88,3 +89,7 @@ class Container:
     async def shutdown(self):
         if self.mcp:
             await self.mcp.close()
+
+    def uc_logout(self, session: AsyncSession) -> LogoutUseCase:
+        repo = SqlAlchemyUserRepo(session, default_role_id=self._default_role_id)  
+        return LogoutUseCase(user_repo=repo)

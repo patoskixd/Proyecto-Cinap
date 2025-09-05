@@ -56,6 +56,7 @@ auth_router = make_auth_router(
     uc_factory_google_callback=container.uc_google_callback,
     get_session_dep=get_session,
     jwt_port=container.jwt,
+    uc_factory_logout=container.uc_logout
 )
 
 @app.get("/health")
