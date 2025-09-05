@@ -7,7 +7,6 @@ export class RegisterAdvisor {
   constructor(private repo: AdvisorsRepo) {}
 
   async exec(input: Input) {
-    // Compatibilidad: si el repo tiene add, úsalo; si no, usa save (legacy).
     const anyRepo = this.repo as any;
     if (typeof anyRepo.add === "function") {
       return anyRepo.add(input);

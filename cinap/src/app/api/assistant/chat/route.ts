@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { forwardSetCookies } from "@/app/api/_utils/cookies";
 
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
@@ -13,27 +14,26 @@ export async function POST(req: NextRequest) {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     const cookie = req.headers.get("cookie");
     if (cookie) headers.cookie = cookie;
-    const auth = req.headers.get("authorization");
-    if (auth) headers.authorization = auth;
 
     const upstream = await fetch(`${BASE}/assistant/chat`, {
       method: "POST",
       headers,
-      body: JSON.stringify(body),
+      body: JSON.stringify({ message: body?.message, thread_id: body?.thread_id }),
       cache: "no-store",
     });
 
     const data = await upstream.json().catch(() => ({}));
     const resp = NextResponse.json(
-      { reply: data?.reply ?? "Sin respuesta del asistente." },
-      { status: upstream.ok ? 200 : upstream.status }
+      { reply: data?.reply ?? "Sin respuesta del asistente.",  thread_id: data?.thread_id },
+      { status: upstream.ok ? 200 : upstream.status, headers: { "Cache-Control": "no-store" } }
     );
-    resp.headers.set("Cache-Control", "no-store");
 
-    forwardSetCookies(upstream, resp);    // ← aquí
-
+    forwardSetCookies(upstream, resp);
     return resp;
   } catch {
-    return NextResponse.json({ reply: "Error al contactar el backend." }, { status: 500, headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(
+      { reply: "Error al contactar el backend." },
+      { status: 500, headers: { "Cache-Control": "no-store" } }
+    );
   }
 }

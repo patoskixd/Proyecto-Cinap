@@ -6,7 +6,7 @@ export class GetReservations {
   async exec(): Promise<ReservationsData> {
     const { upcoming, past } = await this.repo.list();
 
-    // Pequeña regla de aplicación: ordenar
+
     const sortAsc = (a: { dateISO: string }, b: { dateISO: string }) =>
       Date.parse(a.dateISO) - Date.parse(b.dateISO);
     const sortDesc = (a: { dateISO: string }, b: { dateISO: string }) =>

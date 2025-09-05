@@ -9,13 +9,13 @@ export type WeekdayId =
 
 export type SlotRule = {
   day: WeekdayId;
-  startTime: string; // "HH:mm"
-  endTime: string;   // "HH:mm"
+  startTime: string;
+  endTime: string;   
   type: "single" | "multiple";
 };
 
 export type CreateSlotsInput = {
-  advisorId?: string; // opcional por ahora
+  advisorId?: string;
   categoryId: CategoryId;
   serviceId: string;
   location: string;
@@ -29,5 +29,5 @@ export type CreateSlotsResult = { createdSlots: number };
 export type CreateSlotsData = {
   categories: Category[];
   servicesByCategory: Record<CategoryId, Service[]>;
-  times: string[]; // para selects de horas
+  times: string[]; 
 };

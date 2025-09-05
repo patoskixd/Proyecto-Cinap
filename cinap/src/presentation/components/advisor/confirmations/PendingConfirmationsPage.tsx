@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import type { PendingConfirmation, ConfirmationCategory } from "@domain/confirmations";
 
-/* helpers */
+
 const toLocalDate = (iso: string) => {
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(y, (m ?? 1) - 1, d ?? 1);
@@ -39,7 +39,7 @@ const prettyDateTime = (dateISO: string, time: string) => {
 type Filters = {
   category: "" | ConfirmationCategory;
   date: "" | "today" | "tomorrow" | "week";
-  q: string; // docente
+  q: string; 
 };
 
 export default function PendingConfirmationsPage(props: { items: PendingConfirmation[] }) {

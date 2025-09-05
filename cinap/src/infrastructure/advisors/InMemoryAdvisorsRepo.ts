@@ -2,7 +2,7 @@ import type { AdvisorsRepo, UpdateAdvisorDTO } from "@application/advisors/ports
 import type { Advisor, AdvisorBasicInfo, AdvisorServiceRef, CategoryId } from "@domain/advisors";
 
 
-// Pequeña utilidad segura para cliente:
+
 const genId = () =>
   typeof globalThis !== "undefined" &&
   globalThis.crypto &&
@@ -38,7 +38,7 @@ export class InMemoryAdvisorsRepo implements AdvisorsRepo {
 
   async add(input: { basic: AdvisorBasicInfo; categories: CategoryId[]; services: AdvisorServiceRef[] }) {
     const item: Advisor = {
-      id: genId(), // ✅ usa genId()
+      id: genId(), 
       basic: input.basic,
       categories: input.categories,
       services: input.services,
@@ -66,7 +66,7 @@ export class InMemoryAdvisorsRepo implements AdvisorsRepo {
     this.items = this.items.filter((x) => x.id !== id);
   }
 
-  // (opcional) alias para compatibilidad
+
   async save(input: { basic: AdvisorBasicInfo; categories: CategoryId[]; services: AdvisorServiceRef[] }) {
     return this.add(input);
   }

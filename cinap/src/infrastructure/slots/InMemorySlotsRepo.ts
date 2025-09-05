@@ -3,12 +3,12 @@ import type {
   CreateSlotsInput,
   CreateSlotsResult,
 } from "@domain/slots";
-import type { SlotsRepo } from "@app/slots/ports/SlotsRepo";
+import type { SlotsRepo } from "@application/slots/ports/SlotsRepo";
 import type { Category, CategoryId, Service } from "@domain/scheduling";
 
 export class InMemorySlotsRepo implements SlotsRepo {
   async getCreateSlotsData(): Promise<CreateSlotsData> {
-    // Puedes reusar lo de getSchedulingData si quieres; lo duplico acá para dejarlo autocontenido
+
     const categories: Category[] = [
       { id: "academica",     icon: "📚", name: "Asesoría Académica",     description: "Apoyo en materias y estudio" },
       { id: "investigacion", icon: "🔬", name: "Investigación",          description: "Proyectos y metodología" },
@@ -45,11 +45,11 @@ export class InMemorySlotsRepo implements SlotsRepo {
   }
 
   async createSlots(input: CreateSlotsInput): Promise<CreateSlotsResult> {
-    // Mock: calcula cuántos cupos se crean con la duración del servicio
+
     const svcDuration =
       typeof input.serviceId === "string"
         ? (() => {
-            // heurística: si el id contiene "90" => 90, si contiene "75" => 75, else 60
+
             if (input.serviceId.includes("90")) return 90;
             if (input.serviceId.includes("75")) return 75;
             return 60;
@@ -66,7 +66,7 @@ export class InMemorySlotsRepo implements SlotsRepo {
       return acc + slots;
     }, 0);
 
-    // Simula OK
+
     return { createdSlots: total };
   }
 }

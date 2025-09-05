@@ -1,13 +1,10 @@
-// src/app/asesorias/page.tsx
-
 import ReservationsHeader from "@presentation/components/asesorias/ReservationsHeader";
 import ReservationsView from "@presentation/components/asesorias/ReservationsView";
 import ChatWidget from "@presentation/components/shared/widgets/ChatWidget";
 
-import { GetReservations } from "@app/asesorias/usecases/GetReservations";
+import { GetReservations } from "@application/asesorias/usecases/GetReservations";
 import { InMemoryReservationsRepo } from "@infrastructure/asesorias/InMemoryReservationsRepo";
 
-// Server Component (App Router)
 export default async function ReservationsPage() {
   const usecase = new GetReservations(new InMemoryReservationsRepo());
   const { upcoming, past } = await usecase.exec();

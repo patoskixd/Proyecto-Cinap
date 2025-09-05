@@ -3,7 +3,6 @@ import type { PendingConfirmation } from "@domain/confirmations";
 
 export class InMemoryConfirmationsRepo implements ConfirmationsRepo {
   async getPending(): Promise<PendingConfirmation[]> {
-    // mock basado en tu HTML
     return [
       {
         id: 1,
@@ -30,7 +29,7 @@ export class InMemoryConfirmationsRepo implements ConfirmationsRepo {
         time: "14:00",
         location: "Edificio B, Piso 1",
         room: "Laboratorio 105",
-        createdAtISO: new Date(Date.now() - 4 * 3600_000).toISOString(), // hace 4h
+        createdAtISO: new Date(Date.now() - 4 * 3600_000).toISOString(), 
         status: "pending",
       },
       {
@@ -44,7 +43,7 @@ export class InMemoryConfirmationsRepo implements ConfirmationsRepo {
         time: "09:00",
         location: "Edificio C, Piso 3",
         room: "Lab. Computación 301",
-        createdAtISO: new Date(Date.now() - 24 * 3600_000).toISOString(), // hace 1 día
+        createdAtISO: new Date(Date.now() - 24 * 3600_000).toISOString(), 
         status: "pending",
       },
     ];

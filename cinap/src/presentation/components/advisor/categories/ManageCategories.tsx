@@ -8,20 +8,19 @@ import { LeaveAdvisorCategory } from "@application/advisor-catalog/usecases/Leav
 import type { AdvisorCatalog } from "@domain/advisorCatalog";
 import { CategoryId } from "@/domain/scheduling";
 
-/* ===== helpers UI ===== */
+
 const MAX_CHIPS = 4;
 
 function dedupServices<T extends { id: string; name: string }>(arr: T[]): T[] {
   const seen = new Set<string>();
   return arr.filter((s) => {
-    const key = `${s.id}::${s.name}`; // evita duplicados por id/nombre
+    const key = `${s.id}::${s.name}`; 
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 }
 
-/* ===== usecases / repo ===== */
 const repo = new InMemoryAdvisorCatalogRepo();
 const ucGet = new GetAdvisorCatalog(repo);
 const ucJoin = new JoinAdvisorCategory(repo);
@@ -31,14 +30,14 @@ export default function ManageCategories() {
   const [data, setData] = useState<AdvisorCatalog | null>(null);
   const [toast, setToast] = useState<{ msg: string; tone: "success" | "error" } | null>(null);
 
-  // modal: ver servicios
+
   const [servicesModal, setServicesModal] = useState<{
     categoryId: string;
     title: string;
     services: { id: string; name: string; description?: string; duration?: number }[];
   } | null>(null);
 
-  // modal: confirmar salir
+
   const [confirmLeave, setConfirmLeave] = useState<{ categoryId: string; title: string } | null>(null);
 
   const notify = (msg: string, tone: "success" | "error" = "success") => {
@@ -309,7 +308,7 @@ export default function ManageCategories() {
   );
 }
 
-/* ========= UI bits ========= */
+
 
 function Stat({ number, label }: { number: number; label: string }) {
   return (

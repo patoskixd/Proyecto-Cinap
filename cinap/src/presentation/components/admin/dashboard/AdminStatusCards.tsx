@@ -1,4 +1,3 @@
-// src/presentation/components/dashboard/AdminStatusCards.tsx
 import React from "react";
 
 export default function AdminStatusCards(props: {

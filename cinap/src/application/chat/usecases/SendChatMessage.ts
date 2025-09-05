@@ -1,4 +1,3 @@
-
 import type { ChatAgent } from "@application/chat/ports/ChatAgent";
 
 export function makeSendChatMessage(agent: ChatAgent) {

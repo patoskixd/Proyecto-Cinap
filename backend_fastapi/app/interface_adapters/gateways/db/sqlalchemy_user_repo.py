@@ -1,7 +1,8 @@
 from __future__ import annotations
 from typing import Optional
 import uuid
-
+from datetime import datetime, timezone 
+import sqlalchemy as sa 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -92,6 +93,8 @@ class SqlAlchemyUserRepo(UserRepo):
             user_m = await self._load_user_by_id(ident_m.usuario_id)
             if refresh_token:
                 ident_m.refresh_token_hash = refresh_token
+                ident_m.ultimo_sync = datetime.now(timezone.utc)
+                ident_m.conectado = True
                 await self.session.flush()
             return self._to_domain(user_m)
 
@@ -125,9 +128,25 @@ class SqlAlchemyUserRepo(UserRepo):
                 provider_user_id=sub,
                 email=email,
                 refresh_token_hash=refresh_token,
+                conectado=True,
+                ultimo_sync=datetime.now(timezone.utc),
             )
             self.session.add(ident_new)
             await self.session.flush()
 
         user_m = await self._load_user_by_id(user_m.id)
         return self._to_domain(user_m)
+    async def mark_logged_out(self, user_id: str) -> None:
+        try:
+            uid = uuid.UUID(user_id)
+        except Exception:
+            return
+        await self.session.execute(
+            sa.update(UserIdentityModel)
+              .where(UserIdentityModel.usuario_id == uid)
+              .values(
+                  conectado=False,
+                  ultimo_sync=datetime.now(timezone.utc),
+              )
+        )
+        await self.session.flush()

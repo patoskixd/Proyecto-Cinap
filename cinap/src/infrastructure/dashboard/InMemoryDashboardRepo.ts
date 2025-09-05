@@ -1,16 +1,16 @@
-import type { DashboardRepo, DashboardData, DashboardInput } from "@app/dashboard/ports/DashboardRepo";
+import type { DashboardRepo, DashboardData, DashboardInput } from "@application/dashboard/ports/DashboardRepo";
 import type { Appointment, Draft } from "@domain/appointment";
 
-// Dataset raw con metadatos para poder filtrar por rol y usuario
+
 type Raw = Appointment & {
   advisorId: string;
   teacherId: string;
   confirmed: boolean;
 };
 
-// Puedes mover esto a src/infrastructure/_fixtures/appointments.ts si prefieres
+
 const ALL_APPOINTMENTS: Raw[] = [
-  // Docente t-10 con asesor adv-1
+
   { id:"a1", time:"10:00 AM", dateLabel:"Hoy",     title:"Asesoría de Matemáticas",         student:"Ana Rodríguez",   status:"confirmada", advisorId:"adv-1", teacherId:"t-10", confirmed:true },
   { id:"a2", time:"2:30 PM",  dateLabel:"Mañana",  title:"Asesoría de Física",              student:"Carlos López",    status:"confirmada", advisorId:"adv-2", teacherId:"t-10", confirmed:true },
 
@@ -22,11 +22,9 @@ const ALL_APPOINTMENTS: Raw[] = [
 
 export class InMemoryDashboardRepo implements DashboardRepo {
   async getDashboard({ role, userId }: DashboardInput): Promise<DashboardData> {
-    // --- UPCOMING según rol ---
     let filtered: Raw[] = ALL_APPOINTMENTS;
 
     if (role === "teacher") {
-      // Si llega userId filtramos por docente; si no, dejamos un fallback simple
       filtered = userId
         ? ALL_APPOINTMENTS.filter(a => a.teacherId === userId)
         : ALL_APPOINTMENTS.filter(a => a.teacherId === "t-10");
@@ -35,14 +33,12 @@ export class InMemoryDashboardRepo implements DashboardRepo {
         ? ALL_APPOINTMENTS.filter(a => a.advisorId === userId && a.confirmed)
         : ALL_APPOINTMENTS.filter(a => a.advisorId === "adv-1" && a.confirmed);
     } else {
-      // admin ve todo
       filtered = ALL_APPOINTMENTS;
     }
 
-    // Mapeamos al shape de Appointment (sin metadatos internos)
     const upcoming: Appointment[] = filtered.map(({ advisorId, teacherId, confirmed, ...rest }) => rest);
 
-    // --- DRAFTS / MÉTRICAS por rol (igual a lo que ya tenías) ---
+
     if (role === "teacher") {
       const drafts: Draft[] = [
         { id: "td1", icon: "📝", title: "Asesoría de Estadística", status: "Borrador - Sin confirmar", dateLabel: "Creado hace 2 horas" },

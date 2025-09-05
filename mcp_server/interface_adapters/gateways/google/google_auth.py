@@ -28,7 +28,7 @@ def _resolve(path_str: str) -> Path:
 def _credentials_file_exists(credentials_path: Path) -> None:
     if not credentials_path.exists():
         raise FileNotFoundError(
-            f"No se encontró el archivo de credenciales OAuth en: {credentials_path}\n"
+            f"No se encontrÃ³ el archivo de credenciales OAuth en: {credentials_path}\n"
         )
 
 def _scopes_changed(existing: Credentials, desired_scopes: Sequence[str]) -> bool:

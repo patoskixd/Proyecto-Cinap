@@ -36,7 +36,7 @@ export default function EditAdvisorModal({ open, advisor, catalog, onClose, onSa
   setCategories((prev) => {
     const has = prev.includes(cid);
     const next = has ? prev.filter((x) => x !== cid) : [...prev, cid];
-    if (has) setServices((s) => s.filter((x) => x.categoryId !== cid)); // ✅ limpia servicios de esa categoría
+    if (has) setServices((s) => s.filter((x) => x.categoryId !== cid)); 
     return next;
   });
 };

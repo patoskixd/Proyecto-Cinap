@@ -1,9 +1,8 @@
-// src/domain/scheduling.ts
 export type CategoryId = "academica" | "investigacion" | "tesis" | "tecnologia";
 
 export interface Category {
   id: CategoryId;
-  icon: string;       // emoji
+  icon: string;      
   name: string;
   description: string;
 }
@@ -13,7 +12,7 @@ export interface Service {
   categoryId: CategoryId;
   name: string;
   description: string;
-  duration: string;   // "60 min", "90 min"
+  duration: string;   
 }
 
 export interface Advisor {
@@ -23,12 +22,12 @@ export interface Advisor {
   specialties: string[];
 }
 
-export type TimezoneId = string; // p.ej. "America/Santiago"
+export type TimezoneId = string; 
 
 export interface SlotSelection {
-  dayIndex: number;   // 0..4 (Lun..Vie)
-  start: string;      // "09:00"
-  end: string;        // "10:00"
+  dayIndex: number;   
+  start: string;      
+  end: string;        
   timezone: TimezoneId;
 }
 

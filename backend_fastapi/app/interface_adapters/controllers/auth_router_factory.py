@@ -7,6 +7,7 @@ from app.use_cases.auth.google_callback import GoogleCallbackUseCase
 from app.use_cases.ports.oauth_port import GoogleOAuthPort
 from app.use_cases.ports.token_port import JwtPort
 from typing import Callable
+from app.use_cases.auth.logout import LogoutUseCase
 
 def make_auth_router(
     *,
@@ -16,6 +17,7 @@ def make_auth_router(
     uc_factory_google_callback: Callable[[AsyncSession], GoogleCallbackUseCase],
     get_session_dep: Callable[[], AsyncSession],
     jwt_port: JwtPort,
+    uc_factory_logout: Callable[[AsyncSession], LogoutUseCase],
 ) -> APIRouter:
     router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -72,16 +74,37 @@ def make_auth_router(
         return {"authenticated": True, "user": user}
 
     @router.post("/logout")
-    async def logout():
+    async def logout(request: Request, session: AsyncSession = Depends(get_session_dep)):
         from fastapi import Response
-        resp = Response(status_code=204)
-        resp.delete_cookie(
-            key="app_session",
-            path="/",
-            secure=False,
-            httponly=True,
-            samesite="lax",
-        )
-        return resp
+
+        token = request.cookies.get("app_session")
+        if token:
+            try:
+                data = jwt_port.decode(token)
+                user_id = str(data.get("sub") or "")
+            except Exception:
+                user_id = ""
+
+            if user_id:
+                uc = uc_factory_logout(session)
+                try:
+                    await uc.execute(user_id=user_id)
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+        try:
+            resp = Response(status_code=204)
+            resp.delete_cookie(
+                key="app_session",
+                path="/",
+                secure=False,
+                httponly=True,
+                samesite="lax",
+            )
+            return resp
+        except Exception as e:
+            import logging
+            logging.exception("Error en /auth/logout")
+            raise HTTPException(status_code=500, detail="Logout failed")
 
     return router

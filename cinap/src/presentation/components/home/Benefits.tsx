@@ -1,5 +1,3 @@
-
-// c
 export default function Benefits() {
     return (
         <section id="contacto" className="bg-[linear-gradient(135deg,#f8fafc_0%,#e2e8f0_100%)] px-6 py-24">

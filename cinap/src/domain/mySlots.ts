@@ -13,5 +13,5 @@ export type MySlot = {
   room: string;
   status: SlotStatus;
   student: StudentRef | null;
-  notes?: string;   // NUEVO: notas adicionales
+  notes?: string;  
 };

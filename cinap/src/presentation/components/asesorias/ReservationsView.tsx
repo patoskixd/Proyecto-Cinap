@@ -1,4 +1,3 @@
-// src/presentation/components/asesorias/ReservationsView.tsx
 "use client";
 
 import { useMemo, useState } from "react";

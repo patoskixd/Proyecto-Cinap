@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     if (upstream.status === 204) {
       const resp = new NextResponse(null, { status: 204 });
       resp.headers.set("Cache-Control", "no-store");
-      forwardSetCookies(upstream, resp);  // ← aquí
+      forwardSetCookies(upstream, resp);  
       return resp;
     }
 
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     const resp = NextResponse.json(data, { status: upstream.status });
     resp.headers.set("Cache-Control", "no-store");
 
-    forwardSetCookies(upstream, resp);    // ← aquí
+    forwardSetCookies(upstream, resp);    
 
     return resp;
   } catch {
