@@ -1,10 +1,6 @@
-import type {
-  CreateSlotsData,
-  CreateSlotsInput,
-  CreateSlotsResult,
-} from "@domain/slots";
+import type { CreateSlotsData, CreateSlotsInput, CreateSlotsResult } from "@domain/slots";
 
 export interface SlotsRepo {
-  getCreateSlotsData(): Promise<CreateSlotsData>;
+  getCreateSlotsData(): Promise<CreateSlotsData>;       
   createSlots(input: CreateSlotsInput): Promise<CreateSlotsResult>;
 }

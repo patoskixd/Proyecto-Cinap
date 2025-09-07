@@ -1,8 +1,9 @@
 const API_BASE = "/api";
 
 export class HttpError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public detail?: any) {
     super(`HTTP ${status}: ${message}`);
+    this.name = "HttpError";
   }
 }
 
@@ -17,31 +18,38 @@ async function parseBody<T>(res: Response): Promise<T> {
   if (ct.includes("application/json")) {
     return (await res.json()) as T;
   }
-
   await res.text().catch(() => "");
   return {} as T;
 }
 
-async function safeMessage(res: Response) {
-  try {
-    const j = await res.clone().json();
-    return j?.detail ?? JSON.stringify(j);
-  } catch {
-    try { return await res.text(); } catch { return ""; }
-  }
-}
-
 async function request<T>(path: string, init: RequestInit): Promise<T> {
+  const method = (init.method ?? "GET").toUpperCase();
+
   const res = await fetch(buildUrl(path), {
-    credentials: "include",        
-    cache: "no-store",
+    credentials: "include",
+    cache: method === "GET" ? "default" : "no-store",
     headers: { Accept: "application/json", ...(init.headers ?? {}) },
     ...init,
   });
 
   if (!res.ok) {
-    throw new HttpError(res.status, await safeMessage(res));
+    let parsed: any;
+    const ct = res.headers.get("content-type") || "";
+    try {
+      parsed = ct.includes("json") ? await res.clone().json() : await res.clone().text();
+    } catch { /* noop */ }
+
+    const msg =
+      typeof parsed?.detail === "string"
+        ? parsed.detail
+        : parsed?.detail?.message ??
+          parsed?.message ??
+          res.statusText ??
+          "Solicitud fallida";
+
+    throw new HttpError(res.status, msg, parsed?.detail ?? parsed);
   }
+
   return parseBody<T>(res);
 }
 
@@ -74,3 +82,37 @@ export const httpPatch = <T = unknown>(path: string, body?: any, init: RequestIn
 
 export const httpDelete = <T = unknown>(path: string, init: RequestInit = {}) =>
   request<T>(path, { ...init, method: "DELETE" });
+
+
+type GetOptions = RequestInit & {
+  ttlMs?: number;   
+  dedupe?: boolean; 
+};
+
+const __memCache = new Map<string, { exp: number; data: any }>();
+const __inflight = new Map<string, Promise<any>>();
+
+export const httpGetCached = <T>(path: string, opts: GetOptions = {}) => {
+  const url = buildUrl(path);
+  const now = Date.now();
+  const ttl = opts.ttlMs ?? 0;
+  const doCache = ttl > 0;
+
+  if (doCache) {
+    const c = __memCache.get(url);
+    if (c && c.exp > now) return Promise.resolve(c.data as T);
+  }
+
+  const dedupe = opts.dedupe !== false;
+  if (dedupe && __inflight.has(url)) return __inflight.get(url) as Promise<T>;
+
+  const p = request<T>(path, { ...opts, method: "GET" })
+    .then((res) => {
+      if (doCache) __memCache.set(url, { exp: now + ttl, data: res });
+      return res;
+    })
+    .finally(() => __inflight.delete(url));
+
+  if (dedupe) __inflight.set(url, p as Promise<any>);
+  return p;
+};

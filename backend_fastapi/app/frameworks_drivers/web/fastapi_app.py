@@ -14,6 +14,9 @@ from app.frameworks_drivers.config.settings import (
 from app.frameworks_drivers.config.db import get_session
 from app.frameworks_drivers.di.container import Container
 from app.interface_adapters.controllers.auth_router_factory import make_auth_router
+from app.interface_adapters.controllers.slots_router import make_slots_router
+
+
 
 def require_auth(request: Request):
     token = request.cookies.get("app_session")
@@ -48,6 +51,8 @@ container = Container(
     mcp_args=MCP_ARGS,
     mcp_cwd=MCP_CWD,
 )
+slots_router = make_slots_router(get_session_dep=get_session, jwt_port=container.jwt)
+app.include_router(slots_router)
 
 auth_router = make_auth_router(
     oauth=container.oauth,
