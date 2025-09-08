@@ -1,10 +1,10 @@
 import type { AuthRepo } from "@/application/auth/ports/AuthRepo";
 import type { Me } from "@/domain/auth";
-import { httpGet, httpPost } from "@/infrastructure/http/client";
+import { httpGetCached, httpPost } from "@/infrastructure/http/client";
 
 export class AuthRepoHttp implements AuthRepo {
   async getMe(): Promise<Me> {
-    return httpGet<Me>("/auth/me");
+    return httpGetCached<Me>("/auth/me", { ttlMs: 30_000 });
   }
   async signOut(): Promise<void> {
     await httpPost("/auth/logout", {});

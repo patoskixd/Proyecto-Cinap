@@ -5,8 +5,10 @@ export type UIRule = SlotRule & { isoDate?: string };
 
 const toMin = (hhmm: string) => {
   const [h, m] = hhmm.split(":").map(Number);
+  
   return h * 60 + m;
 };
+
 
 const weekdayFromISO = (iso: string): WeekdayId | null => {
 
