@@ -6,7 +6,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langchain.tools import StructuredTool
 from pydantic import BaseModel, create_model
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
 from app.frameworks_drivers.mcp.stdio_client import MCPStdioClient
 
 _TOOL_JSON_RE = re.compile(
@@ -264,21 +264,34 @@ class LangGraphAgent:
             tools.append(self._make_tool(name, fn.get("description") or "", ModelIn))
 
         return tools
+    
+    def configure_openai(self, *, base_url: str, api_key: str,
+                         temperature: float | None = None, top_p: float | None = None):
+        self._base_url = base_url
+        self._api_key = api_key
+        if temperature is not None: self._temperature = temperature
+        if top_p is not None: self._top_p = top_p
 
     async def startup(self):
-        llm = ChatOllama(model=self._model_name)
+        llm = ChatOpenAI(
+            model=self._model_name,
+            base_url=getattr(self, "_base_url", None),
+            api_key=getattr(self, "_api_key", None),
+            temperature=getattr(self, "_temperature", 0.2),
+            top_p=getattr(self, "_top_p", 0.95),
+            timeout=60,
+        )
         tools = await self._build_tools_from_mcp()
         conn = sqlite3.connect(self._db_path, check_same_thread=False)
         checkpointer = SqliteSaver(conn)
         app_or_graph = create_react_agent(llm, tools, checkpointer=checkpointer)
         app = app_or_graph.compile(checkpointer=checkpointer) if hasattr(app_or_graph, "compile") else app_or_graph
         sys_text = (
-        "Eres un asistente que usa herramientas. "
-        "El Timezone es America/Santiago. "
-        "No devuelvas JSON con {name, arguments}. "
-        "Si necesitas ejecutar una acción, usa la herramienta. "
-        "Si el usuario pide realizar una acción (aunque ya se haya hecho antes), DEBES llamar a la herramienta correspondiente nuevamente. "
-        "Tras ejecutarla, responde con una frase corta en español resumiendo el resultado."
+        "Your are a tool using assistant. "
+        "Your answers must always be on spanish. "
+        "The timezone is America/Santiago. "
+        "The current date is 08 of september 2025. "
+        "If the user calls for an action again you must try to call for the tool once more. "
         )
         self._runner = LangGraphRunner(app, system_text=sys_text)
 

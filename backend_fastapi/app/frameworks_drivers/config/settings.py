@@ -56,3 +56,11 @@ def DATABASE_URL() -> str:
 FRONTEND_ORIGIN = _get("FRONTEND_ORIGIN", "http://localhost:3000")
 
 TEACHER_ROLE_ID = _get("TEACHER_ROLE_ID", "00000000-0000-0000-0000-000000000001")
+
+VLLM_BASE_URL = _get("VLLM_BASE_URL", "http://localhost:8001/v1")
+VLLM_API_KEY  = _get("VLLM_API_KEY", "dummy")
+LLM_MODEL     = _get("LLM_MODEL", "Qwen/Qwen3-1.7B")
+LLM_TEMP      = _get_float("LLM_TEMP", 0.2)
+LLM_TOP_P     = _get_float("LLM_TOP_P", 0.95)
+
+REDIS_URL = _get("REDIS_URL", "redis://localhost:6379/0")

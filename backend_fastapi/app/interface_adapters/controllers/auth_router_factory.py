@@ -2,12 +2,14 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Callable
+import secrets, json
 
 from app.use_cases.auth.google_callback import GoogleCallbackUseCase
 from app.use_cases.ports.oauth_port import GoogleOAuthPort
 from app.use_cases.ports.token_port import JwtPort
-from typing import Callable
 from app.use_cases.auth.logout import LogoutUseCase
+from app.use_cases.ports.cache_port import CachePort
 
 def make_auth_router(
     *,
@@ -18,22 +20,27 @@ def make_auth_router(
     get_session_dep: Callable[[], AsyncSession],
     jwt_port: JwtPort,
     uc_factory_logout: Callable[[AsyncSession], LogoutUseCase],
+    cache: CachePort
 ) -> APIRouter:
     router = APIRouter(prefix="/auth", tags=["auth"])
 
     @router.get("/google/login")
     async def google_login():
-        import secrets
-        if not getattr(oauth, "build_authorize_url", None):
-            raise HTTPException(status_code=500, detail="OAuth client missing URL builder")
-        state = secrets.token_urlsafe(16)
+        state = secrets.token_urlsafe(24)
+        await cache.set(f"oauth:state:{state}", b"1", ttl_seconds=300)
         url = oauth.build_authorize_url(redirect_uri=redirect_uri, state=state)
         return RedirectResponse(url=url, status_code=302)
 
     @router.get("/google/callback")
-    async def google_callback(code: str | None = None, session: AsyncSession = Depends(get_session_dep)):
-        if not code:
-            raise HTTPException(status_code=400, detail="missing code")
+    async def google_callback(code: str | None = None, state: str | None = None, session=Depends(get_session_dep)):
+        if not code or not state:
+            return RedirectResponse(url=f"{frontend_origin}/auth/login?error=missing_code")
+
+        val = await cache.get(f"oauth:state:{state}")
+        if not val:
+            return RedirectResponse(url=f"{frontend_origin}/auth/login?error=invalid_state")
+
+        await cache.delete(f"oauth:state:{state}")
 
         uc = uc_factory_google_callback(session)
         try:
@@ -42,17 +49,8 @@ def make_auth_router(
         except Exception:
             await session.rollback()
             raise
-
         resp = RedirectResponse(url=f"{frontend_origin}/dashboard", status_code=302)
-        resp.set_cookie(
-            key="app_session",
-            value=result.jwt,
-            httponly=True,
-            secure=False,
-            samesite="lax",
-            max_age=result.max_age,
-            path="/",
-        )
+        resp.set_cookie("app_session", result.jwt, httponly=True, secure=False, samesite="lax", max_age=result.max_age, path="/")
         return resp
 
     @router.get("/me")
