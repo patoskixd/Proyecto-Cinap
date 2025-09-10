@@ -91,11 +91,11 @@ class SqlAlchemyUserRepo(UserRepo):
 
         if ident_m:
             user_m = await self._load_user_by_id(ident_m.usuario_id)
+            ident_m.conectado = True
+            ident_m.ultimo_sync = datetime.now(timezone.utc)
             if refresh_token:
                 ident_m.refresh_token_hash = refresh_token
-                ident_m.ultimo_sync = datetime.now(timezone.utc)
-                ident_m.conectado = True
-                await self.session.flush()
+            await self.session.flush()
             return self._to_domain(user_m)
 
         user_q = (

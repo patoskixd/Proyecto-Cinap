@@ -1,17 +1,19 @@
-export type SlotStatus = "disponible" | "ocupado" | "cancelado";
+// domain/mySlots.ts
+export type SlotStatus = "disponible" | "ocupado" | "cancelado" | "expirado";
 
-export type StudentRef = { name: string; email: string };
+export type Student = { name: string; email: string };
 
 export type MySlot = {
-  id: number;
+  id: string;                 // UUID desde backend
   category: string;
   service: string;
-  date: string;     // YYYY-MM-DD (local)
-  time: string;     // HH:mm
-  duration: number; // minutos
+  date: string;               // YYYY-MM-DD (local)
+  time: string;               // HH:mm (local)
+  duration: number;           // minutos
   location: string;
   room: string;
   status: SlotStatus;
-  student: StudentRef | null;
-  notes?: string;  
+  student: Student | null;
+  notes?: string | null;
 };
+

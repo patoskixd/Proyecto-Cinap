@@ -29,9 +29,11 @@ class OpenSlotsResult:
     skipped: int
 
 class OpenSlotsConflict(Exception):
-    def __init__(self, conflicts: list[tuple[str, datetime, datetime]]):
+    def __init__(self, conflicts: list[tuple[str, datetime, datetime]], kind: str = "RESOURCE_BUSY"):
         super().__init__("Conflicto con cupos existentes")
         self.conflicts = conflicts
+        self.kind = kind
+
 
 class OpenSlotsUseCase:
     def __init__(self, repo: SlotsRepo):
@@ -71,7 +73,12 @@ class OpenSlotsUseCase:
         if inp.recurso_id:
             conflicts = await self.repo.find_conflicting_slots(inp.recurso_id, segments)
             if conflicts:
-                raise OpenSlotsConflict(conflicts)
+                raise OpenSlotsConflict(conflicts, kind="RESOURCE_BUSY")
+
+        advisor_conflicts = await self.repo.find_conflicting_slots_for_advisor(asesor_id, segments)
+        if advisor_conflicts:
+            raise OpenSlotsConflict(advisor_conflicts, kind="ADVISOR_TIME_CLASH")
+
             
         rows = []
         for r in inp.schedules:

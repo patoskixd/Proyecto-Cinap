@@ -1,5 +1,5 @@
 from __future__ import annotations
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -75,7 +75,6 @@ def make_auth_router(
 
     @router.post("/logout")
     async def logout(request: Request, session: AsyncSession = Depends(get_session_dep)):
-        from fastapi import Response
 
         token = request.cookies.get("app_session")
         if token:

@@ -1,4 +1,4 @@
-from typing import Protocol, Optional, Iterable, Tuple
+from typing import Protocol, Optional, Iterable
 from datetime import datetime
 
 class SlotsRepo(Protocol):
@@ -7,11 +7,11 @@ class SlotsRepo(Protocol):
     async def get_servicio_minutes(self, servicio_id: str) -> int: ...
     async def ensure_asesor_puede_dicto_servicio(self, asesor_id: str, servicio_id: str) -> bool: ...
     async def find_conflicting_slots(
-        self,
-        recurso_id: str,
-        periods: Iterable[tuple[datetime, datetime]],
+        self, recurso_id: str, periods: Iterable[tuple[datetime, datetime]],
+    ) -> list[tuple[str, datetime, datetime]]: ...
+    async def find_conflicting_slots_for_advisor(
+        self, asesor_id: str, periods: Iterable[tuple[datetime, datetime]],
     ) -> list[tuple[str, datetime, datetime]]: ...
     async def bulk_insert_cupos(
-        self,
-        rows: Iterable[tuple[str, str, Optional[str], datetime, datetime, str | None]]
+        self, rows: Iterable[tuple[str, str, Optional[str], datetime, datetime, str | None]]
     ) -> tuple[int, int]: ...

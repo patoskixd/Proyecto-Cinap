@@ -1,3 +1,4 @@
+// application/my-slots/usecases/GetMySlots.ts
 import type { MySlotsRepo } from "../ports/MySlotsRepo";
 import type { MySlot } from "@domain/mySlots";
 

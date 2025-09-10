@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChatHttpAgent } from "@/infrastructure/chat/chatHttpAgent";
 import { makeSendChatMessage } from "@/application/chat/usecases/SendChatMessage";
-import { useAuth } from "@/presentation/hooks/useAuth";
+import { useAuth } from "@/presentation/components/auth/hooks/useAuth";
 
 type Role = "user" | "assistant";
 type ChatMessage = { id: string; role: Role; content: string; createdAt: string };

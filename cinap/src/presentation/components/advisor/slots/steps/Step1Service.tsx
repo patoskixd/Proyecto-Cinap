@@ -1,6 +1,6 @@
 "use client";
 import type { Category, CategoryId, Service } from "@domain/scheduling";
-import { cx } from "../../CreateSlotsWizard/utils/cx";
+import { cx } from "../utils/cx";
 
 type Props = {
   categories: Category[];

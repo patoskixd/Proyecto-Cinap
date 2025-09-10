@@ -33,12 +33,16 @@ class SqlAlchemySlotsRepo(SlotsRepo):
             AsesorServicioModel.servicio_id == uuid.UUID(servicio_id),
         )
         return (await self.s.execute(q)).scalar_one_or_none() is not None
-    
+
     async def find_conflicting_slots(
         self,
         recurso_id: str,
         periods: Iterable[tuple[datetime, datetime]],
     ) -> list[tuple[str, datetime, datetime]]:
+        """
+        Choques para un RECURSO específico (LAB/SALA/etc.).
+        Se considera overlap abierto/cerrado: [inicio, fin)
+        """
         conds = []
         for ini, fin in periods:
             conds.append(sa.and_(CupoModel.inicio < fin, CupoModel.fin > ini))
@@ -52,7 +56,34 @@ class SqlAlchemySlotsRepo(SlotsRepo):
                 CupoModel.recurso_id == uuid.UUID(recurso_id),
                 sa.or_(*conds)
             )
-            .order_by(CupoModel.inicio.asc(), CupoModel.fin.asc())  
+            .order_by(CupoModel.inicio.asc(), CupoModel.fin.asc())
+        )
+        rows = (await self.s.execute(q)).all()
+        return [(str(r.id), r.inicio, r.fin) for r in rows]
+
+    async def find_conflicting_slots_for_advisor(
+        self,
+        asesor_id: str,
+        periods: Iterable[tuple[datetime, datetime]],
+    ) -> list[tuple[str, datetime, datetime]]:
+        """
+        Choques para el ASESOR (independiente del recurso/servicio/categoría).
+        Se considera overlap [inicio, fin).
+        """
+        conds = []
+        for ini, fin in periods:
+            conds.append(sa.and_(CupoModel.inicio < fin, CupoModel.fin > ini))
+
+        if not conds:
+            return []
+
+        q = (
+            select(CupoModel.id, CupoModel.inicio, CupoModel.fin)
+            .where(
+                CupoModel.asesor_id == uuid.UUID(asesor_id),
+                sa.or_(*conds)
+            )
+            .order_by(CupoModel.inicio.asc(), CupoModel.fin.asc())
         )
         rows = (await self.s.execute(q)).all()
         return [(str(r.id), r.inicio, r.fin) for r in rows]
@@ -119,6 +150,11 @@ class SqlAlchemySlotsRepo(SlotsRepo):
         self,
         rows: Iterable[tuple[str, str, str, datetime, datetime, str | None]]
     ) -> tuple[int, int]:
+        """
+        Inserta fila a fila; si pega en un constraint (recurso o asesor),
+        captura IntegrityError y lo cuenta como 'skipped'. La validación
+        previa en el caso de uso debería evitar llegar aquí en conflictos normales.
+        """
         created, skipped = 0, 0
 
         for asesor_id, servicio_id, recurso_id, ini, fin, notas in rows:
@@ -134,9 +170,9 @@ class SqlAlchemySlotsRepo(SlotsRepo):
                         fin=fin,
                         notas=notas
                     ))
-                    await self.s.flush()  
+                    await self.s.flush()
                     created += 1
                 except IntegrityError:
-                    skipped += 1  
+                    skipped += 1 
 
         return created, skipped

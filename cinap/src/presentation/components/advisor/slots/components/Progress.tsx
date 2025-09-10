@@ -1,5 +1,5 @@
 "use client";
-import { cx } from "../CreateSlotsWizard/utils/cx";
+import { cx } from "../utils/cx";
 
 type Props = { step: 1|2|3|4 };
 export default function Progress({ step }: Props) {

@@ -1,7 +1,7 @@
 "use client";
 import type { Category, CategoryId, Service } from "@domain/scheduling";
 import type { Resource } from "@domain/slots";
-import { formatEsDate } from "../../CreateSlotsWizard/utils/date";
+import { formatEsDate } from "../utils/date";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (

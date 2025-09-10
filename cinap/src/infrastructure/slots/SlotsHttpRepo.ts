@@ -1,11 +1,6 @@
 import { httpGetCached, httpPost } from "@/infrastructure/http/client";
 import type { SlotsRepo } from "@application/slots/ports/SlotsRepo";
-import type {
-  CreateSlotsData,
-  CreateSlotsResult,
-  CreateSlotsInput,
-  SlotRule,
-} from "@domain/slots";
+import type {CreateSlotsData,CreateSlotsResult,CreateSlotsInput,SlotRule} from "@domain/slots";
 
 type UIRulePayload = {
   day: string;
@@ -19,7 +14,6 @@ export class SlotsHttpRepo implements SlotsRepo {
     return httpGetCached<CreateSlotsData>("/slots/create-data", { ttlMs: 60_000 });
   }
   
-
   async createSlots(input: {
     serviceId: string;
     recursoId?: string | null;
