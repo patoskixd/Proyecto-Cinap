@@ -13,10 +13,9 @@ from app.frameworks_drivers.config.settings import (
 )
 from app.frameworks_drivers.config.db import get_session
 from app.frameworks_drivers.di.container import Container
+from app.frameworks_drivers.web.rate_limit import make_simple_limiter
 from app.interface_adapters.controllers.auth_router_factory import make_auth_router
 from app.interface_adapters.controllers.slots_router import make_slots_router
-
-
 
 def require_auth(request: Request):
     token = request.cookies.get("app_session")
@@ -61,7 +60,8 @@ auth_router = make_auth_router(
     uc_factory_google_callback=container.uc_google_callback,
     get_session_dep=get_session,
     jwt_port=container.jwt,
-    uc_factory_logout=container.uc_logout
+    uc_factory_logout=container.uc_logout,
+    cache=container.cache
 )
 
 @app.get("/health")
@@ -74,7 +74,9 @@ class GraphChatRequest(BaseModel):
     message: str
     thread_id: str = "default-thread"
 
-@graph_router.post("/chat")
+limiter = make_simple_limiter(container.cache, limit=10, window_sec=60)
+
+@graph_router.post("/chat", dependencies=[Depends(limiter)])
 async def graph_chat(req: GraphChatRequest):
     if not container.graph_agent:
         raise HTTPException(status_code=503, detail="LangGraph agent no disponible")
