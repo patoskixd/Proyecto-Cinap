@@ -114,9 +114,27 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
 
 
     @r.get("/create-data", response_model=CreateDataOut)
-    async def create_data(session: AsyncSession = Depends(get_session_dep)):
+    async def create_data(request: Request, session: AsyncSession = Depends(get_session_dep)):
+        token = request.cookies.get("app_session")
+        if not token:
+            raise HTTPException(status_code=401, detail="No autenticado")
+        try:
+            data = jwt_port.decode(token)
+        except Exception:
+            raise HTTPException(status_code=401, detail="Token inválido")
+
         repo = SqlAlchemySlotsRepo(session)
-        return await repo.get_create_slots_data()
+        asesor_id = await repo.resolve_asesor_id(str(data.get("sub")))
+        if not asesor_id:
+            base = await repo.get_common_times_and_resources()
+            return {
+                "categories": [],
+                "servicesByCategory": {},
+                "times": base["times"],
+                "resources": base["resources"],
+            }
+        return await repo.get_create_slots_data_for_advisor(asesor_id)
+
 
     @r.post("/open")
     async def open_slots(request: Request, session: AsyncSession = Depends(get_session_dep)):

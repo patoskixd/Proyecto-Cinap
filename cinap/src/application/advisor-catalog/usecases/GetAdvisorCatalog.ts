@@ -1,9 +1,9 @@
+// application/advisor-catalog/usecases/GetAdvisorCatalog.ts
 import type { AdvisorCatalog } from "@domain/advisorCatalog";
-import type { AdvisorCatalogRepo } from "../ports/AdvisorCatalogRepo";
+import type { AdvisorCatalogQueryRepo } from "../ports/AdvisorCatalogRepo";
 
 export class GetAdvisorCatalog {
-  constructor(private readonly repo: AdvisorCatalogRepo) {}
-
+  constructor(private readonly repo: AdvisorCatalogQueryRepo) {}
   exec(): Promise<AdvisorCatalog> {
     return this.repo.list();
   }

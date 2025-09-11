@@ -4,6 +4,8 @@ from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import jwt
+import asyncio
+import logging
 
 from app.frameworks_drivers.config.settings import (
     API_DEBUG, CORS_ORIGINS,
@@ -16,6 +18,7 @@ from app.frameworks_drivers.di.container import Container
 from app.frameworks_drivers.web.rate_limit import make_simple_limiter
 from app.interface_adapters.controllers.auth_router_factory import make_auth_router
 from app.interface_adapters.controllers.slots_router import make_slots_router
+from app.interface_adapters.controllers.advisor_catalog_router import (make_advisor_catalog_router)
 
 def require_auth(request: Request):
     token = request.cookies.get("app_session")
@@ -83,13 +86,8 @@ async def graph_chat(req: GraphChatRequest):
     reply = await container.graph_agent.invoke(req.message, thread_id=req.thread_id)
     return {"reply": reply, "thread_id": req.thread_id}
 
+advisor_catalog_router = make_advisor_catalog_router(get_session_dep=get_session,jwt_port=container.jwt,)
+
+app.include_router(advisor_catalog_router)
 app.include_router(auth_router)
 app.include_router(graph_router)
-
-@app.on_event("startup")
-async def _startup():
-    await container.startup()
-
-@app.on_event("shutdown")
-async def _shutdown():
-    await container.shutdown()

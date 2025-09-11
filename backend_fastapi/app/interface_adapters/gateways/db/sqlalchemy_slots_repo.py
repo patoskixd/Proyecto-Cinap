@@ -39,10 +39,7 @@ class SqlAlchemySlotsRepo(SlotsRepo):
         recurso_id: str,
         periods: Iterable[tuple[datetime, datetime]],
     ) -> list[tuple[str, datetime, datetime]]:
-        """
-        Choques para un RECURSO específico (LAB/SALA/etc.).
-        Se considera overlap abierto/cerrado: [inicio, fin)
-        """
+
         conds = []
         for ini, fin in periods:
             conds.append(sa.and_(CupoModel.inicio < fin, CupoModel.fin > ini))
@@ -66,10 +63,7 @@ class SqlAlchemySlotsRepo(SlotsRepo):
         asesor_id: str,
         periods: Iterable[tuple[datetime, datetime]],
     ) -> list[tuple[str, datetime, datetime]]:
-        """
-        Choques para el ASESOR (independiente del recurso/servicio/categoría).
-        Se considera overlap [inicio, fin).
-        """
+
         conds = []
         for ini, fin in periods:
             conds.append(sa.and_(CupoModel.inicio < fin, CupoModel.fin > ini))
@@ -150,11 +144,7 @@ class SqlAlchemySlotsRepo(SlotsRepo):
         self,
         rows: Iterable[tuple[str, str, str, datetime, datetime, str | None]]
     ) -> tuple[int, int]:
-        """
-        Inserta fila a fila; si pega en un constraint (recurso o asesor),
-        captura IntegrityError y lo cuenta como 'skipped'. La validación
-        previa en el caso de uso debería evitar llegar aquí en conflictos normales.
-        """
+
         created, skipped = 0, 0
 
         for asesor_id, servicio_id, recurso_id, ini, fin, notas in rows:
@@ -176,3 +166,97 @@ class SqlAlchemySlotsRepo(SlotsRepo):
                     skipped += 1 
 
         return created, skipped
+    
+    async def get_common_times_and_resources(self) -> dict:
+        j = (
+            sa.select(
+                RecursoModel.id.label("id"),
+                RecursoModel.tipo.label("tipo"),
+                RecursoModel.sala_numero.label("number"),
+                RecursoModel.nombre.label("alias"),
+                RecursoModel.capacidad.label("capacity"),
+                EdificioModel.id.label("buildingId"),
+                EdificioModel.nombre.label("building"),
+                CampusModel.id.label("campusId"),
+                CampusModel.nombre.label("campus"),
+            )
+            .join(EdificioModel, EdificioModel.id == RecursoModel.edificio_id, isouter=True)
+            .join(CampusModel, CampusModel.id == EdificioModel.campus_id, isouter=True)
+            .where(
+                RecursoModel.activo == True,
+                sa.or_(EdificioModel.id == None, EdificioModel.activo == True),
+                sa.or_(CampusModel.id == None, CampusModel.activo == True),
+            )
+        )
+        recs = (await self.s.execute(j)).all()
+        resources = [
+            {
+                "id": str(r.id),
+                "tipo": r.tipo,
+                "number": r.number,
+                "alias": r.alias,
+                "capacity": r.capacity,
+                "buildingId": str(r.buildingId) if r.buildingId else None,
+                "building": r.building,
+                "campusId": str(r.campusId) if r.campusId else None,
+                "campus": r.campus,
+            }
+            for r in recs
+        ]
+        times = [f"{h:02d}:00" for h in range(8, 19)]
+        return {"times": times, "resources": resources}
+
+    async def get_create_slots_data_for_advisor(self, asesor_id: str) -> dict:
+        j_svcs = (
+            sa.select(
+                ServicioModel.id,
+                ServicioModel.categoria_id,
+                ServicioModel.nombre,
+                ServicioModel.duracion_minutos,
+                CategoriaModel.id.label("cat_id"),
+                CategoriaModel.nombre.label("cat_nombre"),
+                CategoriaModel.descripcion.label("cat_desc"),
+            )
+            .join(AsesorServicioModel, AsesorServicioModel.servicio_id == ServicioModel.id)
+            .join(CategoriaModel, CategoriaModel.id == ServicioModel.categoria_id)
+            .where(
+                AsesorServicioModel.asesor_id == uuid.UUID(asesor_id),
+                ServicioModel.activo == True,
+                CategoriaModel.activo == True,
+            )
+            .order_by(CategoriaModel.nombre.asc(), ServicioModel.nombre.asc())
+        )
+        rows = (await self.s.execute(j_svcs)).all()
+
+        categories_map: dict[str, dict] = {}
+        services_by_cat: dict[str, list] = {}
+
+        for r in rows:
+            cat_id = str(r.cat_id)
+            if cat_id not in categories_map:
+                categories_map[cat_id] = {
+                    "id": cat_id,
+                    "icon": "🎓",
+                    "name": r.cat_nombre,
+                    "description": r.cat_desc or "",
+                }
+            services_by_cat.setdefault(cat_id, []).append({
+                "id": str(r.id),
+                "categoryId": str(r.categoria_id),
+                "name": r.nombre,
+                "description": "",
+                "duration": f"{int(r.duracion_minutos)} min",
+            })
+
+        categories = list(categories_map.values())
+
+        base = await self.get_common_times_and_resources()
+
+        return {
+            "categories": categories,
+            "servicesByCategory": services_by_cat,
+            "times": base["times"],
+            "resources": base["resources"],
+        }
+
+    
