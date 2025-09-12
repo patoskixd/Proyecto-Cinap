@@ -1,4 +1,6 @@
 from __future__ import annotations
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import json, sqlite3, asyncio, re
 from typing import Any, Dict, List
 from langgraph.prebuilt import create_react_agent
@@ -286,14 +288,38 @@ class LangGraphAgent:
         checkpointer = SqliteSaver(conn)
         app_or_graph = create_react_agent(llm, tools, checkpointer=checkpointer)
         app = app_or_graph.compile(checkpointer=checkpointer) if hasattr(app_or_graph, "compile") else app_or_graph
-        sys_text = (
-        "Your are a tool using assistant. "
-        "Your answers must always be on spanish. "
-        "The timezone is America/Santiago. "
-        "The current date is 08 of september 2025. "
-        "If the user calls for an action again you must try to call for the tool once more. "
-        )
-        self._runner = LangGraphRunner(app, system_text=sys_text)
+        today = datetime.now(ZoneInfo("America/Santiago")).strftime("%d-%m-%Y")
+        system_msg = f"""
+        You are a tool-using assistant. 
+        Your answers must always be in Spanish. 
+        Timezone: America/Santiago. Current date: {today}.
+
+        RULES FOR CALENDAR ACTIONS (create / update / delete):
+        1. Always follow a two-step confirmation pattern for any calendar mutation.
+        - First call the tool with confirm=false to return a PREVIEW of the action.
+        - Then, only if the user explicitly confirms in their next message, call the tool again with confirm=true.
+        2. Confirmation MUST be requested and obtained separately for every calendar action.
+        - A confirmation word like "Sí" only applies to the action immediately before it.
+        - After the action is executed, the confirmation state resets to "not confirmed".
+        - Previous confirmations cannot be reused or applied to new actions.
+        - If the user says "Sí" but did not receive a preview for the current action, do NOT treat it as confirmation.
+        3. Valid confirmation words/phrases (similars also apply): 
+        "sí", "dale", "confirma", "confirmo", "hazlo", "adelante", 
+        "ok elimina", "borra ya", "procede", "de acuerdo", 
+        "está bien", "elimínalo", "borremos ese".
+        Invalid confirmations include questions, ambiguous statements, or confirmations about something else.
+        4. If the user does not specify a time range, tools must use the default window: -30 days to +365 days.
+        After the user confirms, you MUST always call the tool again with confirm=true. 
+        Never respond with a natural language success message instead of the tool call.
+        Natural language summaries are allowed only AFTER the tool call has been executed successfully and you received the tool result.
+        When the user intends a destructive action (delete/remove/cancel), NEVER call event_find.
+        Instead, call event_delete with confirm=false, building a selector from the user message
+        Never treat the user initial instruction (e.g. “Elimina…”, “Actualiza…”, “Crea…”) as confirmation.
+        - The first user request must ALWAYS result in a tool call with confirm=false (a preview).
+        - Confirmation must ONLY come from a separate, explicit follow-up user message (e.g. “sí”, “confirma”, “hazlo”, “adelante”).
+        - An imperative sentence is NOT confirmation.
+        """
+        self._runner = LangGraphRunner(app, system_text=system_msg)
 
     async def invoke(self, message: str, *, thread_id: str) -> str:
         if not self._runner:
