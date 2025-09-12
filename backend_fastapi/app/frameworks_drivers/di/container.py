@@ -56,6 +56,7 @@ class Container:
             scope="openid email profile https://www.googleapis.com/auth/calendar",
         )
         self.jwt = PyJWTService(secret=jwt_secret, issuer=jwt_issuer, minutes=int(jwt_minutes))
+        
 
         self.mcp = MCPStdioClient(mcp_command, mcp_args, mcp_cwd)
         self.graph_agent = None

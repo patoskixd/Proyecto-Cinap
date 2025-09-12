@@ -11,8 +11,8 @@ import {
   dateFromLocalISO,
   weekIndexMon0,
   weekdayFromDate,
-} from "../../CreateSlotsWizard/utils/date";
-import { cx } from "../../CreateSlotsWizard/utils/cx";
+} from "../utils/date";
+import { cx } from "../utils/cx";
 
 type Props = {
   times: string[];

@@ -1,4 +1,4 @@
-import CreateSlotsWizard from "@/presentation/components/advisor/slots/CreateSlotsWizard/index";
+import CreateSlotsWizard from "@/presentation/components/advisor/slots/CreateSlotsWizard";
 
 
 export default function OpenSlotsPage() {

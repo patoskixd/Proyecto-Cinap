@@ -8,15 +8,15 @@ import { GetCreateSlotsData } from "@application/slots/usecases/GetCreateSlotsDa
 import { CreateSlots } from "@application/slots/usecases/CreateSlots";
 import { SlotsHttpRepo } from "@/infrastructure/slots/SlotsHttpRepo";
 
-import Header from "./Header";
-import Progress from "./Progress";
-import FooterNav from "./FooterNav";
-import SuccessModal from "./SuccessModal";
+import Header from "./components/Header";
+import Progress from "./components/Progress";
+import FooterNav from "./components/FooterNav";
+import SuccessModal from "./components/SuccessModal";
 import Step1Service from "./steps/Step1Service";
 import Step2Place from "./steps/Step2Place";
 import Step3Schedules from "./steps/Step3Schedules";
 import Step4Confirm from "./steps/Step4Confirm";
-import ErrorModal from "./ErrorModal";
+import ErrorModal from "./components/ErrorModal";
 
 export default function CreateSlotsWizard() {
   const [loading, setLoading] = useState(true);

@@ -7,7 +7,7 @@ import ChatWidget from "@/presentation/components/shared/widgets/ChatWidget";
 import { RoleSections } from "@presentation/components/dashboard/RoleSections";
 
 import type { Role } from "@domain/auth";
-import { useAuth } from "@/presentation/hooks/useAuth";
+import { useAuth } from "@/presentation/components/auth/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo } from "react";
 

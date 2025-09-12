@@ -1,11 +1,5 @@
-import type {
-  AdvisorCatalog,
-  JoinCategoryInput,
-  LeaveCategoryInput,
-} from "@domain/advisorCatalog";
+import type { AdvisorCatalog } from "@domain/advisorCatalog";
 
-export interface AdvisorCatalogRepo {
+export interface AdvisorCatalogQueryRepo {
   list(): Promise<AdvisorCatalog>;
-  joinCategory(input: JoinCategoryInput): Promise<void>;
-  leaveCategory(input: LeaveCategoryInput): Promise<void>;
 }

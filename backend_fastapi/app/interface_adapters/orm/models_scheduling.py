@@ -4,6 +4,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped
 from app.interface_adapters.orm.base import Base
+from enum import Enum as PyEnum
 
 class AsesorPerfilModel(Base):
     __tablename__ = "asesor_perfil"
@@ -55,6 +56,14 @@ class RecursoModel(Base):
     sala_numero = sa.Column(sa.Text)
     capacidad = sa.Column(sa.Integer)
 
+class EstadoCupo(PyEnum):
+    ABIERTO   = "ABIERTO"
+    RESERVADO = "RESERVADO"
+    CANCELADO = "CANCELADO"
+    EXPIRADO  = "EXPIRADO"
+
+estado_cupo = sa.Enum(EstadoCupo,name="estado_cupo",native_enum=True,create_type=False)
+
 class CupoModel(Base):
     __tablename__ = "cupo"
     id: Mapped[uuid.UUID] = sa.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -63,5 +72,6 @@ class CupoModel(Base):
     recurso_id: Mapped[uuid.UUID] = sa.Column(UUID(as_uuid=True), sa.ForeignKey("recurso.id", ondelete="RESTRICT"))
     inicio = sa.Column(sa.DateTime(timezone=True), nullable=False)
     fin    = sa.Column(sa.DateTime(timezone=True), nullable=False)
-    estado = sa.Column(sa.Text, nullable=False, server_default=sa.text("'ABIERTO'"))
+    estado = sa.Column(estado_cupo,nullable=False,server_default=EstadoCupo.ABIERTO.value,)
     notas  = sa.Column(sa.Text)
+
