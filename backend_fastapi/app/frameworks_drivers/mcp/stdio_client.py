@@ -65,5 +65,3 @@ class MCPStdioClient(MCPPort):
         if self._stdio_ctx:
             await self._stdio_ctx.__aexit__(None, None, None)
             self._stdio_ctx = None
-
-# Solo asegúrate que MCP tenga la herramienta event_create y esté conectado a Google Calendar.

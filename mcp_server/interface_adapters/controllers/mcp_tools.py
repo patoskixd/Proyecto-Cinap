@@ -54,9 +54,11 @@ class EventUpdateFlexibleIn(BaseModel):
     selector: Union[UpdateSelectorById, UpdateSelectorByTitle]
     patch: UpdatePatch
 
-class DeleteByTitleIn(BaseModel):
+class DeleteIn(BaseModel):
     calendar_id: Optional[str] = Field(None, description="Opcional; por defecto 'primary'")
-    title: str = Field(..., description="Título del evento a eliminar")
-    start_from: Optional[datetime] = Field(None, description="Opcional; inicio de ventana")
-    end_to: Optional[datetime] = Field(None, description="Opcional; fin de ventana")
-    description_contains: Optional[str] = Field(None, description="Opcional; texto a filtrar en la descripción")
+    event_id: Optional[str] = Field(None, description="Si se especifica, elimina por ID (ignora título/filtros)")
+    title: Optional[str] = Field(None, description="Título del evento a eliminar (si no se envía event_id)")
+    start_from: Optional[datetime] = Field(None, description="Inicio de ventana para búsqueda por título")
+    end_to: Optional[datetime] = Field(None, description="Fin de ventana para búsqueda por título")
+    description_contains: Optional[str] = Field(None, description="Filtro opcional por fragmento en descripción")
+    attendee_contains: Optional[str] = Field(None, description="Filtro opcional por substring de email del asistente")
