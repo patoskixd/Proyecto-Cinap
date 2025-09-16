@@ -1,5 +1,5 @@
 "use client";
-import type { Category, CategoryId, Service } from "@domain/scheduling";
+import type { Category, CategoryId, Service } from "../types";
 import type { Resource } from "@domain/slots";
 import { formatEsDate } from "../utils/date";
 

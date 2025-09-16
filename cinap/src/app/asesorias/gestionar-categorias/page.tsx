@@ -1,6 +1,5 @@
 import ManageCategories from "@/presentation/components/advisor/categories/ManageCategories";
 
-export const metadata = { title: "Categorías y Servicios - CINAP" };
 
 export default function ManageCategoriesPage() {
   return (

@@ -19,6 +19,9 @@ from app.frameworks_drivers.web.rate_limit import make_simple_limiter
 from app.interface_adapters.controllers.auth_router_factory import make_auth_router
 from app.interface_adapters.controllers.slots_router import make_slots_router
 from app.interface_adapters.controllers.advisor_catalog_router import (make_advisor_catalog_router)
+from app.interface_adapters.controllers.advisor_confirmations_router import make_confirmations_router
+from app.interface_adapters.controllers.asesorias_router import make_asesorias_router
+
 
 def require_auth(request: Request):
     token = request.cookies.get("app_session")
@@ -66,6 +69,12 @@ auth_router = make_auth_router(
     uc_factory_logout=container.uc_logout,
     cache=container.cache
 )
+confirmations_router = make_confirmations_router(
+    get_session_dep=get_session,
+    jwt_port=container.jwt,
+)
+
+app.include_router(confirmations_router)
 
 @app.get("/health")
 async def health():
@@ -91,3 +100,9 @@ advisor_catalog_router = make_advisor_catalog_router(get_session_dep=get_session
 app.include_router(advisor_catalog_router)
 app.include_router(auth_router)
 app.include_router(graph_router)
+
+asesorias_router = make_asesorias_router(
+    get_session_dep=get_session,
+    jwt_port=container.jwt,
+)
+app.include_router(asesorias_router)

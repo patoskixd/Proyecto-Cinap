@@ -1,21 +1,42 @@
-import ScheduleHeader from "@/presentation/components/teacher/asesorias-agendar/ScheduleHeader";
 import ScheduleWizard from "@/presentation/components/teacher/asesorias-agendar/ScheduleWizard";
-import ChatWidget from "@/presentation/components/shared/widgets/ChatWidget";
+import { headers } from "next/headers";
 
-import { GetSchedulingData } from "@application/asesorias/agendar/usecases/GetSchedulingData";
-import { InMemorySchedulingRepo } from "@infrastructure/asesorias/agendar/InMemorySchedulingRepo";
+async function fetchCreateData() {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") || h.get("host");
+  const proto = h.get("x-forwarded-proto") || "http";
+  const baseUrl = `${proto}://${host}`;
+  const res = await fetch(`${baseUrl}/api/asesorias/create-data`, {
+    credentials: "include",
+    cache: "no-store",
+    headers: { cookie: h.get("cookie") || "" },
+  });
+  if (!res.ok)
+    return {
+      categories: [],
+      servicesByCategory: {},
+      advisorsByService: {},
+      daysShort: [],
+      times: [],
+      defaultTimezone: "America/Santiago",
+    };
+  const data = await res.json();
+  return {
+    categories: data.categories || [],
+    servicesByCategory: data.servicesByCategory || {},
+    advisorsByService: data.advisorsByService || {},
+    daysShort: ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
+    times: data.times || [],
+    defaultTimezone: "America/Santiago",
+  };
+}
 
-export default async function NewAppointmentPage() {
-  const usecase = new GetSchedulingData(new InMemorySchedulingRepo());
-  const data = await usecase.exec();
-
+export default async function Page() {
+  const props = await fetchCreateData();
   return (
-    <main className="bg-[linear-gradient(135deg,#f8fafc_0%,#e2e8f0_100%)]">
-      <div className="mx-auto max-w-[1200px] px-4 py-6 md:py-8">
-        <ScheduleHeader />
-        <ScheduleWizard {...data} />
-        <ChatWidget />
-      </div>
-    </main>
+    <div className="p-6">
+      <ScheduleWizard {...props} />
+    </div>
   );
 }
+

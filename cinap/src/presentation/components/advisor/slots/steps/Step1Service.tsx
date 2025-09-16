@@ -1,5 +1,5 @@
 "use client";
-import type { Category, CategoryId, Service } from "@domain/scheduling";
+import type { Category, CategoryId, Service } from "../types";
 import { cx } from "../utils/cx";
 
 type Props = {
