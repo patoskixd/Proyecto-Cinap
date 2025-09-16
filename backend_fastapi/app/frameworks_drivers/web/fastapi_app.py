@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,7 +35,18 @@ def require_auth(request: Request):
     except jwt.PyJWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-app = FastAPI(title="MCP Assistant", debug=API_DEBUG)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        await container.startup()
+        yield
+    finally:
+        try:
+            await container.shutdown()
+        except Exception:
+            pass
+
+app = FastAPI(title="MCP Assistant", debug=API_DEBUG, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
