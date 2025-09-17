@@ -22,6 +22,8 @@ from app.interface_adapters.controllers.slots_router import make_slots_router
 from app.interface_adapters.controllers.advisor_catalog_router import (make_advisor_catalog_router)
 from app.interface_adapters.controllers.advisor_confirmations_router import make_confirmations_router
 from app.interface_adapters.controllers.asesorias_router import make_asesorias_router
+from app.interface_adapters.controllers.telegram_webhook import make_telegram_router
+from app.interface_adapters.controllers.telegram_link_router import make_telegram_link_router
 
 
 def require_auth(request: Request):
@@ -118,3 +120,17 @@ asesorias_router = make_asesorias_router(
     jwt_port=container.jwt,
 )
 app.include_router(asesorias_router)
+
+telegram_router = make_telegram_router(
+    cache=container.cache,
+    agent_getter=lambda: container.graph_agent,
+)
+app.include_router(telegram_router)
+
+telegram_link_router = make_telegram_link_router(
+    require_auth=require_auth,
+    cache=container.cache,     
+    get_session_dep=get_session,   
+)
+app.include_router(telegram_link_router)
+

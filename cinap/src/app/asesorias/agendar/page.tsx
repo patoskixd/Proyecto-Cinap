@@ -1,4 +1,4 @@
-import ScheduleWizard from "@/presentation/components/teacher/asesorias-agendar/ScheduleWizard";
+import ScheduleWizard from "@/presentation/components/teacher/asesorias/agendar/ScheduleWizard";
 import { headers } from "next/headers";
 
 async function fetchCreateData() {

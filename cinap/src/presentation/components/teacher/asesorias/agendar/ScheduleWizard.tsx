@@ -9,7 +9,8 @@ import { Step1Select } from "./steps/Step1Select";
 import { Step2Calendar } from "./steps/Step2Calendar";
 import { Step3Confirm } from "./steps/Step3Confirm";
 import { useScheduleWizard } from "./hooks/useScheduleWizard";
-import Header from "./components/HeaderCard";
+import Header from "./components/Header";
+
 
 export default function ScheduleWizard(props: {
   categories: Category[];
