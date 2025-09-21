@@ -6,12 +6,22 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from fastapi import Query
+from datetime import datetime
+from zoneinfo import ZoneInfo
+import uuid as uuidlib
+
 
 from app.use_cases.ports.slots_port import SlotsRepo
 from app.interface_adapters.orm.models_scheduling import (
     AsesorPerfilModel, ServicioModel, CategoriaModel, AsesorServicioModel,
     CupoModel, RecursoModel, EdificioModel, CampusModel
 )
+
+
+
+
+
 
 class SqlAlchemySlotsRepo(SlotsRepo):
     def __init__(self, session: AsyncSession):
@@ -258,5 +268,6 @@ class SqlAlchemySlotsRepo(SlotsRepo):
             "times": base["times"],
             "resources": base["resources"],
         }
+    
 
     

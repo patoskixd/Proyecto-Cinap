@@ -1,11 +1,11 @@
 import PendingConfirmationsPage from "@/presentation/components/advisor/confirmations/PendingConfirmationsPage";
-import { InMemoryConfirmationsRepo } from "@infrastructure/confirmations/InMemoryConfirmationsRepo";
+import { HttpConfirmationsRepo } from "@infrastructure/confirmations/ConfirmationsHttpRepo";
 import { GetPendingConfirmations } from "@application/confirmations/usecases/GetPendingConfirmations";
 
-export const dynamic = "force-static"; // mock
+export const dynamic = "force-dynamic";
 
 export default async function PendingConfirmationsRoute() {
-  const repo = new InMemoryConfirmationsRepo();
+  const repo = new HttpConfirmationsRepo();
   const items = await new GetPendingConfirmations(repo).exec();
 
   return (

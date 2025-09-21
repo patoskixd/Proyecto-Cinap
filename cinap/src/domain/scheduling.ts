@@ -1,40 +1,47 @@
-export type CategoryId = "academica" | "investigacion" | "tesis" | "tecnologia";
+export type FoundSlot = {
+  cupoId: string;
+  serviceId: string;
+  category: string;
+  service: string;
+  date: string; 
+  time: string; 
+  duration: number;
+  campus?: string | null;
+  building?: string | null;
+  roomNumber?: string | null;
+  resourceAlias?: string | null;
+  notas?: string | null;
+};
 
-export interface Category {
-  id: CategoryId;
-  icon: string;      
-  name: string;
-  description: string;
-}
-
-export interface Service {
-  id: string;
-  categoryId: CategoryId;
-  name: string;
-  description: string;
-  duration: string;   
-}
-
-export interface Advisor {
-  id: string;
-  name: string;
-  email: string;
-  specialties: string[];
-}
-
-export type TimezoneId = string; 
-
-export interface SlotSelection {
-  dayIndex: number;   
-  start: string;      
-  end: string;        
-  timezone: TimezoneId;
-}
-
-export interface WizardState {
-  categoryId?: CategoryId;
+export type FindSlotsInput = {
   serviceId?: string;
-  advisorId?: string;
-  slot?: SlotSelection | null;
-  notes?: string;
-}
+  dateFrom?: string;
+  dateTo?: string;
+  campusId?: string;
+  buildingId?: string;
+  resourceId?: string;
+  tz?: string;
+};
+
+export type ReserveAsesoriaInput = {
+  cupo_id: string;
+  origen?: string | null;
+  notas?: string | null;
+};
+
+export type CreateAsesoriaOut = {
+  asesoria_id: string;
+  cupo_id: string;
+  estado: string;
+  creado_en: string;
+  servicio_nombre: string;
+  categoria_nombre: string;
+  docente_nombre: string;
+  docente_email: string;
+  inicio: string;
+  fin: string;
+  edificio_nombre?: string | null;
+  campus_nombre?: string | null;
+  sala_numero?: string | null;
+  recurso_alias?: string | null;
+};

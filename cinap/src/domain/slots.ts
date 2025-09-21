@@ -1,5 +1,3 @@
-import type { Category, CategoryId, Service } from "@domain/scheduling";
-
 export type WeekdayId = "monday" | "tuesday" | "wednesday" | "thursday" | "friday";
 
 export type SlotRule = {
@@ -21,8 +19,16 @@ export type Resource = {
   capacity?: number | null;
 };
 
+export type CategoryId = string;
+
+export type Service = {
+  id: string;
+  name: string;
+
+};
+
 export type CreateSlotsData = {
-  categories: Category[];
+  categories: CategoryId[];
   servicesByCategory: Record<CategoryId, Service[]>;
   times: string[];
   resources: Resource[];             
@@ -40,3 +46,4 @@ export type CreateSlotsInput = {
 };
 
 export type CreateSlotsResult = { createdSlots: number };
+

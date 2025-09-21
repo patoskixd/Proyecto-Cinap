@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Category, CategoryId, Service } from "@domain/scheduling";
+import type { Category, CategoryId, Service } from "./types";
 import type { Resource, SlotRule } from "@domain/slots";
 import { normalizeSchedules, type UIRule } from "@application/slots/usecases/NormalizeSchedules";
 import { GetCreateSlotsData } from "@application/slots/usecases/GetCreateSlotsData";

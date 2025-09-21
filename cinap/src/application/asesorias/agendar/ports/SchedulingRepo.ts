@@ -1,14 +1,6 @@
-import type { Advisor, Category, CategoryId, Service } from "@domain/scheduling";
-
-export type SchedulingData = {
-  categories: Category[];
-  servicesByCategory: Record<CategoryId, Service[]>;
-  advisorsByService: Record<string, Advisor[]>;
-  daysShort: string[];
-  times: string[];
-  defaultTimezone: string;
-};
+import { FindSlotsInput, FoundSlot, ReserveAsesoriaInput, CreateAsesoriaOut } from "@/domain/scheduling";
 
 export interface SchedulingRepo {
-  getSchedulingData(): Promise<SchedulingData>;
+  findSlots(input: FindSlotsInput): Promise<FoundSlot[]>;
+  reserve(input: ReserveAsesoriaInput): Promise<CreateAsesoriaOut>;
 }
