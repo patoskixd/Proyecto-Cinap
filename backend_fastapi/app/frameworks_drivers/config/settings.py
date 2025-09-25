@@ -59,7 +59,7 @@ TEACHER_ROLE_ID = _get("TEACHER_ROLE_ID", "00000000-0000-0000-0000-000000000001"
 
 VLLM_BASE_URL = _get("VLLM_BASE_URL")
 VLLM_API_KEY  = _get("VLLM_API_KEY", "dummy")
-LLM_MODEL     = _get("LLM_MODEL", "Qwen/Qwen3-4B")
+LLM_MODEL     = _get("LLM_MODEL", "Qwen/Qwen3Guard-Gen-8B")
 LLM_TEMP      = _get_float("LLM_TEMP", 0.2)
 LLM_TOP_P     = _get_float("LLM_TOP_P", 0.95)
 

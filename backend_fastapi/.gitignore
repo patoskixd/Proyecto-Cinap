@@ -6,6 +6,7 @@ dist/
 wheels/
 *.egg-info
 
+timings.jsonl
 
 uv.lock
 .python-version
