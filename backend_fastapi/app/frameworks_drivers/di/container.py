@@ -43,7 +43,7 @@ class Container:
         mcp_command: str = "node",
         mcp_args: str = "index.js",
         mcp_cwd: str = ".",
-        llm_model_name: str = "Qwen/Qwen3-4B",
+        llm_model_name: str = "Qwen/Qwen3-8B",
         langgraph_db_path: str = "checkpoints.db",
     ):
         self._google_redirect_uri = google_redirect_uri

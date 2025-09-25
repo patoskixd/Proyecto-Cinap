@@ -59,7 +59,7 @@ TEACHER_ROLE_ID = _get("TEACHER_ROLE_ID", "00000000-0000-0000-0000-000000000001"
 
 VLLM_BASE_URL = _get("VLLM_BASE_URL")
 VLLM_API_KEY  = _get("VLLM_API_KEY", "dummy")
-LLM_MODEL     = _get("LLM_MODEL", "Qwen/Qwen3-4B")
+LLM_MODEL     = _get("LLM_MODEL", "Qwen/Qwen3-8B")
 LLM_TEMP      = _get_float("LLM_TEMP", 0.2)
 LLM_TOP_P     = _get_float("LLM_TOP_P", 0.95)
 
@@ -67,3 +67,8 @@ REDIS_URL = _get("REDIS_URL", "redis://localhost:6379/0")
 
 TELEGRAM_BOT_TOKEN = _get("BOT_TOKEN")  
 TELEGRAM_BOT_USERNAME = _get("TELEGRAM_BOT_USERNAME")
+ASR_BASE_URL   = _get("ASR_BASE_URL", "http://localhost:8001")
+ASR_MODEL_NAME = _get("ASR_MODEL_NAME", "clu-ling/whisper-large-v2-spanish")
+ASR_API_KEY    = _get("ASR_API_KEY", "EMPTY")
+ASR_LANG       = _get("ASR_LANG", "es")
+
