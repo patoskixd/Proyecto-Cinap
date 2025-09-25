@@ -19,11 +19,13 @@ from app.frameworks_drivers.di.container import Container
 from app.frameworks_drivers.web.rate_limit import make_simple_limiter
 from app.interface_adapters.controllers.auth_router_factory import make_auth_router
 from app.interface_adapters.controllers.slots_router import make_slots_router
-from app.interface_adapters.controllers.advisor_catalog_router import (make_advisor_catalog_router)
+from app.interface_adapters.controllers.advisor_catalog_router import make_advisor_catalog_router
 from app.interface_adapters.controllers.advisor_confirmations_router import make_confirmations_router
 from app.interface_adapters.controllers.asesorias_router import make_asesorias_router
 from app.interface_adapters.controllers.telegram_webhook import make_telegram_router
 from app.interface_adapters.controllers.telegram_link_router import make_telegram_link_router
+from app.interface_adapters.controllers.admin_catalog_router import make_admin_catalog_router  
+from app.interface_adapters.controllers.admin_location_router import make_admin_location_router
 
 
 def require_auth(request: Request):
@@ -70,7 +72,9 @@ container = Container(
     mcp_args=MCP_ARGS,
     mcp_cwd=MCP_CWD,
 )
-slots_router = make_slots_router(get_session_dep=get_session, jwt_port=container.jwt)
+slots_router = make_slots_router(
+    get_session_dep=get_session,
+    jwt_port=container.jwt)
 app.include_router(slots_router)
 
 auth_router = make_auth_router(
@@ -134,3 +138,11 @@ telegram_link_router = make_telegram_link_router(
 )
 app.include_router(telegram_link_router)
 
+
+admin_catalog_router = make_admin_catalog_router(
+    get_session_dep=get_session,
+    jwt_port=container.jwt)  
+app.include_router(admin_catalog_router)  
+
+admin_location_router = make_admin_location_router(get_session_dep=get_session)
+app.include_router(admin_location_router)

@@ -1,8 +1,26 @@
-import type { Category, Service, CategoryId } from "@domain/scheduling";
+export type CategoryId = string;
+export type ServiceId  = string;
+
+export type Category = {
+  id: CategoryId;
+  name: string;
+  description?: string;
+  status?: "active" | "inactive";
+};
+
+export type Service = {
+  id: ServiceId;
+  categoryId: CategoryId;
+  name: string;
+  description?: string;
+  duration?: number;     
+  status?: "active" | "inactive";
+};
+
 
 export type AdvisorCategory = {
-  category: Category;       
-  services: Service[];       
+  category: Category;
+  services: Service[];
   status: "active" | "available";
 };
 
@@ -15,5 +33,3 @@ export type AdvisorCatalog = {
   };
 };
 
-export type JoinCategoryInput = { categoryId: CategoryId };
-export type LeaveCategoryInput = { categoryId: CategoryId };

@@ -5,9 +5,8 @@ type Item = { href: string; title: string; description: string; icon: string };
 const items: Item[] = [
   { href: "/admin/gestionar-docente",  title: "Ver Docentes",  description: "Lista completa de docentes",  icon: "👨‍🏫" },
   { href: "/admin/gestionar-asesor",  title: "Ver Asesores",  description: "Lista completa de asesores",  icon: "👩‍💼" },
-  { href: "/admin/asesores/cupos", title: "Gestionar Cupos", description: "Administrar todos los cupos", icon: "📅" },
-  { href: "/admin/categorias/nueva", title: "Crear Categorías", description: "Gestionar categorías de asesorías", icon: "🏷️" },
-  { href: "/admin/servicios/nuevo",  title: "Crear Servicios",  description: "Administrar servicios disponibles", icon: "⚙️" },
+  { href: "/admin/gestionar-catalogo", title: "Gestionar Catalogos", description: "Gestionar categorías y servicios de asesorías", icon: "🏷️" },
+  { href: "/admin/gestionar-ubicaciones",  title: "Gestionar Ubicaciones",  description: "Administrar servicios disponibles", icon: "⚙️" }
 ];
 
 export default function AdminPanel() {

@@ -1,4 +1,4 @@
-# app/interface_adapters/controllers/telegram_webhook.py
+
 from fastapi import APIRouter, Request, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.frameworks_drivers.config.db import get_session as get_session_dep

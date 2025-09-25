@@ -141,7 +141,7 @@ export default function DashboardPage() {
   const headers = {
     teacher: { title: "Panel Docente",      subtitle: "Tus próximas asesorías y recomendaciones", ctaHref: "/asesorias/agendar", ctaLabel: "Agendar asesoría" },
     advisor: { title: "Panel Asesor",       subtitle: "Gestiona cupos y solicitudes",             ctaHref: "/asesorias/crear-cupos",     ctaLabel: "Abrir cupo" },
-    admin:   { title: "Panel Administrador", subtitle: "Visión general del sistema",              ctaHref: "/admin/registrar-asesor",  ctaLabel: "Gestionar usuarios" },
+    admin:   { title: "Panel Administrador", subtitle: "Visión general del sistema",              ctaHref: "/admin/registrar-asesor",  ctaLabel: "Registrar asesor" },
   } as const;
 
   return (
