@@ -7,7 +7,7 @@ export default function DraftsList({ items }: { items: Draft[] }) {
   return (
     <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
       <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-        <h2 className="text-xl font-semibold text-neutral-900">Borradores & Pendientes</h2>
+        <h2 className="text-xl font-semibold text-neutral-900"> Pendientes</h2>
         <span className="rounded-full bg-blue-600 px-2.5 py-0.5 text-sm font-semibold text-white">
           {items.length}
         </span>

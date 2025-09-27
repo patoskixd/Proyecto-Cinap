@@ -21,3 +21,5 @@ uv.lock
 checkpoints.db
 *.db-shm
 *.db-wal
+timings.jsonl
+.jsonl

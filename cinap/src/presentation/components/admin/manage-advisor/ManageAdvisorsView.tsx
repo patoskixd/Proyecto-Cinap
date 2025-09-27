@@ -8,7 +8,7 @@ import ConfirmDialog from "./ConfirmDialog";
 
 import { InMemoryAdvisorsRepo } from "@infrastructure/advisors/InMemoryAdvisorsRepo";
 import { GetAdvisorCatalog } from "@application/advisor-catalog/usecases/GetAdvisorCatalog";
-import { InMemoryAdvisorCatalogRepo } from "@infrastructure/advisor-catalog/InMemoryAdvisorCatalogRepo";
+import { AdvisorCatalogHttpRepo } from "@infrastructure/advisor-catalog/AdvisorCatalogHttpRepo";
 import { ListAdvisors } from "@application/advisors/usecases/ListAdvisors";
 import { UpdateAdvisor } from "@application/advisors/usecases/UpdateAdvisor";
 import { DeleteAdvisor } from "@application/advisors/usecases/DeleteAdvisor";
@@ -20,7 +20,7 @@ const listUC = new ListAdvisors(advisorsRepo);
 const updateUC = new UpdateAdvisor(advisorsRepo);
 const deleteUC = new DeleteAdvisor(advisorsRepo);
 
-const catalogRepo = new InMemoryAdvisorCatalogRepo();
+const catalogRepo = new AdvisorCatalogHttpRepo();
 const getCatalogUC = new GetAdvisorCatalog(catalogRepo);
 
 export default function ManageAdvisorsView() {

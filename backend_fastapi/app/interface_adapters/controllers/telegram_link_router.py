@@ -1,4 +1,3 @@
-# app/interface_adapters/controllers/telegram_link_router.py
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 import uuid, sqlalchemy as sa

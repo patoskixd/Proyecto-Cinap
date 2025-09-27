@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
-import { InMemoryAdvisorCatalogRepo } from "@infrastructure/advisor-catalog/InMemoryAdvisorCatalogRepo";
+import { AdvisorCatalogHttpRepo } from "@infrastructure/advisor-catalog/AdvisorCatalogHttpRepo";
 import { GetAdvisorCatalog } from "@application/advisor-catalog/usecases/GetAdvisorCatalog";
 import type { AdvisorCatalog } from "@domain/advisorCatalog";
 
@@ -13,7 +13,7 @@ import { RegisterAdvisor } from "@application/advisors/usecases/RegisterAdvisor"
 
 type Step = 1 | 2 | 3 | 4;
 
-const catalogRepo = new InMemoryAdvisorCatalogRepo();
+const catalogRepo = new AdvisorCatalogHttpRepo();
 const ucGetCatalog = new GetAdvisorCatalog(catalogRepo);
 
 const advisorsRepo = new InMemoryAdvisorsRepo();
