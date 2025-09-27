@@ -14,3 +14,16 @@ export async function POST(req: NextRequest) {
     headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
   });
 }
+
+export async function DELETE(req: NextRequest) {
+  const res = await fetch(`${API_BASE}/telegram/link`, {
+    method: "DELETE",
+    headers: { cookie: req.headers.get("cookie") ?? "" },
+    credentials: "include",
+  });
+  const body = await res.text();
+  return new NextResponse(body, {
+    status: res.status,
+    headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
+  });
+}

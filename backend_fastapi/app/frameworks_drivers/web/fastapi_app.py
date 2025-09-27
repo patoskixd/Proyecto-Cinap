@@ -25,6 +25,8 @@ from app.interface_adapters.controllers.advisor_confirmations_router import make
 from app.interface_adapters.controllers.asesorias_router import make_asesorias_router
 from app.interface_adapters.controllers.telegram_webhook import make_telegram_router
 from app.interface_adapters.controllers.telegram_link_router import make_telegram_link_router
+from app.interface_adapters.controllers.admin_catalog_router import make_admin_catalog_router  
+from app.interface_adapters.controllers.admin_location_router import make_admin_location_router
 
 from app.observability.middleware import JSONTimingMiddleware
 from app.observability.metrics import measure_stage, set_meta, stage, astage
@@ -185,4 +187,10 @@ telegram_link_router = make_telegram_link_router(
     get_session_dep=get_session,   
 )
 app.include_router(telegram_link_router)
+admin_catalog_router = make_admin_catalog_router(
+    get_session_dep=get_session,
+    jwt_port=container.jwt)  
+app.include_router(admin_catalog_router)  
 
+admin_location_router = make_admin_location_router(get_session_dep=get_session)
+app.include_router(admin_location_router)

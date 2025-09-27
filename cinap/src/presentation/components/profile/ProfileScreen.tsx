@@ -4,7 +4,7 @@ import { useTelegram } from "./hooks/useTelegram";
 
 export default function ProfileScreen() {
   const { data, error, loading } = useProfile();
-  const { state: tg, busy, link } = useTelegram();
+  const { state: tg, busy, link, unlink } = useTelegram();
 
   if (loading) return <div className="p-6">Cargando…</div>;
   if (error || !data) return <div className="p-6 text-red-600">{error ?? "Sin datos"}</div>;
@@ -29,15 +29,29 @@ export default function ProfileScreen() {
             <p className="mt-2 text-slate-600">{user.email}</p>
           </div>
 
-          <button
-            type="button"
-            onClick={link}
-            disabled={busy || tg.linked}
-            className="group relative overflow-hidden rounded-full border-2 border-sky-400 px-5 py-2.5 text-sky-700 hover:text-white transition-all duration-300 disabled:opacity-60"
-          >
-            <span className="absolute inset-0 -z-10 translate-y-full group-hover:translate-y-0 bg-gradient-to-r from-sky-500 to-blue-600 transition-transform duration-300" />
-            {btnLabel}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={link}
+              disabled={busy || tg.linked}
+              className="group relative overflow-hidden rounded-full border-2 border-sky-400 px-5 py-2.5 text-sky-700 hover:text-white transition-all duration-300 disabled:opacity-60"
+            >
+              <span className="absolute inset-0 -z-10 translate-y-full group-hover:translate-y-0 bg-gradient-to-r from-sky-500 to-blue-600 transition-transform duration-300" />
+              {btnLabel}
+            </button>
+
+            {tg.linked && (
+              <button
+                type="button"
+                onClick={unlink}
+                disabled={busy}
+                className="rounded-full border-2 border-rose-400 px-5 py-2.5 text-rose-700 hover:text-white hover:bg-rose-500 transition-all duration-300 disabled:opacity-60"
+                title="Desvincular Telegram de tu cuenta"
+              >
+                {busy ? "Desvinculando…" : "Desvincular Telegram"}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2">

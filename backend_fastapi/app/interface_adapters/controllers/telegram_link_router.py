@@ -37,5 +37,19 @@ def make_telegram_link_router(*, require_auth, cache, get_session_dep):
         )
         username = (await session.execute(q)).scalar_one_or_none()
         return {"linked": username is not None, "username": username}
+    
+
+    @router.delete("/link", dependencies=[Depends(require_auth)])
+    async def unlink_telegram(request: Request, session: AsyncSession = Depends(get_session_dep)):
+        user_claims = request.state.user
+        user_id = user_claims.get("sub") or user_claims.get("id") or user_claims.get("user_id")
+        if not user_id:
+            return {"ok": True}
+
+        await session.execute(
+            sa.delete(TelegramAccountModel).where(TelegramAccountModel.usuario_id == uuid.UUID(user_id))
+        )
+        await session.commit()
+        return {"ok": True}
 
     return router

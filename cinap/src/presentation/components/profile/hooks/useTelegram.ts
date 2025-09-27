@@ -3,10 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import { GetTelegramMe } from "@/application/telegram/usecases/GetTelegramMe";
 import { GetTelegramLink } from "@/application/telegram/usecases/GetTelegramLink";
 import { TelegramHttpRepo } from "@/infrastructure/telegram/TelegramHttpRepo";
+import { UnlinkTelegram } from "@/application/telegram/usecases/UnlinkTelegram";
 
 const repo = new TelegramHttpRepo();
 const ucMe = new GetTelegramMe(repo);
 const ucLink = new GetTelegramLink(repo);
+const ucUnlink = new UnlinkTelegram(repo);
 
 export function useTelegram() {
   const [state, setState] = useState<{ linked: boolean; username?: string | null }>({ linked: false });
@@ -41,6 +43,17 @@ export function useTelegram() {
       setBusy(false);
     }
   };
+  
+  const unlink = async () => {
+    setBusy(true);
+    try {
+      await ucUnlink.execute();
+      setState({ linked: false, username: null });
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
 
-  return { state, busy, link, refresh };
+  return { state, busy, link, unlink, refresh };
 }

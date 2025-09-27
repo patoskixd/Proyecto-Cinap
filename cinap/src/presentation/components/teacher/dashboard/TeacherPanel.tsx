@@ -27,14 +27,7 @@ export default function DraftsList({ items }: { items: Draft[] }) {
               <p className="text-sm text-neutral-600">{d.status}</p>
               <span className="text-xs text-neutral-400">{d.dateLabel}</span>
             </div>
-            <div className="flex gap-2">
-              <button className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-blue-700">
-                Completar
-              </button>
-              <button className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-semibold text-neutral-600 transition hover:border-blue-600 hover:text-blue-600">
-                Eliminar
-              </button>
-            </div>
+
           </div>
         ))}
       </div>
