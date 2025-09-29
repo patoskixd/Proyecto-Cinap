@@ -2,7 +2,7 @@ from __future__ import annotations
 import uuid, sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped
-from app.interface_adapters.orm.base import Base  
+from app.frameworks_drivers.config.db import Base  
 
 class TelegramAccountModel(Base):
     __tablename__ = "telegram_account"

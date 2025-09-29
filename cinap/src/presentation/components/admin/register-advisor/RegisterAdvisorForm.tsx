@@ -26,6 +26,8 @@ type CatalogService = {
   duration?: string;
 };
 
+
+
 export default function RegisterAdvisorForm() {
   const [step, setStep] = useState<Step>(1);
   const [catalog, setCatalog] = useState<AdvisorCatalog | null>(null);
@@ -111,8 +113,11 @@ export default function RegisterAdvisorForm() {
 
   if (loading) {
     return (
-      <div className="mx-auto mt-4 max-w-[900px] rounded-2xl border border-slate-200 bg-white p-8 text-center text-neutral-500">
-        Cargando…
+      <div className="mx-auto mt-4 max-w-[900px] rounded-2xl bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 p-8 text-center shadow-lg">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-white border-t-transparent"></div>
+          <span className="text-white font-semibold">Cargando datos del catálogo…</span>
+        </div>
       </div>
     );
   }
@@ -121,10 +126,10 @@ export default function RegisterAdvisorForm() {
     <section
       className="mx-auto mt-4 max-w-[900px] overflow-hidden rounded-2xl bg-white
                  shadow-[0_10px_30px_rgba(0,0,0,0.08)] ring-1 ring-slate-100
-                 mb-24 md:mb-28"
+                 mb-8 flex flex-col"
     >
       {/* Progress bar con etiquetas */}
-      <div className="border-b border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 px-6 py-5">
+      <div className="border-b border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100 px-6 py-5">
         <ProgressBar current={step} />
       </div>
 
@@ -136,7 +141,7 @@ export default function RegisterAdvisorForm() {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Field label="Nombre completo *">
                 <input
-                  className="w-full rounded-xl border-2 border-slate-200 p-3 text-black placeholder:text-slate-400 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-xl border-2 border-blue-300 p-3 text-blue-900 placeholder:text-blue-400 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
                   placeholder="Ej: Dr. Juan Carlos Pérez"
                   value={basic.name}
                   onChange={(e) => setBasic((b) => ({ ...b, name: e.target.value }))}
@@ -145,7 +150,7 @@ export default function RegisterAdvisorForm() {
               <Field label="Correo electrónico *">
                 <input
                   type="email"
-                  className="w-full rounded-xl border-2 border-slate-200 p-3 text-black placeholder:text-slate-400 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-xl border-2 border-blue-300 p-3 text-blue-900 placeholder:text-blue-400 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
                   placeholder="juan.perez@universidad.edu"
                   value={basic.email}
                   onChange={(e) => setBasic((b) => ({ ...b, email: e.target.value }))}
@@ -168,13 +173,14 @@ export default function RegisterAdvisorForm() {
                   key={c.id}
                   type="button"
                   onClick={() => toggleCategory(c.id)}
-                  className={`w-full rounded-2xl border-2 p-5 text-left transition ${
-                    active ? "border-blue-600 bg-blue-50" : "border-slate-200 bg-white hover:border-blue-500"
+                  className={`w-full rounded-2xl border-2 p-5 text-left transition hover:-translate-y-1 hover:shadow-lg ${
+                    active 
+                      ? "border-blue-600 bg-gradient-to-br from-blue-50 to-blue-100 shadow-md" 
+                      : "border-slate-200 bg-white hover:border-blue-300"
                   }`}
                 >
-                  <div className="mb-2 text-3xl">{c.icon}</div>
-                  <div className="mb-1 text-lg font-semibold text-neutral-900">{c.name}</div>
-                  <div className="text-sm text-neutral-600">{c.description}</div>
+                  <div className={`text-lg font-semibold ${active ? "text-blue-900" : "text-neutral-900"}`}>{c.name}</div>
+                  <div className={`text-sm ${active ? "text-blue-700" : "text-neutral-600"}`}>{c.description}</div>
                 </button>
               );
             })}
@@ -191,10 +197,9 @@ export default function RegisterAdvisorForm() {
               const cat = allCategories.find((c) => c.id === catId);
               const services = servicesByCategory.get(catId) ?? [];
               return (
-                <div key={`sec__${catId}`} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="mb-3 flex items-center gap-2 text-lg font-semibold text-neutral-900">
-                    <span className="text-2xl">{cat?.icon}</span>
-                    <span>{cat?.name}</span>
+                <div key={`sec__${catId}`} className="rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100 p-4 shadow-sm">
+                  <div className="mb-3 text-lg font-semibold text-blue-900">
+                    {cat?.name}
                   </div>
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -207,14 +212,18 @@ export default function RegisterAdvisorForm() {
                           key={key}
                           type="button"
                           onClick={() => toggleService(ref)}
-                          className={`w-full rounded-xl border-2 p-4 text-left transition ${
-                            active ? "border-blue-600 bg-white shadow-sm" : "border-slate-200 bg-white hover:border-blue-500"
+                          className={`w-full rounded-xl border-2 p-4 text-left transition hover:-translate-y-1 hover:shadow-md ${
+                            active 
+                              ? "border-yellow-500 bg-gradient-to-br from-yellow-50 to-yellow-100 shadow-sm" 
+                              : "border-slate-200 bg-white hover:border-yellow-300"
                           }`}
                         >
-                          <div className="font-semibold text-neutral-900">{s.name}</div>
-                          {s.description && <div className="text-sm text-neutral-600">{s.description}</div>}
+                          <div className={`font-semibold ${active ? "text-yellow-900" : "text-neutral-900"}`}>{s.name}</div>
+                          {s.description && <div className={`text-sm ${active ? "text-yellow-700" : "text-neutral-600"}`}>{s.description}</div>}
                           {s.duration && (
-                            <span className="mt-2 inline-block rounded-md bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800">
+                            <span className={`mt-2 inline-block rounded-md px-2 py-0.5 text-xs font-medium ${
+                              active ? "bg-yellow-200 text-yellow-800" : "bg-blue-100 text-blue-800"
+                            }`}>
                               {s.duration}
                             </span>
                           )}
@@ -233,27 +242,27 @@ export default function RegisterAdvisorForm() {
       {step === 4 && (
         <SectionCard>
           <StepHeader title="Confirmar registro" subtitle="Revisa la información antes de registrar al asesor" />
-          <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-            <h3 className="mb-4 text-center text-xl font-bold text-neutral-900">Resumen del asesor</h3>
+          <div className="rounded-2xl bg-gradient-to-br from-blue-50 to-white p-6 shadow-md ring-1 ring-blue-200">
+            <h3 className="mb-4 text-center text-xl font-bold text-blue-900">Resumen del asesor</h3>
 
-            <div className="mb-5 flex items-center gap-4 rounded-xl bg-slate-50 p-4">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-blue-700 text-xl font-bold text-white">
+            <div className="mb-5 flex items-center gap-4 rounded-xl bg-gradient-to-r from-blue-100 to-blue-50 p-4 border border-blue-200">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-blue-700 text-xl font-bold text-white shadow-lg">
                 {initials(basic.name)}
               </div>
               <div>
-                <div className="text-lg font-semibold text-neutral-900">{basic.name}</div>
-                <div className="text-sm text-neutral-900">{basic.email}</div>
+                <div className="text-lg font-semibold text-blue-900">{basic.name}</div>
+                <div className="text-sm text-blue-700">{basic.email}</div>
               </div>
             </div>
 
             <div className="mb-4">
-              <h4 className="mb-2 text-sm font-semibold text-neutral-900">Categorías asignadas</h4>
+              <h4 className="mb-2 text-sm font-semibold text-blue-900">Categorías asignadas</h4>
               <div className="flex flex-wrap gap-2">
                 {selectedCategories.map((id) => {
                   const c = allCategories.find((x) => x.id === id);
                   return (
-                    <span key={`sum-cat-${id}`} className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-                      {c?.icon} {c?.name}
+                    <span key={`sum-cat-${id}`} className="rounded-full bg-gradient-to-r from-blue-100 to-blue-200 border border-blue-300 px-3 py-1 text-xs font-medium text-blue-800 shadow-sm">
+                      {c?.name}
                     </span>
                   );
                 })}
@@ -261,12 +270,12 @@ export default function RegisterAdvisorForm() {
             </div>
 
             <div>
-              <h4 className="mb-2 text-sm font-semibold text-neutral-900">Servicios seleccionados</h4>
+              <h4 className="mb-2 text-sm font-semibold text-blue-900">Servicios seleccionados</h4>
               <div className="flex flex-wrap gap-2">
                 {selectedServices.map((s) => {
                   const svc = servicesByCategory.get(s.categoryId)?.find((x) => x.id === s.id) ?? null;
                   return (
-                    <span key={`sum-svc-${s.categoryId}__${s.id}`} className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                    <span key={`sum-svc-${s.categoryId}__${s.id}`} className="rounded-full bg-gradient-to-r from-yellow-100 to-yellow-200 border border-yellow-300 px-3 py-1 text-xs font-medium text-yellow-800 shadow-sm">
                       {svc?.name}
                       {svc?.duration ? ` (${svc.duration})` : ""}
                     </span>
@@ -279,15 +288,15 @@ export default function RegisterAdvisorForm() {
       )}
 
       {/* Navegación */}
-      <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-6 py-5 md:flex-row">
+      <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-6 py-5 md:flex-row mt-auto">
         <button
           onClick={goPrev}
           disabled={step <= 1}
           aria-disabled={step <= 1}
-          className={`inline-flex items-center gap-2 rounded-full border-2 px-5 py-3 font-semibold transition
-            ${step <= 1
-              ? "cursor-not-allowed border-slate-100 text-slate-300"
-              : "border-slate-200 text-neutral-700 hover:border-blue-600 hover:text-blue-600"}`}
+          className={`inline-flex items-center gap-2 rounded-full border-2 px-5 py-2 font-semibold transition disabled:cursor-not-allowed disabled:opacity-50
+            ${step > 1
+              ? "border-slate-200 text-neutral-800 hover:border-blue-600 hover:text-blue-600"
+              : "border-slate-100 text-slate-300"}`}
         >
           ← Anterior
         </button>
@@ -296,7 +305,7 @@ export default function RegisterAdvisorForm() {
           <button
             onClick={goNext}
             disabled={!stepValid}
-            className="inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-blue-600 to-blue-700 px-6 py-3 font-semibold text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-blue-600 to-blue-700 px-6 py-3 font-semibold text-white shadow-sm transition disabled:opacity-60"
           >
             Siguiente →
           </button>
@@ -313,18 +322,24 @@ export default function RegisterAdvisorForm() {
       {/* Modal éxito */}
       {successOpen && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-2xl">
-            <div className="mb-2 text-5xl">✅</div>
-            <h3 className="mb-1 text-xl font-bold text-neutral-900">¡Asesor registrado exitosamente!</h3>
-            <p className="mb-6 text-sm text-neutral-600">Se registró en el sistema.</p>
+          <div className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-2xl ring-1 ring-blue-200">
+            <div className="mb-4 flex justify-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-blue-100 to-blue-200 border-2 border-blue-300">
+                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+            <h3 className="mb-1 text-xl font-bold text-blue-900">¡Asesor registrado exitosamente!</h3>
+            <p className="mb-6 text-sm text-blue-700">Se registró en el sistema correctamente.</p>
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
               <button
                 onClick={resetAll}
-                className="rounded-full border-2 border-slate-200 px-5 py-2 font-semibold text-neutral-700 transition hover:border-blue-600 hover:text-blue-600"
+                className="rounded-full border-2 border-blue-200 px-5 py-2 font-semibold text-blue-700 transition hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50"
               >
                 Registrar otro
               </button>
-              <Link href="/dashboard?role=admin" className="rounded-full bg-gradient-to-br from-blue-600 to-blue-700 px-5 py-2 font-semibold text-white">
+              <Link href="/dashboard?role=admin" className="rounded-full bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 px-5 py-2 font-semibold text-white transition shadow-md">
                 Ir al dashboard
               </Link>
             </div>
@@ -338,14 +353,14 @@ export default function RegisterAdvisorForm() {
 
 
 function SectionCard({ children }: { children: React.ReactNode }) {
-  return <section className="p-6">{children}</section>;
+  return <section className="p-6 min-h-0">{children}</section>;
 }
 
 function StepHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div className="mb-6 text-center">
-      <h2 className="text-2xl font-bold text-neutral-900">{title}</h2>
-      <p className="text-neutral-600">{subtitle}</p>
+      <h2 className="text-2xl font-bold text-blue-900">{title}</h2>
+      <p className="text-blue-700">{subtitle}</p>
     </div>
   );
 }
@@ -353,7 +368,7 @@ function StepHeader({ title, subtitle }: { title: string; subtitle: string }) {
 function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
   return (
     <label className={`flex flex-col gap-1 ${full ? "md:col-span-2" : ""}`}>
-      <span className="text-sm font-semibold text-black">{label}</span>
+      <span className="text-sm font-semibold text-blue-900">{label}</span>
       {children}
     </label>
   );
@@ -376,9 +391,9 @@ function ProgressBar({ current }: { current: Step }) {
           <div key={n} className="flex items-center gap-3">
             <div
               className={[
-                "flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold",
+                "flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold shadow-md",
                 isActive && "bg-gradient-to-br from-blue-600 to-blue-700 text-white",
-                isDone && "bg-emerald-500 text-white",
+                isDone && "bg-gradient-to-br from-yellow-500 to-yellow-600 text-white",
                 !isActive && !isDone && "bg-slate-200 text-slate-600",
               ].join(" ")}
             >
@@ -386,16 +401,16 @@ function ProgressBar({ current }: { current: Step }) {
             </div>
             <span
               className={[
-                "text-sm font-semibold",
+                "hidden text-sm font-semibold md:inline",
                 isActive && "text-blue-700",
-                isDone && "text-emerald-600",
+                isDone && "text-yellow-700",
                 !isActive && !isDone && "text-slate-500",
               ].join(" ")}
             >
               {label}
             </span>
             {i < items.length - 1 && (
-              <div className={`h-[2px] w-16 md:w-24 ${isDone ? "bg-emerald-500" : "bg-slate-200"}`} />
+              <div className={`h-[2px] w-16 md:w-24 ${isDone ? "bg-yellow-400" : "bg-slate-200"}`} />
             )}
           </div>
         );

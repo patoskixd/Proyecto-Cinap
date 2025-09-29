@@ -1,29 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
+import { GetTelegramLink } from "@application/telegram/usecases/GetTelegramLink";
+import { UnlinkTelegram } from "@application/telegram/usecases/UnlinkTelegram";
+import { TelegramBackendRepo } from "@infrastructure/http/bff/telegram/TelegramBackendRepo";
+import { appendSetCookies } from "@/app/api/_utils/cookies";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.BACKEND_URL ?? "http://localhost:8000";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function POST(req: NextRequest) {
-  const res = await fetch(`${API_BASE}/telegram/link`, {
-    method: "POST",
-    headers: { cookie: req.headers.get("cookie") ?? "", "content-type": "application/json" },
-    credentials: "include",
-  });
-  const body = await res.text();
-  return new NextResponse(body, {
-    status: res.status,
-    headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
-  });
+  try {
+    const repo = new TelegramBackendRepo(BACKEND, req.headers.get("cookie") ?? "");
+    const out = await new GetTelegramLink(repo).execute();
+    const resp = NextResponse.json(out, { status: 200 });
+    appendSetCookies(repo.getSetCookies(), resp);
+    return resp;
+  } catch (e: any) {
+    return NextResponse.json({ detail: e.message }, { status: 400 });
+  }
 }
 
 export async function DELETE(req: NextRequest) {
-  const res = await fetch(`${API_BASE}/telegram/link`, {
-    method: "DELETE",
-    headers: { cookie: req.headers.get("cookie") ?? "" },
-    credentials: "include",
-  });
-  const body = await res.text();
-  return new NextResponse(body, {
-    status: res.status,
-    headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
-  });
+  try {
+    const repo = new TelegramBackendRepo(BACKEND, req.headers.get("cookie") ?? "");
+    await new UnlinkTelegram(repo).execute();
+    const resp = NextResponse.json({ ok: true }, { status: 200 });
+    appendSetCookies(repo.getSetCookies(), resp);
+    return resp;
+  } catch (e: any) {
+    return NextResponse.json({ detail: e.message }, { status: 400 });
+  }
 }

@@ -87,8 +87,14 @@ export default function ManageAdvisorsView() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-neutral-500">
-        Cargando…
+      <div className="rounded-2xl bg-white p-12 shadow-lg border">
+        <div className="flex flex-col items-center justify-center gap-4">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="text-center">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Cargando asesores...</h3>
+            <p className="text-gray-600">Obteniendo catálogo y información de asesores</p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -96,30 +102,48 @@ export default function ManageAdvisorsView() {
   return (
     <div className="space-y-6">
       <ManageAdvisorsHeader query={query} onQueryChange={setQuery} />
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {filtered.map((a) => (
-          <AdvisorCard
-            key={a.id}
-            advisor={a}
-            categoriesById={categoriesById}
-            servicesByCat={servicesByCategory}
-            onEdit={(adv) => {
-              const validCats = adv.categories.filter((cid) => categoriesById.has(cid as string))
-              const validSvcs = adv.services.filter((s) => {
-                if (!validCats.includes(s.categoryId)) return false;
-                const svcs = servicesByCategory.get(s.categoryId) ?? [];
-                return svcs.some((x) => x.id === s.id);
-              });
-              setEditing({
-                ...adv,
-                categories: validCats,
-                services: validSvcs,
-              });
-            }}
-            onDelete={(adv) => setConfirmDelete({ open: true, id: adv.id })}
-          />
-        ))}
-      </section>
+      {filtered.length === 0 ? (
+        <div className="rounded-2xl  p-12 shadow-lg border text-center">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-r from-gray-100 to-blue-100 flex items-center justify-center">
+              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No se encontraron asesores</h3>
+              <p className="text-gray-600">
+                {query.trim() ? "Ajusta tu búsqueda para encontrar asesores." : "Aún no hay asesores registrados en el sistema."}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {filtered.map((a) => (
+            <AdvisorCard
+              key={a.id}
+              advisor={a}
+              categoriesById={categoriesById}
+              servicesByCat={servicesByCategory}
+              onEdit={(adv) => {
+                const validCats = adv.categories.filter((cid) => categoriesById.has(cid as string))
+                const validSvcs = adv.services.filter((s) => {
+                  if (!validCats.includes(s.categoryId)) return false;
+                  const svcs = servicesByCategory.get(s.categoryId) ?? [];
+                  return svcs.some((x) => x.id === s.id);
+                });
+                setEditing({
+                  ...adv,
+                  categories: validCats,
+                  services: validSvcs,
+                });
+              }}
+              onDelete={(adv) => setConfirmDelete({ open: true, id: adv.id })}
+            />
+          ))}
+        </section>
+      )}
       {/* modal de edición */}
       <EditAdvisorModal
         open={!!editing}

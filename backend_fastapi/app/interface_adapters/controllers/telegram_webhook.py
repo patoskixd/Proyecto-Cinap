@@ -89,17 +89,33 @@ def make_telegram_router(*, cache=None, agent_getter=None, get_session_dep=get_s
                 text     = (msg.get("text") or "").strip()
                 chat_id  = int(msg["chat"]["id"])
                 from_id  = int(msg["from"]["id"])
-                username = msg["from"].get("username")
+                
+                # Extraer información del usuario con fallbacks
+                user_data = msg["from"]
+                username = user_data.get("username")  # Puede ser None si no tiene username
+                first_name = user_data.get("first_name", "")
+                last_name = user_data.get("last_name", "")
+                
+                # Si no tiene username, crear un fallback con el nombre
+                display_name = username
+                if not username and (first_name or last_name):
+                    display_name = f"{first_name} {last_name}".strip()
+                
+                # Debug: imprimir toda la estructura del usuario
+                log.info(f"Datos del usuario de Telegram: {user_data}")
+                log.info(f"Username: {username}, Nombre: {first_name} {last_name}, Display: {display_name}")
 
                 # más metadata para el log
-                set_meta(chat_id=chat_id, telegram_user_id=from_id, telegram_username=username)
+                set_meta(chat_id=chat_id, telegram_user_id=from_id, telegram_username=display_name)
 
                 repo = SqlAlchemyTelegramRepo(session, cache)
 
                 # 1) Vinculación
                 if text.startswith("/start "):
                     token = text.split(maxsplit=1)[1]
-                    ok = await LinkTelegramAccount(repo).execute(token, from_id, chat_id, username)
+                    log.info(f"Iniciando vinculación - Token: {token}, User ID: {from_id}, Display name: {display_name}")
+                    ok = await LinkTelegramAccount(repo).execute(token, from_id, chat_id, display_name)
+                    log.info(f"Resultado de vinculación: {ok}")
                     # medimos el envío al usuario
                     async with astage("telegram.tg_send"):
                         await bot.send_message(

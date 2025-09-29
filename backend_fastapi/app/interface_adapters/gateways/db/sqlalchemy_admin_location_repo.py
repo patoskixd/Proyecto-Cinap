@@ -9,6 +9,17 @@ def row_to_campus(r) -> Dict[str, Any]:
 def row_to_building(r) -> Dict[str, Any]:
     return dict(id=r.id, name=r.nombre, campusId=r.campus_id, campusName=r.campus_nombre, active=r.activo)
 
+def frontend_to_db_type(frontend_type: str) -> str:
+    """Convierte tipos del frontend a valores válidos en la BD"""
+    mapping = {
+        "aula": "SALA", 
+        "laboratorio": "LAB",
+        "auditorio": "AUDITORIO",
+        "sala_reuniones": "SALA_REUNIONES", 
+        "oficina": "OFICINA"
+    }
+    return mapping.get(frontend_type.lower(), frontend_type.upper())
+
 def row_to_room(r) -> Dict[str, Any]:
     return dict(
         id=r.id, name=r.nombre, buildingId=r.edificio_id, buildingName=r.edificio_nombre,
@@ -27,6 +38,16 @@ class SqlAlchemyAdminLocationRepo:
             ORDER BY nombre
         """))
         return [row_to_campus(r) for r in rs.mappings()]
+
+    async def get_campus(self, campus_id: str) -> Dict[str, Any]:
+        rs = await self.session.execute(text("""
+            SELECT id, nombre, direccion, activo
+            FROM public.campus
+            WHERE id = :id
+        """), dict(id=campus_id))
+        row = rs.mappings().first()
+        if not row: raise ValueError("Campus not found")
+        return row_to_campus(row)
 
     async def create_campus(self, name: str, address: str) -> Dict[str, Any]:
         try:
@@ -79,6 +100,17 @@ class SqlAlchemyAdminLocationRepo:
             ORDER BY e.nombre
         """), dict(campus_id=campus_id))
         return [row_to_building(r) for r in rs.mappings()]
+
+    async def get_building(self, building_id: str) -> Dict[str, Any]:
+        rs = await self.session.execute(text("""
+            SELECT e.id, e.nombre, e.campus_id, e.activo, c.nombre AS campus_nombre
+            FROM public.edificio e
+            JOIN public.campus c ON c.id = e.campus_id
+            WHERE e.id = :id
+        """), dict(id=building_id))
+        row = rs.mappings().first()
+        if not row: raise ValueError("Building not found")
+        return row_to_building(row)
 
     async def create_building(self, name: str, campus_id: str) -> Dict[str, Any]:
         rs = await self.session.execute(text("""
@@ -135,15 +167,32 @@ class SqlAlchemyAdminLocationRepo:
 
     # ===== Rooms
     async def list_rooms(self, building_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        rs = await self.session.execute(text(f"""
+        try:
+            rs = await self.session.execute(text(f"""
+                SELECT r.id, r.nombre, r.tipo, r.sala_numero, r.capacidad, r.activo,
+                       r.edificio_id, e.nombre AS edificio_nombre
+                FROM public.recurso r
+                JOIN public.edificio e ON e.id = r.edificio_id
+                {"WHERE r.edificio_id = :building_id" if building_id else ""}
+                ORDER BY r.nombre
+            """), dict(building_id=building_id))
+            return [row_to_room(r) for r in rs.mappings()]
+        except Exception as e:
+            print(f"Error en list_rooms: {type(e).__name__}: {e}")
+            await self.session.rollback()
+            raise
+
+    async def get_room(self, room_id: str) -> Dict[str, Any]:
+        rs = await self.session.execute(text("""
             SELECT r.id, r.nombre, r.tipo, r.sala_numero, r.capacidad, r.activo,
                    r.edificio_id, e.nombre AS edificio_nombre
             FROM public.recurso r
             JOIN public.edificio e ON e.id = r.edificio_id
-            {"WHERE r.edificio_id = :building_id" if building_id else ""}
-            ORDER BY r.nombre
-        """), dict(building_id=building_id))
-        return [row_to_room(r) for r in rs.mappings()]
+            WHERE r.id = :id
+        """), dict(id=room_id))
+        row = rs.mappings().first()
+        if not row: raise ValueError("Room not found")
+        return row_to_room(row)
 
     async def create_room(self, name: str, building_id: str, number: str, rtype: str, capacity: int) -> Dict[str, Any]:
         rs = await self.session.execute(text("""
@@ -155,7 +204,7 @@ class SqlAlchemyAdminLocationRepo:
             SELECT i.id, i.tipo, i.nombre, i.activo, i.edificio_id, i.sala_numero, i.capacidad,
                    e.nombre AS edificio_nombre
             FROM ins i JOIN edificio e ON e.id = i.edificio_id
-        """), dict(name=name, building_id=building_id, number=number, rtype=rtype.upper(), capacity=capacity))
+        """), dict(name=name, building_id=building_id, number=number, rtype=frontend_to_db_type(rtype), capacity=capacity))
         row = rs.mappings().one()
         await self.session.commit()
         return row_to_room(row)
@@ -177,7 +226,7 @@ class SqlAlchemyAdminLocationRepo:
                    e.nombre AS edificio_nombre
             FROM upd u JOIN edificio e ON e.id = u.edificio_id
         """), dict(id=room_id, name=name, building_id=building_id, number=number,
-                   rtype=(rtype.upper() if rtype else None), capacity=capacity))
+                   rtype=(frontend_to_db_type(rtype) if rtype else None), capacity=capacity))
         row = rs.mappings().first()
         await self.session.commit()
         if not row: raise ValueError("Room not found")

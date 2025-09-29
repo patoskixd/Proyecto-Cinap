@@ -19,6 +19,11 @@ export function forwardSetCookies(upstream: Response, resp: NextResponse) {
   }
 }
 
+
+export function appendSetCookies(rawList: string[], resp: NextResponse) {
+  for (const c of rawList) resp.headers.append("set-cookie", sanitizeSetCookie(c));
+}
+
 export function getAccessTokenFromCookies(cookies: ReadonlyRequestCookies) {
   const byAccess = cookies.get("access_token")?.value;
   const byToken = cookies.get("token")?.value;

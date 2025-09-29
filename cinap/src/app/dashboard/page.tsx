@@ -5,11 +5,12 @@ import StatusCards from "@presentation/components/dashboard/StatusCards";
 import EmptyState from "@/presentation/components/shared/EmptyState";
 import ChatWidget from "@/presentation/components/shared/widgets/ChatWidget";
 import { RoleSections } from "@presentation/components/dashboard/RoleSections";
+import { useDashboardData } from "@/presentation/components/dashboard/hooks/useDashboardData";
 
 import type { Role } from "@domain/auth";
 import { useAuth } from "@/presentation/components/auth/hooks/useAuth";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 
 function normalizeRoleName(raw: string): Role {
   const r = (raw || "").toLowerCase();
@@ -18,115 +19,17 @@ function normalizeRoleName(raw: string): Role {
   return "teacher" as Role;
 }
 
-type DashboardData = {
-  isCalendarConnected: boolean;
-  monthCount: number;
-  pendingCount: number;
-  upcoming: any[];
-  drafts: any[];
-  adminMetrics?: {
-    advisorsTotal: number;
-    advisorsAvailable: number;
-    teachersTotal: number;
-    appointmentsThisMonth: number;
-    approvalsPending: number;
-  };
-};
-
-const EMPTY_DATA: DashboardData = {
-  isCalendarConnected: false,
-  monthCount: 0,
-  pendingCount: 0,
-  upcoming: [],
-  drafts: [],
-};
-
-function buildData(role: Role, userId: string) {
-
-  const commonUpcoming = [
-    {
-      id: "adm-1",
-      time: "10:30",
-      dateLabel: "Hoy",
-      title: "Revisión syllabus",
-      student: "M. Soto",
-      status: "confirmada",
-    },
-    {
-      id: "adm-2",
-      time: "16:00",
-      dateLabel: "Mañana",
-      title: "Diseño de rúbricas",
-      student: "L. Fuentes",
-      status: "confirmada",
-    },
-  ];
-
-  if (role === "admin") {
-
-    return {
-      isCalendarConnected: true,
-      monthCount: 86,   
-      pendingCount: 5,  
-      upcoming: commonUpcoming, 
-      drafts: [],             
-      adminMetrics: {
-        advisorsTotal: 12,
-        advisorsAvailable: 9,
-        teachersTotal: 120,
-        appointmentsThisMonth: 86,
-        approvalsPending: 5,
-      },
-    };
-  }
-
-
-  const baseSeed = userId ? userId.charCodeAt(0) % 5 : 2;
-  return {
-    isCalendarConnected: true,
-    monthCount: 4 + baseSeed,
-    pendingCount: 1 + (baseSeed % 3),
-    upcoming: [
-      {
-        id: "t-1",
-        time: "10:30",
-        dateLabel: "Hoy",
-        title: "Revisión syllabus",
-        student: "M. Soto",
-        status: "confirmada",
-      },
-      {
-        id: "t-2",
-        time: "16:00",
-        dateLabel: "Mañana",
-        title: "Diseño de rúbricas",
-        student: "L. Fuentes",
-        status: "confirmada",
-      },
-    ],
-    drafts: role === "teacher"
-      ? [
-          { id: "d1", icon: "📝", title: "Borrador asesoría TIC", status: "incompleto",      dateLabel: "Creado hoy" },
-          { id: "d2", icon: "🧪", title: "Solicitud laboratorio", status: "falta confirmar", dateLabel: "Ayer" },
-        ]
-      : [],
-  };
-}
-
 
 export default function DashboardPage() {
   const router = useRouter();
   const { me, mounted } = useAuth();
 
-
   const isAuthed = me.authenticated === true;
   const user = isAuthed ? me.user : undefined;
   const role = normalizeRoleName(user?.role || "");
 
-  const data = useMemo(
-    () => (isAuthed && user ? buildData(role, user.id) : EMPTY_DATA),
-    [isAuthed, role, user]
-  );
+  // Usar el hook para obtener datos del dashboard
+  const { data, loading, error } = useDashboardData(role, user?.id);
 
   useEffect(() => {
     if (mounted && !isAuthed) {
@@ -134,9 +37,10 @@ export default function DashboardPage() {
     }
   }, [mounted, isAuthed, router]);
 
-
   if (!mounted) return null;
   if (!isAuthed) return null;
+  if (loading) return <div className="flex justify-center items-center min-h-screen">Cargando...</div>;
+  if (error) return <div className="flex justify-center items-center min-h-screen text-red-600">{error}</div>;
 
   const headers = {
     teacher: { title: "Panel Docente",      subtitle: "Tus próximas asesorías y recomendaciones", ctaHref: "/asesorias/agendar", ctaLabel: "Agendar asesoría" },

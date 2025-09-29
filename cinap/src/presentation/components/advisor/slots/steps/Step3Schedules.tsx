@@ -75,32 +75,32 @@ export default function Step3Schedules({ times, schedules, setSchedules }: Props
   return (
     <div className="space-y-8 p-6 md:p-8">
       <div className="text-center">
-        <h2 className="text-2xl font-bold text-neutral-900">Configura tus horarios</h2>
-        <p className="text-neutral-600">Selecciona fechas y define horarios (individual o múltiples fechas)</p>
+        <h2 className="text-2xl font-bold text-blue-900">Configura tus horarios</h2>
+        <p className="text-blue-700">Selecciona fechas y define horarios (individual o múltiples fechas)</p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-[1.1fr_1fr]">
         {/* Calendario */}
-        <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white">
-          <div className="flex items-center justify-center gap-2 p-3">
+        <div className="overflow-hidden rounded-2xl border-2 border-blue-200 bg-white shadow-lg">
+          <div className="flex items-center justify-center gap-2 p-3 bg-gradient-to-r from-blue-50 to-blue-100">
             <button
               onClick={() => setCurrentMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
-              className="rounded-lg border-2 border-slate-300 px-3 py-2 text-sm font-semibold text-neutral-900 transition hover:border-blue-600 hover:text-blue-600"
+              className="rounded-lg border-2 border-blue-300 px-3 py-2 text-sm font-semibold text-blue-900 transition hover:border-blue-600 hover:bg-blue-50"
             >
               ← Mes anterior
             </button>
-            <span className="min-w-[220px] text-center text-lg font-semibold capitalize text-neutral-900">
+            <span className="min-w-[220px] text-center text-lg font-semibold capitalize text-blue-900">
               {monthLabelES(currentMonth)}
             </span>
             <button
               onClick={() => setCurrentMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
-              className="rounded-lg border-2 border-slate-300 px-3 py-2 text-sm font-semibold text-neutral-900 transition hover:border-blue-600 hover:text-blue-600"
+              className="rounded-lg border-2 border-blue-300 px-3 py-2 text-sm font-semibold text-blue-900 transition hover:border-blue-600 hover:bg-blue-50"
             >
               Mes siguiente →
             </button>
           </div>
 
-          <div className="grid grid-cols-7 border-t-2 border-slate-200 bg-slate-50 text-center text-sm font-semibold text-neutral-900">
+          <div className="grid grid-cols-7 border-t-2 border-blue-200 bg-gradient-to-r from-blue-100 to-blue-50 text-center text-sm font-semibold text-blue-900">
             {WEEKDAYS_UI.map((w) => <div key={w} className="p-3">{w}</div>)}
           </div>
 
@@ -138,71 +138,75 @@ export default function Step3Schedules({ times, schedules, setSchedules }: Props
         {/* Panel de horarios */}
         <div className="space-y-5">
           {/* Individual */}
-          <div className="rounded-2xl border-2 border-slate-200 bg-white p-5">
-            <div className="mb-2 text-sm font-semibold text-neutral-500">Horario para:</div>
-            <div className="mb-3 capitalize text-lg font-bold text-neutral-900">{labelDiaSeleccionado}</div>
+          <div className="rounded-2xl border-2 border-blue-200 bg-white p-5 shadow-md">
+            <div className="mb-2 text-sm font-semibold text-blue-600">Horario para:</div>
+            <div className="mb-3 capitalize text-lg font-bold text-blue-900">{labelDiaSeleccionado}</div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-sm font-medium text-neutral-900">Hora inicio</label>
-                <select value={singleStart} onChange={(e) => setSingleStart(e.target.value)} className="w-full rounded-lg border-2 border-slate-300 bg-white p-2 text-neutral-900">
+                <label className="mb-1 block text-sm font-medium text-blue-900">Hora inicio</label>
+                <select value={singleStart} onChange={(e) => setSingleStart(e.target.value)} className="w-full rounded-lg border-2 border-blue-300 bg-white p-2 text-blue-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
                   {times.map((t) => <option key={t}>{t}</option>)}
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-neutral-900">Hora fin</label>
-                <select value={singleEnd} onChange={(e) => setSingleEnd(e.target.value)} className="w-full rounded-lg border-2 border-slate-300 bg-white p-2 text-neutral-900">
+                <label className="mb-1 block text-sm font-medium text-blue-900">Hora fin</label>
+                <select value={singleEnd} onChange={(e) => setSingleEnd(e.target.value)} className="w-full rounded-lg border-2 border-blue-300 bg-white p-2 text-blue-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
                   {times.map((t) => <option key={t}>{t}</option>)}
                 </select>
               </div>
             </div>
 
-            <button onClick={addSingleFromDate} className="mt-4 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 px-4 py-2 font-semibold text-white">
+            <button onClick={addSingleFromDate} className="mt-4 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 px-4 py-2 font-semibold text-white hover:from-blue-700 hover:to-blue-800 transition">
               Agregar horario a la fecha seleccionada
             </button>
           </div>
 
           {/* Múltiples fechas */}
-          <div className="rounded-2xl border-2 border-slate-200 bg-white p-5">
-            <div className="mb-2 text-sm font-semibold text-neutral-500">
-              Fechas marcadas: <span className="text-neutral-900">{Object.values(multiSelected).filter(Boolean).length}</span>
+          <div className="rounded-2xl border-2 border-yellow-200 bg-white p-5 shadow-md">
+            <div className="mb-2 text-sm font-semibold text-yellow-700">
+              Fechas marcadas: <span className="text-yellow-900">{Object.values(multiSelected).filter(Boolean).length}</span>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-sm font-medium text-neutral-900">Hora inicio</label>
-                <select value={multiStart} onChange={(e) => setMultiStart(e.target.value)} className="w-full rounded-lg border-2 border-slate-300 bg-white p-2 text-neutral-900">
+                <label className="mb-1 block text-sm font-medium text-yellow-900">Hora inicio</label>
+                <select value={multiStart} onChange={(e) => setMultiStart(e.target.value)} className="w-full rounded-lg border-2 border-yellow-300 bg-white p-2 text-yellow-900 focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200">
                   {times.map((t) => <option key={t}>{t}</option>)}
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-neutral-900">Hora fin</label>
-                <select value={multiEnd} onChange={(e) => setMultiEnd(e.target.value)} className="w-full rounded-lg border-2 border-slate-300 bg-white p-2 text-neutral-900">
+                <label className="mb-1 block text-sm font-medium text-yellow-900">Hora fin</label>
+                <select value={multiEnd} onChange={(e) => setMultiEnd(e.target.value)} className="w-full rounded-lg border-2 border-yellow-300 bg-white p-2 text-yellow-900 focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200">
                   {times.map((t) => <option key={t}>{t}</option>)}
                 </select>
               </div>
             </div>
 
-            <button onClick={addForSelectedDates} className="mt-4 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 px-4 py-2 font-semibold text-white">
+            <button onClick={addForSelectedDates} className="mt-4 rounded-lg bg-gradient-to-br from-yellow-500 to-yellow-600 px-4 py-2 font-semibold text-white hover:from-yellow-600 hover:to-yellow-700 transition">
               Agregar a todas las fechas marcadas
             </button>
           </div>
 
           {/* Resumen */}
-          <div className="rounded-2xl border-2 border-slate-200 bg-white p-5">
-            <h3 className="mb-3 text-lg font-semibold text-neutral-900">Horarios configurados</h3>
+          <div className="rounded-2xl border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-white p-5 shadow-md">
+            <h3 className="mb-3 text-lg font-semibold text-blue-900">Horarios configurados</h3>
             {normalized.merged.length === 0 ? (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-center text-slate-500">
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-center text-blue-600">
                 No has configurado horarios aún
               </div>
             ) : (
               <ul className="space-y-2">
                 {normalized.merged.map((s, i) => (
-                  <li key={`${s.isoDate ?? s.day}-${i}`} className="flex items-center justify-between rounded-lg border bg-slate-50 px-3 py-2">
+                  <li key={`${s.isoDate ?? s.day}-${i}`} className="flex items-center justify-between rounded-lg border border-blue-200 bg-white px-3 py-2 shadow-sm">
                     <div>
-                      <div className="font-semibold text-neutral-900">{s.isoDate ?? s.day}</div>
-                      <div className="text-sm text-neutral-700">{s.startTime} - {s.endTime}</div>
+                      <div className="font-semibold text-blue-900">{s.isoDate ?? s.day}</div>
+                      <div className="text-sm text-blue-700">{s.startTime} - {s.endTime}</div>
                     </div>
-                    <button onClick={() => removeSchedule(i)} className="rounded-md bg-rose-500 px-2 py-1 text-white hover:bg-rose-600">×</button>
+                    <button onClick={() => removeSchedule(i)} className="rounded-md bg-gradient-to-br from-rose-500 to-rose-600 px-2 py-1 text-white hover:from-rose-600 hover:to-rose-700 transition">
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
                   </li>
                 ))}
               </ul>

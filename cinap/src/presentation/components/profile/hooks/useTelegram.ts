@@ -15,20 +15,48 @@ export function useTelegram() {
   const [busy, setBusy] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const refresh = async () => setState(await ucMe.execute());
+  const refresh = async () => {
+    try {
+      const result = await ucMe.execute();
+      setState(result);
+    } catch (error) {
+      console.error('Error al obtener estado de Telegram:', error);
+      // En caso de error, mantenemos el estado actual como no vinculado
+      setState({ linked: false, username: null });
+    }
+  };
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => { 
+    refresh(); 
+    
+    // Cleanup function para limpiar el polling si el componente se desmonta
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, []);
 
   const startPollingOnce = () => {
     if (pollRef.current) return;
     let elapsed = 0;
     pollRef.current = setInterval(async () => {
       elapsed += 2000;
-      const me = await ucMe.execute();
-      setState(me);
-      if (me.linked || elapsed >= 60000) {
-        clearInterval(pollRef.current!);
-        pollRef.current = null;
+      try {
+        const me = await ucMe.execute();
+        setState(me);
+        if (me.linked || elapsed >= 60000) {
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
+        }
+      } catch (error) {
+        console.error('Error durante polling:', error);
+        // Si hay error, continuamos el polling por si era temporal
+        if (elapsed >= 60000) {
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
+        }
       }
     }, 2000);
   };
@@ -48,7 +76,13 @@ export function useTelegram() {
     setBusy(true);
     try {
       await ucUnlink.execute();
+      // Actualizar inmediatamente el estado local
       setState({ linked: false, username: null });
+      // Refrescar desde el servidor para confirmar
+      await refresh();
+    } catch (error) {
+      console.error('Error al desvincular Telegram:', error);
+      // En caso de error, refrescamos para obtener el estado real
       await refresh();
     } finally {
       setBusy(false);

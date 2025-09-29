@@ -189,19 +189,21 @@ export default function ChatWidget() {
         aria-label={isOpen ? "Cerrar chat" : "Abrir chat"}
         onClick={toggleChat}
         className={classNames(
-          "relative flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg transition transform",
-          "bg-gradient-to-br from-blue-600 to-blue-700 hover:scale-[1.03] focus:outline-none focus:ring-2 focus:ring-blue-300",
+          "relative flex h-16 w-16 items-center justify-center rounded-full text-white shadow-xl transition-all duration-300 transform",
+          "bg-gradient-to-br from-blue-600 via-blue-700 to-yellow-500 hover:scale-[1.08] hover:shadow-2xl",
+          "focus:outline-none focus:ring-4 focus:ring-blue-300 focus:ring-offset-2",
+          "hover:rotate-3 active:scale-95",
           "pointer-events-auto"
         )}
       >
         {/* iconos */}
-        <span className={classNames("absolute transition-opacity duration-200", isOpen ? "opacity-0" : "opacity-100")} aria-hidden>
-          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2">
+        <span className={classNames("absolute transition-all duration-300", isOpen ? "opacity-0 rotate-90 scale-75" : "opacity-100 rotate-0 scale-100")} aria-hidden>
+          <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
         </span>
-        <span className={classNames("absolute transition-opacity duration-200", isOpen ? "opacity-100 rotate-0" : "opacity-0 -rotate-90")} aria-hidden>
-          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2">
+        <span className={classNames("absolute transition-all duration-300", isOpen ? "opacity-100 rotate-0 scale-100" : "opacity-0 -rotate-90 scale-75")} aria-hidden>
+          <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="2.5">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
@@ -210,8 +212,8 @@ export default function ChatWidget() {
         {/* badge no leídos */}
         <span
           className={classNames(
-            "absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white text-xs font-bold shadow",
-            unread > 0 ? "bg-red-500 text-white" : "hidden"
+            "absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full border-3 border-white text-xs font-bold shadow-lg animate-pulse",
+            unread > 0 ? "bg-gradient-to-br from-red-500 to-red-600 text-white" : "hidden"
           )}
         >
           {unread > 99 ? "99+" : unread}
@@ -235,35 +237,37 @@ export default function ChatWidget() {
           role="dialog"
           aria-label="Chat CINAP"
           className={classNames(
-            "fixed right-5 bottom-24 w-[360px] max-w-[92vw] h-[520px] rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200",
-            "md:translate-y-0 md:scale-100 transition-all duration-200",
-            isOpen ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-2 scale-[0.98]",
+            "fixed right-5 bottom-24 w-[380px] max-w-[92vw] h-[560px] rounded-3xl bg-white shadow-2xl ring-2 ring-blue-100 backdrop-blur-sm",
+            "md:translate-y-0 md:scale-100 transition-all duration-300 ease-out",
+            isOpen ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-4 scale-[0.95]",
             "md:bottom-24 md:right-5",
             "sm:max-md:bottom-0 sm:max-md:right-0 sm:max-md:left-0 sm:max-md:top-0 sm:max-md:h-screen sm:max-md:w-screen sm:max-md:rounded-none",
-            "pointer-events-auto"
+            "pointer-events-auto overflow-hidden"
           )}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex h-full flex-col overflow-hidden rounded-2xl sm:max-md:rounded-none">
+          <div className="flex h-full flex-col overflow-hidden rounded-3xl sm:max-md:rounded-none">
             {/* Header */}
-            <div className="flex items-center justify-between bg-gradient-to-br from-blue-600 to-blue-700 px-5 py-4 text-white">
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 font-bold">C</div>
+            <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 px-6 py-5 text-white shadow-lg">
+              <div className="flex items-center gap-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm font-bold text-lg shadow-sm">
+                  C
+                </div>
                 <div className="flex flex-col">
-                  <h3 className="text-base font-semibold">Chat CINAP</h3>
-                  <div className="mt-0.5 flex items-center gap-2 text-xs opacity-90">
-                    <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
-                    <span>En línea</span>
+                  <h3 className="text-lg font-semibold">Chat CINAP</h3>
+                  <div className="mt-0.5 flex items-center gap-2 text-sm opacity-90">
+                    <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-400 shadow-sm" />
+                    <span>Asistente en línea</span>
                   </div>
                 </div>
               </div>
 
               <button
                 onClick={(e) => { e.stopPropagation(); closeChat(); }}
-                className="rounded-md p-2 transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/40"
+                className="rounded-xl p-2.5 transition-all duration-200 hover:bg-white/20 hover:rotate-90 focus:outline-none focus:ring-2 focus:ring-white/50 backdrop-blur-sm"
                 aria-label="Cerrar chat"
               >
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2.5}>
                   <line x1="18" y1="6" x2="6" y2="18" />
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
@@ -271,12 +275,12 @@ export default function ChatWidget() {
             </div>
 
             {/* Mensajes */}
-            <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-4">
+            <div ref={listRef} className="flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-blue-50/30 to-white p-6">
               {messages.map((m) => (<MessageBubble key={m.id} message={m} />))}
               {isLoading && (
-                <div className="flex items-start gap-2">
+                <div className="flex items-start gap-3">
                   <Avatar role="assistant" />
-                  <div className="max-w-[80%] rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 shadow-sm">
+                  <div className="max-w-[80%] rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm text-blue-700 shadow-lg ring-1 ring-blue-100">
                     <div className="flex items-center gap-1">
                       <Dot /><Dot className="animation-delay-200" /><Dot className="animation-delay-400" />
                     </div>
@@ -286,8 +290,8 @@ export default function ChatWidget() {
             </div>
 
             {/* Input */}
-            <div className="border-t border-slate-200 bg-white p-4">
-              <div className={classNames("flex items-end gap-2 rounded-2xl border-2 bg-slate-50 p-2", "focus-within:border-blue-600")}>
+            <div className="border-t border-blue-200 bg-gradient-to-r from-blue-50/50 to-white p-5">
+              <div className={classNames("flex items-end gap-3 rounded-2xl border-2 bg-white p-3 shadow-sm transition-all", "focus-within:border-blue-500 focus-within:shadow-lg focus-within:ring-2 focus-within:ring-blue-100")}>
                 <textarea
                   ref={textareaRef}
                   rows={1}
@@ -296,12 +300,12 @@ export default function ChatWidget() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={onKeyDown}
-                  className="min-h-[36px] max-h-[120px] w-full resize-none bg-transparent p-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                  className="min-h-[40px] max-h-[120px] w-full resize-none bg-transparent p-2 text-sm text-blue-900 outline-none placeholder:text-blue-400"
                 />
                 <button
                   onClick={handleSend}
                   disabled={isLoading || !input.trim()}
-                  className={classNames("flex h-10 w-10 items-center justify-center rounded-full text-white transition", "bg-gradient-to-br from-blue-600 to-blue-700 hover:scale-[1.03] disabled:opacity-60")}
+                  className={classNames("flex h-11 w-11 items-center justify-center rounded-xl text-white transition-all shadow-lg", "bg-gradient-to-br from-blue-600 via-blue-700 to-yellow-500 hover:scale-[1.08] hover:shadow-xl disabled:opacity-50 disabled:scale-100")}
                   aria-label="Enviar mensaje"
                 >
                   {isLoading ? (
@@ -310,16 +314,16 @@ export default function ChatWidget() {
                       <path d="M21 12a9 9 0 0 1-9 9" stroke="currentColor" strokeWidth="2" className="opacity-90" />
                     </svg>
                   ) : (
-                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                       <line x1="22" y1="2" x2="11" y2="13" />
                       <polygon points="22,2 15,22 11,13 2,9 22,2" />
                     </svg>
                   )}
                 </button>
               </div>
-              <p className="mt-2 text-center text-xs text-slate-400">
-                Presiona <span className="font-semibold text-slate-500">Enter</span>,{" "}
-                <span className="font-semibold text-slate-500">Shift+Enter</span> para nueva línea
+              <p className="mt-3 text-center text-xs text-blue-600">
+                Presiona <span className="font-semibold text-blue-800">Enter</span> para enviar,{" "}
+                <span className="font-semibold text-blue-800">Shift+Enter</span> para nueva línea
               </p>
             </div>
           </div>
@@ -333,8 +337,8 @@ function Avatar({ role }: { role: Role }) {
   return (
     <div
       className={classNames(
-        "mt-0.5 flex h-8 w-8 items-center justify-center rounded-full text-white text-xs font-bold",
-        role === "assistant" ? "bg-gradient-to-br from-blue-600 to-blue-700" : "bg-emerald-500"
+        "mt-0.5 flex h-9 w-9 items-center justify-center rounded-full text-white text-sm font-bold shadow-lg ring-2 ring-white",
+        role === "assistant" ? "bg-gradient-to-br from-blue-600 via-blue-700 to-yellow-500" : "bg-gradient-to-br from-emerald-500 to-emerald-600"
       )}
       aria-hidden
     >
@@ -354,18 +358,23 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   );
   const isUser = message.role === "user";
   return (
-    <div className={classNames("flex items-start gap-2", isUser && "flex-row-reverse")}>
+    <div className={classNames("flex items-start gap-3", isUser && "flex-row-reverse")}>
       <Avatar role={message.role} />
-      <div className={classNames("max-w-[80%] space-y-1", isUser && "items-end text-right")}>
-        <div className={classNames("rounded-2xl px-3 py-2 text-sm shadow-sm", isUser ? "bg-emerald-500 text-white" : "border border-slate-200 bg-white text-slate-900")}>
+      <div className={classNames("max-w-[80%] space-y-2", isUser && "items-end text-right")}>
+        <div className={classNames(
+          "rounded-2xl px-4 py-3 text-sm shadow-lg backdrop-blur-sm",
+          isUser 
+            ? "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white ring-1 ring-emerald-400" 
+            : "border border-blue-200 bg-white/90 text-blue-900 ring-1 ring-blue-100"
+        )}>
           {message.content}
         </div>
-        <div className="px-1 text-xs text-slate-400">{time}</div>
+        <div className={classNames("px-1 text-xs", isUser ? "text-emerald-600" : "text-blue-500")}>{time}</div>
       </div>
     </div>
   );
 }
 
 function Dot({ className = "" }: { className?: string }) {
-  return <span className={classNames("inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400", className)} />;
+  return <span className={classNames("inline-block h-2 w-2 animate-bounce rounded-full bg-blue-500 shadow-sm", className)} />;
 }

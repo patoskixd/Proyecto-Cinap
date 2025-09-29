@@ -73,26 +73,27 @@ export default function ManageCatalog() {
   }, [pendingSvcEdit]);
 
   return (
-    <div className="min-h-screen text-slate-900">
+    <div className="min-h-screen">
       <main className="mx-auto mt-6 max-w-[1400px] px-6 pb-24">
-        <section className="mb-6 rounded-2xl bg-white p-6 shadow-[0_10px_30px_rgba(0,0,0,0.06)] ring-1 ring-slate-100 md:p-8">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="mb-6 rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-yellow-50/20 p-6 shadow-lg backdrop-blur-sm md:mb-8 md:p-8">
+          <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
             <div>
-              <h1 className="text-3xl font-bold text-neutral-900">Gestión de Catálogos</h1>
-              <p className="mt-1 text-neutral-600">Administra categorías y servicios del sistema.</p>
+              <h1 className="text-3xl font-bold text-blue-900">
+                Gestión de Catálogos
+              </h1>
+              <p className="mt-1 text-blue-700">Administra categorías y servicios del sistema.</p>
             </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setCreateOpen(true)}
-                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-blue-600 to-blue-700 px-4 py-2 font-semibold text-white shadow-[0_4px_15px_rgba(37,99,235,0.3)] transition-all hover:-translate-y-0.5 hover:shadow-[0_8px_25px_rgba(37,99,235,0.4)]"
-              >
-                <span>➕</span> Nueva Categoría
-              </button>
-            </div>
+            <button
+              onClick={() => setCreateOpen(true)}
+              className="inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl hover:scale-105"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              Nueva Categoría
+            </button>
           </div>
-        </section>
-
-        <CatalogStats
+        </div>        <CatalogStats
           totalCategorias={stats.totalCats}
           categoriasActivas={stats.activeCats}
           serviciosActivos={stats.activeSrv}
@@ -102,16 +103,24 @@ export default function ManageCatalog() {
         {/* Activos */}
         <SectionCard title="Catálogos activos" subtitle="Gestiona los catálogos que se encuentran activos" className="mt-6">
           {loading ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-neutral-500">
-              <span className="text-black">Cargando…</span>
+            <div className="rounded-2xl bg-white p-8 text-center border border-gray-200">
+              <div className="flex items-center justify-center gap-3">
+                <div className="w-6 h-6 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                <span className="text-blue-700 font-medium">Cargando categorías...</span>
+              </div>
             </div>
           ) : activeCategories.length === 0 ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
-              <h3 className="mb-1 text-lg font-semibold text-neutral-900">No tienes categorías activas</h3>
-              <p className="text-neutral-600">Crea una nueva categoría o activa alguna existente</p>
+            <div className="rounded-2xl bg-white p-12 text-center border border-gray-200">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-100 flex items-center justify-center">
+                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+              </div>
+              <h3 className="mb-2 text-lg font-semibold text-gray-900">No tienes categorías activas</h3>
+              <p className="text-gray-600">Crea una nueva categoría o activa alguna existente</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 items-start">
               {activeCategories.map((cat) => (
                 <AdminCategoryCard
                   key={cat.id}
@@ -149,16 +158,24 @@ export default function ManageCatalog() {
         {/* Inactivos */}
         <SectionCard title="Catálogos inactivos" subtitle="Gestiona los catálogos que se encuentran inactivos" className="mt-8">
           {loading ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-neutral-500">
-              <span className="text-black">Cargando…</span>
+            <div className="rounded-2xl bg-white p-8 text-center border border-gray-200">
+              <div className="flex items-center justify-center gap-3">
+                <div className="w-6 h-6 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                <span className="text-blue-700 font-medium">Cargando categorías...</span>
+              </div>
             </div>
           ) : otherCategories.length === 0 ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
-              <h3 className="mb-1 text-lg font-semibold text-neutral-900">No hay categorías inactivas</h3>
-              <p className="text-neutral-600">Todas las categorías están activas o no existen</p>
+            <div className="rounded-2xl bg-white p-12 text-center border border-gray-200">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
+                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="mb-2 text-lg font-semibold text-gray-900">No hay categorías inactivas</h3>
+              <p className="text-gray-600">Todas las categorías están activas o no existen</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 items-start">
               {otherCategories.map((cat) => (
                 <AdminCategoryCard
                   key={cat.id}

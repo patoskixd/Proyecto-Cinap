@@ -57,22 +57,25 @@ export default function ReservationsView({
   return (
     <div>
       {/* Tabs */}
-      <div className="mb-4">
-        <div className="inline-flex w-full overflow-x-auto rounded-xl bg-white p-1 shadow-sm ring-1 ring-slate-100 sm:w-auto">
+      <div className="mb-6">
+        <div className="inline-flex w-full overflow-x-auto rounded-xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-yellow-50/20 p-1 shadow-lg backdrop-blur-sm sm:w-auto">
           <button
             onClick={() => setActiveTab("proximas")}
             className={[
-              "inline-flex items-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold transition",
+              "inline-flex items-center gap-3 rounded-lg px-6 py-3 text-sm font-semibold transition-all",
               activeTab === "proximas"
-                ? "bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow"
-                : "text-neutral-600 hover:bg-slate-50",
+                ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg"
+                : "text-blue-700 hover:bg-white/50",
             ].join(" ")}
           >
-            <span>📅</span> Próximas
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Próximas
             <span
               className={[
-                "ml-2 rounded-full px-2 py-0.5 text-xs font-bold",
-                activeTab === "proximas" ? "bg-white/20 text-white" : "bg-slate-200 text-neutral-600",
+                "rounded-full px-2.5 py-0.5 text-xs font-bold",
+                activeTab === "proximas" ? "bg-white/20 text-white" : "bg-blue-200 text-blue-800",
               ].join(" ")}
             >
               {upcomingCount}
@@ -82,17 +85,20 @@ export default function ReservationsView({
           <button
             onClick={() => setActiveTab("pasadas")}
             className={[
-              "ml-1 inline-flex items-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold transition",
+              "ml-1 inline-flex items-center gap-3 rounded-lg px-6 py-3 text-sm font-semibold transition-all",
               activeTab === "pasadas"
-                ? "bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow"
-                : "text-neutral-600 hover:bg-slate-50",
+                ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg"
+                : "text-blue-700 hover:bg-white/50",
             ].join(" ")}
           >
-            <span>📋</span> Pasadas
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Pasadas
             <span
               className={[
-                "ml-2 rounded-full px-2 py-0.5 text-xs font-bold",
-                activeTab === "pasadas" ? "bg-white/20 text-white" : "bg-slate-200 text-neutral-600",
+                "rounded-full px-2.5 py-0.5 text-xs font-bold",
+                activeTab === "pasadas" ? "bg-white/20 text-white" : "bg-blue-200 text-blue-800",
               ].join(" ")}
             >
               {pastCount}
@@ -102,84 +108,86 @@ export default function ReservationsView({
       </div>
 
       {/* Filtros */}
-      <div className="mb-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-100">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-neutral-700">Categoría</label>
+      <div className="mb-6 rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-yellow-50/20 p-6 shadow-lg backdrop-blur-sm">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold text-blue-900 mb-1">Filtros de búsqueda</h3>
+          <p className="text-sm text-blue-700">Utiliza los filtros para encontrar las asesorías que necesitas</p>
+        </div>
+        
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-blue-900">Categoría</label>
             <select
               value={filters.category}
               onChange={(e) => setFilters((f) => ({ ...f, category: e.target.value }))}
-              className="rounded-xl border-2 border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-blue-600 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)]"
+              className="w-full rounded-lg border-2 border-blue-200 bg-white/80 backdrop-blur-sm p-2.5 text-sm text-blue-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200"
             >
-              <option value="">Todas</option>
+              <option value="">Todas las categorías</option>
               <option value="academica">Académica</option>
               <option value="psicologica">Psicológica</option>
               <option value="vocacional">Vocacional</option>
             </select>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-neutral-700">Servicio</label>
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-blue-900">Servicio</label>
             <select
               value={filters.service}
               onChange={(e) => setFilters((f) => ({ ...f, service: e.target.value }))}
-              className="rounded-xl border-2 border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-blue-600 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)]"
+              className="w-full rounded-lg border-2 border-blue-200 bg-white/80 backdrop-blur-sm p-2.5 text-sm text-blue-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200"
             >
-              <option value="">Todos</option>
+              <option value="">Todos los servicios</option>
               <option value="tutoria">Tutoría Individual</option>
               <option value="orientacion">Orientación Vocacional</option>
               <option value="apoyo">Apoyo Psicológico</option>
             </select>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-neutral-700">Asesor</label>
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-blue-900">Asesor</label>
             <input
               value={filters.advisor}
               onChange={(e) => setFilters((f) => ({ ...f, advisor: e.target.value }))}
               placeholder="Nombre del asesor"
-              className="rounded-xl border-2 border-slate-200 px-3 py-2 text-sm placeholder:text-neutral-400 outline-none transition focus:border-blue-600 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)]"
+              className="w-full rounded-lg border-2 border-blue-200 bg-white/80 backdrop-blur-sm p-2.5 text-sm text-blue-900 placeholder:text-blue-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200"
             />
           </div>
 
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-neutral-700">Rango de fechas</label>
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-blue-900">Fecha desde</label>
             <input
               type="date"
               value={filters.dateFrom}
               onChange={(e) => setFilters((f) => ({ ...f, dateFrom: e.target.value }))}
-              className="rounded-xl border-2 border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-blue-600 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)]"
+              className="w-full rounded-lg border-2 border-blue-200 bg-white/80 backdrop-blur-sm p-2.5 text-sm text-blue-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200"
             />
           </div>
 
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-neutral-700">Estado</label>
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-blue-900">Estado</label>
             <select
               value={filters.status}
               onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
-              className="rounded-xl border-2 border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-blue-600 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)]"
+              className="w-full rounded-lg border-2 border-blue-200 bg-white/80 backdrop-blur-sm p-2.5 text-sm text-blue-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200"
             >
-              <option value="">Todos</option>
+              <option value="">Todos los estados</option>
               <option value="confirmada">Confirmada</option>
               <option value="pendiente">Pendiente</option>
               <option value="cancelada">Cancelada</option>
             </select>
           </div>
+        </div>
 
-          <div className="flex items-end gap-2">
-            <button
-              onClick={() => {/* ya se aplican automáticamente */}}
-              className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5"
-            >
-              🔍 Filtrar
-            </button>
-            <button
-              onClick={onClear}
-              className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-neutral-700 transition hover:bg-slate-200"
-            >
-              🗑️ Limpiar
-            </button>
-          </div>
+        <div className="flex justify-end gap-3 mt-6">
+          <button
+            onClick={onClear}
+            className="inline-flex items-center gap-2 rounded-lg bg-white/80 backdrop-blur-sm px-6 py-2.5 text-sm font-semibold text-blue-700 border border-blue-200 transition-all hover:bg-white hover:border-blue-300"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Limpiar filtros
+          </button>
         </div>
       </div>
 
@@ -190,28 +198,39 @@ export default function ReservationsView({
             <ReservationCard key={r.id} r={r} />
           ))}
           {filteredUpcoming.length === 0 && (
-            <div className="col-span-full rounded-2xl bg-white p-10 text-center shadow-sm ring-1 ring-slate-100">
+            <div className="col-span-full rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-yellow-50/20 p-10 text-center shadow-lg backdrop-blur-sm">
               <div className="mx-auto max-w-xl">
-                <div className="mb-4 text-5xl opacity-60">🔎</div>
-                <h3 className="text-xl font-semibold text-neutral-900">Sin resultados</h3>
-                <p className="mt-1 text-neutral-600">Prueba cambiando los filtros.</p>
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-100">
+                  <svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-semibold text-blue-900">Sin resultados</h3>
+                <p className="mt-1 text-blue-700">Prueba cambiando los filtros de búsqueda.</p>
               </div>
             </div>
           )}
         </div>
       ) : (
-        <div className="rounded-2xl bg-white p-10 text-center shadow-sm ring-1 ring-slate-100">
+        <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-yellow-50/20 p-10 text-center shadow-lg backdrop-blur-sm">
           <div className="mx-auto max-w-lg">
-            <div className="mb-4 text-5xl opacity-60">📚</div>
-            <h3 className="text-xl font-semibold text-neutral-900">No tienes asesorías pasadas</h3>
-            <p className="mt-1 text-neutral-600">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-100">
+              <svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-blue-900">No tienes asesorías pasadas</h3>
+            <p className="mt-1 text-blue-700">
               Cuando completes tus primeras asesorías, aparecerán aquí para que puedas revisarlas.
             </p>
             <a
-              href="/asesoria/agendar"
-              className="mt-6 inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-blue-600 to-blue-700 px-6 py-3 font-semibold text-white shadow-[0_8px_25px_rgba(37,99,235,0.3)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_35px_rgba(37,99,235,0.4)]"
+              href="/asesorias/agendar"
+              className="mt-6 inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl hover:scale-105"
             >
-              ➕ Programar Primera Asesoría
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              Programar Primera Asesoría
             </a>
           </div>
         </div>

@@ -35,10 +35,10 @@ export default function ServiceForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-6">
       <FormField label="Nombre del servicio">
         <input required value={name} onChange={(e) => setName(e.target.value)}
-          className="w-full rounded-xl border-2 border-slate-200 px-4 py-2 outline-none transition focus:border-blue-600 focus:ring-4 focus:ring-blue-600/10" />
+          className="w-full rounded-xl border border-gray-300 px-4 py-3 bg-white/90 backdrop-blur-sm outline-none transition-all duration-200 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 hover:border-gray-400" />
       </FormField>
       <FormField label="Duración (min)">
         <input
@@ -51,16 +51,16 @@ export default function ServiceForm({
           value={durationStr}
           onChange={handleDurationChange}
           onBlur={handleBlur}
-          className="w-full rounded-xl border-2 border-slate-200 px-4 py-2 outline-none transition focus:border-blue-600 focus:ring-4 focus:ring-blue-600/10"
+          className="w-full rounded-xl border border-gray-300 px-4 py-3 bg-white/90 backdrop-blur-sm outline-none transition-all duration-200 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 hover:border-gray-400"
         />
       </FormField>
-      <div className="flex justify-end gap-3 pt-2">
+      <div className="flex justify-end gap-3 pt-4">
         <button type="button" onClick={onCancel}
-          className="rounded-full border-2 border-slate-200 px-4 py-2 font-semibold text-slate-600 transition hover:border-blue-600 hover:text-blue-600">
+          className="rounded-xl border border-gray-300 px-6 py-3 font-medium text-gray-700 transition-all duration-200 hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700">
           Cancelar
         </button>
         <button type="submit"
-          className="rounded-full bg-gradient-to-br from-blue-600 to-blue-700 px-4 py-2 font-semibold text-white shadow-[0_4px_15px_rgba(37,99,235,0.3)] transition hover:-translate-y-0.5 hover:shadow-[0_8px_25px_rgba(37,99,235,0.4)]">
+          className="rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-3 font-medium text-white shadow-lg hover:shadow-blue-200 transition-all duration-200 hover:scale-105">
           Guardar
         </button>
       </div>
@@ -70,8 +70,8 @@ export default function ServiceForm({
 
 function FormField({ label, children }:{ label: string; children: React.ReactNode }) {
   return (
-    <label className="block text-sm font-semibold text-slate-700">
-      <span className="mb-1 block">{label}</span>
+    <label className="block text-sm font-medium text-gray-700">
+      <span className="mb-2 block">{label}</span>
       {children}
     </label>
   );

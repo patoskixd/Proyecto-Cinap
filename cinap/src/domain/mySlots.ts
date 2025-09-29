@@ -1,4 +1,3 @@
-// domain/mySlots.ts
 export type SlotStatus = "disponible" | "ocupado" | "cancelado" | "expirado";
 
 export type Student = { name: string; email: string };

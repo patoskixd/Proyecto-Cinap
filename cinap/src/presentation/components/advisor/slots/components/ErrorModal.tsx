@@ -43,7 +43,9 @@ export default function ErrorModal({ open, message, conflicts, onClose }: Props)
       <div className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-xl ring-1 ring-rose-100">
         {/* Ícono rojo */}
         <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-rose-100">
-          <span className="text-2xl leading-none text-rose-600">✖</span>
+          <svg className="h-6 w-6 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
         </div>
 
         <h3 className="text-lg font-bold text-neutral-900">No se pudieron crear los cupos</h3>

@@ -44,13 +44,13 @@ export default function Step4Confirm({
   return (
     <div className="space-y-8 p-6 md:p-8">
       <div className="text-center">
-        <h2 className="text-2xl font-bold text-neutral-900">Confirma tus cupos</h2>
-        <p className="text-neutral-600">Revisa la información antes de crear los cupos</p>
+        <h2 className="text-2xl font-bold text-blue-900">Confirma tus cupos</h2>
+        <p className="text-blue-700">Revisa la información antes de crear los cupos</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-2xl border-2 border-slate-200 bg-slate-50 p-6">
-          <h3 className="mb-4 border-b-2 border-slate-200 pb-2 text-lg font-semibold text-neutral-900">Resumen</h3>
+        <div className="rounded-2xl border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-white p-6 shadow-md">
+          <h3 className="mb-4 border-b-2 border-blue-200 pb-2 text-lg font-semibold text-blue-900">Resumen</h3>
           <dl className="divide-y divide-slate-200">
             <Row label="Categoría" value={categories.find((c) => c.id === categoryId)?.name ?? "-"} />
             <Row label="Servicio" value={selectedService?.name ?? "-"} />
@@ -61,23 +61,23 @@ export default function Step4Confirm({
           </dl>
         </div>
 
-        <div className="rounded-2xl border-2 border-slate-200 bg-slate-50 p-6">
-          <h3 className="mb-4 border-b-2 border-slate-200 pb-2 text-lg font-semibold text-neutral-900">Horarios configurados</h3>
+        <div className="rounded-2xl border-2 border-yellow-200 bg-gradient-to-br from-yellow-50 to-white p-6 shadow-md">
+          <h3 className="mb-4 border-b-2 border-yellow-200 pb-2 text-lg font-semibold text-yellow-900">Horarios configurados</h3>
           <div className="space-y-2">
             {schedules.map((s, i) => (
-              <div key={`${s.isoDate ?? s.day}-${i}`} className="flex items-center justify-between rounded-lg border bg-white px-3 py-2">
+              <div key={`${s.isoDate ?? s.day}-${i}`} className="flex items-center justify-between rounded-lg border border-yellow-200 bg-white px-3 py-2 shadow-sm">
                 <div>
-                  <div className="font-semibold text-neutral-900">
+                  <div className="font-semibold text-yellow-900">
                     {s.isoDate ? formatEsDate(s.isoDate) : s.day}
                   </div>
-                  <div className="text-sm text-neutral-700">{s.startTime} - {s.endTime}</div>
+                  <div className="text-sm text-yellow-700">{s.startTime} - {s.endTime}</div>
                 </div>
                 <div className="text-sm font-semibold text-blue-700">
                   {slotsFor(s.startTime, s.endTime)} cupos
                 </div>
               </div>
             ))}
-            <div className="rounded-lg bg-blue-50 p-3 text-center text-blue-700">
+            <div className="rounded-lg bg-gradient-to-br from-blue-100 to-blue-50 p-3 text-center text-blue-800 border border-blue-200">
               <strong>Total de cupos a crear: {totalSlots}</strong>
             </div>
           </div>

@@ -5,7 +5,7 @@ export class HttpConfirmationsRepo implements ConfirmationsRepo {
   async getPending(): Promise<PendingConfirmation[]> {
     const isServer = typeof window === "undefined";
 
-    let url = "/api/confirmations/pending";
+    let url = "/api/advisor/confirmations/pending";
     const init: RequestInit = { credentials: "include", cache: "no-store" };
 
     if (isServer) {

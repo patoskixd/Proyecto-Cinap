@@ -367,7 +367,7 @@ class LangGraphAgent:
         - After executing a confirmed tool, you may add a short Spanish summary for the user.
         """
         today = datetime.now(ZoneInfo("America/Santiago")).strftime("%d-%m-%Y")
-        system_msg = SYSTEM_STATIC_EN + f"\nContext: TZ=America/Santiago, today={today}\n"
+        system_msg = SYSTEM_STATIC_EN + f"\nContext: TZ=America/Santiago, today={today}\n /no_think"
         self._runner = LangGraphRunner(app, system_text=system_msg)
 
     async def invoke(self, message: str, *, thread_id: str) -> str:

@@ -1,6 +1,3 @@
-
-
-// componentes de la página de reservas de asesorías
 export type ReservationStatus = "confirmada" | "pendiente" | "cancelada";
 
 export interface Reservation {

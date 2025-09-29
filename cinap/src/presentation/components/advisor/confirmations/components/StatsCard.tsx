@@ -10,51 +10,33 @@ export function StatsCards(props: {
   const { counts, active, onPick } = props;
 
   const base =
-    "cursor-pointer select-none rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow";
+    "cursor-pointer select-none rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-yellow-50/20 p-4 shadow-lg transition-all duration-300 hover:shadow-xl hover:border-blue-300";
   const activeCls =
-    "ring-2 ring-blue-500 shadow-[0_10px_25px_rgba(37,99,235,0.15)]";
+    "ring-2 ring-yellow-400 shadow-[0_10px_25px_rgba(251,191,36,0.25)] border-yellow-300 bg-gradient-to-br from-blue-50 via-yellow-50/50 to-blue-50/30";
+
+  const stats = [
+    { key: "", label: "Total pendientes", value: counts.total, tooltip: "Ver todas las solicitudes pendientes" },
+    { key: "today", label: "Hoy", value: counts.today, tooltip: "Filtrar solicitudes de hoy" },
+    { key: "week", label: "Esta semana", value: counts.week, tooltip: "Filtrar solicitudes de esta semana" },
+    { key: "month", label: "Este mes", value: counts.month, tooltip: "Filtrar solicitudes de este mes" }
+  ];
 
   return (
-    <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      <div
-        role="button"
-        className={`${base} ${active === "" ? activeCls : ""}`}
-        title="Quitar filtro de fecha"
-        onClick={() => onPick("")}
-      >
-        <div className="text-xl font-bold text-blue-600">{counts.total}</div>
-        <div className="text-sm font-medium text-neutral-600">Pendientes</div>
-      </div>
-
-      <div
-        role="button"
-        className={`${base} ${active === "today" ? activeCls : ""}`}
-        title="Filtrar a Hoy"
-        onClick={() => onPick("today")}
-      >
-        <div className="text-xl font-bold text-blue-600">{counts.today}</div>
-        <div className="text-sm font-medium text-neutral-600">Hoy</div>
-      </div>
-
-      <div
-        role="button"
-        className={`${base} ${active === "week" ? activeCls : ""}`}
-        title="Filtrar a Esta semana"
-        onClick={() => onPick("week")}
-      >
-        <div className="text-xl font-bold text-blue-600">{counts.week}</div>
-        <div className="text-sm font-medium text-neutral-600">Esta semana</div>
-      </div>
-
-      <div
-        role="button"
-        className={`${base} ${active === "month" ? activeCls : ""}`}
-        title="Filtrar a Este mes"
-        onClick={() => onPick("month")}
-      >
-        <div className="text-xl font-bold text-blue-600">{counts.month}</div>
-        <div className="text-sm font-medium text-neutral-600">Este mes</div>
-      </div>
+    <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {stats.map((stat) => (
+        <div
+          key={stat.key}
+          role="button"
+          className={`${base} ${active === stat.key ? activeCls : ""}`}
+          title={stat.tooltip}
+          onClick={() => onPick(stat.key as StatKey)}
+        >
+          <div className="text-center">
+            <div className="text-2xl font-bold text-blue-600 mb-1">{stat.value}</div>
+            <div className="text-sm font-medium text-neutral-600">{stat.label}</div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

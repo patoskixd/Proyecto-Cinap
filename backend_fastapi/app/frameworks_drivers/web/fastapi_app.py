@@ -123,6 +123,26 @@ async def _present_reply(reply: str, thread_id: str):
 async def health():
     return {"ok": True}
 
+@app.get("/health/db")
+async def health_db(session = Depends(get_session)):
+    """Health check que verifica la conexión a la base de datos"""
+    try:
+        from sqlalchemy import text
+        await session.execute(text("SELECT 1"))
+        return {"db": "ok", "status": "healthy"}
+    except Exception as e:
+        return {"db": "error", "status": "unhealthy", "error": str(e)}
+
+@app.get("/health/db")
+async def health_db(session = Depends(get_session)):
+    """Health check que verifica la conexión a la base de datos"""
+    try:
+        from sqlalchemy import text
+        await session.execute(text("SELECT 1"))
+        return {"db": "ok", "status": "healthy"}
+    except Exception as e:
+        return {"db": "error", "status": "unhealthy", "error": str(e)}
+
 graph_router = APIRouter(prefix="/assistant", tags=["assistant"])
 
 class GraphChatRequest(BaseModel):
