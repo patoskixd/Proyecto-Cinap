@@ -13,16 +13,16 @@ def make_admin_location_router(
     router = APIRouter(prefix="/admin/locations", tags=["admin-locations"])
 
     class CampusIn(BaseModel): name: str; address: str
-    class CampusPatch(BaseModel): name: Optional[str] = None; address: Optional[str] = None
+    class CampusPatch(BaseModel): name: Optional[str] = None; address: Optional[str] = None; active: Optional[bool] = None
 
     class BuildingIn(BaseModel): name: str; campusId: str
-    class BuildingPatch(BaseModel): name: Optional[str] = None; campusId: Optional[str] = None
+    class BuildingPatch(BaseModel): name: Optional[str] = None; campusId: Optional[str] = None; active: Optional[bool] = None
 
     class RoomIn(BaseModel):
         name: str; buildingId: str; number: str; type: str; capacity: int
     class RoomPatch(BaseModel):
         name: Optional[str] = None; buildingId: Optional[str] = None
-        number: Optional[str] = None; type: Optional[str] = None; capacity: Optional[int] = None
+        number: Optional[str] = None; type: Optional[str] = None; capacity: Optional[int] = None; active: Optional[bool] = None
 
     #  Campus
     @router.get("/campus")
@@ -41,6 +41,23 @@ def make_admin_location_router(
     @router.put("/campus/{campus_id}")
     async def update_campus(campus_id: str, patch: CampusPatch, session: AsyncSession = Depends(get_session_dep)):
         repo = SqlAlchemyAdminLocationRepo(session)
+        try:
+            return await repo.update_campus(campus_id, patch.name, patch.address)
+        except ValueError:
+            raise HTTPException(404, "Campus no encontrado")
+
+    @router.patch("/campus/{campus_id}")
+    async def patch_campus(campus_id: str, patch: CampusPatch, session: AsyncSession = Depends(get_session_dep)):
+        repo = SqlAlchemyAdminLocationRepo(session)
+        # Si el patch incluye active=False, hacer soft delete y devolver el objeto actualizado
+        if patch.active is False:
+            await repo.soft_delete_campus(campus_id)
+            # Después de desactivar, obtener y devolver el objeto actualizado
+            try:
+                return await repo.get_campus(campus_id)
+            except ValueError:
+                raise HTTPException(404, "Campus no encontrado")
+        # Si no, actualizar normalmente
         try:
             return await repo.update_campus(campus_id, patch.name, patch.address)
         except ValueError:
@@ -82,6 +99,23 @@ def make_admin_location_router(
         except ValueError:
             raise HTTPException(404, "Edificio no encontrado")
 
+    @router.patch("/buildings/{building_id}")
+    async def patch_building(building_id: str, patch: BuildingPatch, session: AsyncSession = Depends(get_session_dep)):
+        repo = SqlAlchemyAdminLocationRepo(session)
+        # Si el patch incluye active=False, hacer soft delete y devolver el objeto actualizado
+        if patch.active is False:
+            await repo.soft_delete_building(building_id)
+            # Después de desactivar, obtener y devolver el objeto actualizado
+            try:
+                return await repo.get_building(building_id)
+            except ValueError:
+                raise HTTPException(404, "Edificio no encontrado")
+        # Si no, actualizar normalmente
+        try:
+            return await repo.update_building(building_id, patch.name, patch.campusId)
+        except ValueError:
+            raise HTTPException(404, "Edificio no encontrado")
+
     @router.delete("/buildings/{building_id}")
     async def delete_building(building_id: str, session: AsyncSession = Depends(get_session_dep)):
         repo = SqlAlchemyAdminLocationRepo(session)
@@ -113,6 +147,23 @@ def make_admin_location_router(
     @router.put("/rooms/{room_id}")
     async def update_room(room_id: str, patch: RoomPatch, session: AsyncSession = Depends(get_session_dep)):
         repo = SqlAlchemyAdminLocationRepo(session)
+        try:
+            return await repo.update_room(room_id, patch.name, patch.buildingId, patch.number, patch.type, patch.capacity)
+        except ValueError:
+            raise HTTPException(404, "Sala no encontrada")
+
+    @router.patch("/rooms/{room_id}")
+    async def patch_room(room_id: str, patch: RoomPatch, session: AsyncSession = Depends(get_session_dep)):
+        repo = SqlAlchemyAdminLocationRepo(session)
+        # Si el patch incluye active=False, hacer soft delete y devolver el objeto actualizado
+        if patch.active is False:
+            await repo.soft_delete_room(room_id)
+            # Después de desactivar, obtener y devolver el objeto actualizado
+            try:
+                return await repo.get_room(room_id)
+            except ValueError:
+                raise HTTPException(404, "Sala no encontrada")
+        # Si no, actualizar normalmente
         try:
             return await repo.update_room(room_id, patch.name, patch.buildingId, patch.number, patch.type, patch.capacity)
         except ValueError:

@@ -1,72 +1,71 @@
 import { NextRequest, NextResponse } from "next/server";
+import { appendSetCookies } from "@/app/api/_utils/cookies";
+import { GetSchedulingData } from "@application/asesorias/agendar/usecases/GetSchedulingData";
+import { CreateAsesoria } from "@application/asesorias/agendar/usecases/CreateAsesoria";
+import { AsesoriasBackendRepo } from "@infrastructure/http/bff/teacher/asesorias/agendar/SchedulingBackendRepo";
 
-const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.BACKEND_URL ?? "http://localhost:8000";
 
+const BACKEND =
+  process.env.NEXT_PUBLIC_BACKEND_URL ??
+  process.env.BACKEND_URL ??
+  "http://localhost:8000";
+
+const CL_TZ = "America/Santiago";
 
 export async function GET(req: NextRequest) {
-  const cookie = req.headers.get("cookie") ?? "";
+  try {
+    const url = new URL(req.url);
 
 
-  const url = new URL(req.url);
-  const qs = url.search; 
+    const input: any = {
+      serviceId: url.searchParams.get("serviceId") ?? undefined,
+      dateFrom: url.searchParams.get("dateFrom") ?? undefined,
+      dateTo: url.searchParams.get("dateTo") ?? undefined,
+      campusId: url.searchParams.get("campusId") ?? undefined,
+      buildingId: url.searchParams.get("buildingId") ?? undefined,
+      resourceId: url.searchParams.get("resourceId") ?? undefined,
+      tz: CL_TZ,
+    };
 
-  const searchParams = Object.fromEntries(url.searchParams.entries());
-  const isBackendFindPOST = true; 
 
-  const upstream = await fetch(`${BACKEND}/slots/find${isBackendFindPOST ? "" : qs}`, {
-    method: isBackendFindPOST ? "POST" : "GET",
-    headers: {
-      accept: "application/json",
-      "content-type": isBackendFindPOST ? "application/json" : undefined as any,
-      cookie,
-    } as any,
-    credentials: "include",
-    cache: "no-store",
-    body: isBackendFindPOST ? JSON.stringify(searchParams) : undefined,
-  });
+    const singleDate = url.searchParams.get("date");
+    if (singleDate && !input.dateFrom && !input.dateTo) {
+      input.dateFrom = singleDate;
+      input.dateTo = singleDate;
+    }
 
-  const text = await upstream.text();
-  let body: any = text;
-  try { body = JSON.parse(text); } catch {}
-  return NextResponse.json(body, {
-    status: upstream.status,
-    headers: { "content-type": upstream.headers.get("content-type") ?? "application/json" },
-  });
+    const repo = new AsesoriasBackendRepo(BACKEND, req.headers.get("cookie") ?? "");
+    const data = await new GetSchedulingData(repo).exec(input);
+
+    const resp = NextResponse.json(data, { status: 200 });
+    appendSetCookies(repo.getSetCookies?.() ?? [], resp);
+    return resp;
+  } catch (e: any) {
+    return NextResponse.json({ detail: e?.message ?? "Error buscando cupos" }, { status: 400 });
+  }
 }
-
 
 export async function POST(req: NextRequest) {
-  const cookie = req.headers.get("cookie") ?? "";
-  const payload = await req.json().catch(() => ({}));
+  try {
+    const raw = (await req.json().catch(() => ({}))) as any;
 
-  const upstream = await fetch(`${BACKEND}/api/asesorias`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      accept: "application/json",
-      cookie,
-    },
-    credentials: "include",
-    body: JSON.stringify(payload),
-  });
+    const payload = {
+      cupo_id: raw.cupo_id ?? raw.cupoId,
+      origen: raw.origen ?? null,
+      notas: raw.notas ?? null,
+      tz: CL_TZ,
+    };
 
-  const text = await upstream.text();
-  let body: any = text;
-  try { body = JSON.parse(text); } catch {}
+    const repo = new AsesoriasBackendRepo(BACKEND, req.headers.get("cookie") ?? "");
+    const out = await new CreateAsesoria(repo).exec(payload as any);
 
-  const resp = new NextResponse(JSON.stringify(body), {
-    status: upstream.status,
-    headers: { "content-type": upstream.headers.get("content-type") ?? "application/json" },
-  });
-  const anyHeaders = upstream.headers as any;
-  const rawList: string[] =
-    typeof anyHeaders.getSetCookie === "function"
-      ? anyHeaders.getSetCookie()
-      : (upstream.headers.get("set-cookie")
-          ? [upstream.headers.get("set-cookie") as string]
-          : []);
-  for (const c of rawList) {
-    resp.headers.append("set-cookie", c.replace(/;\s*Domain=[^;]+/gi, ""));
+    const resp = NextResponse.json(out, { status: 200 });
+    appendSetCookies(repo.getSetCookies?.() ?? [], resp);
+    return resp;
+  } catch (e: any) {
+    return NextResponse.json({ detail: e?.message ?? "Error al reservar" }, { status: 400 });
   }
-  return resp;
 }
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;

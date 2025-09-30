@@ -8,6 +8,7 @@ export interface Appointment {
   title: string;       // "nombre de la asesoría"
   student: string;     // "Ana Rodriguez"
   status: AppointmentStatus;
+  location?: string;   // "Aula 205" | "Virtual" | "Laboratorio"
 }
 
 export interface Draft {

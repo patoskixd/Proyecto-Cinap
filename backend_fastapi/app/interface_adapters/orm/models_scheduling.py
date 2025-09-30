@@ -37,6 +37,7 @@ class CampusModel(Base):
     __tablename__ = "campus"
     id: Mapped[uuid.UUID] = sa.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     nombre: Mapped[str] = sa.Column(sa.Text, nullable=False)
+    direccion: Mapped[str] = sa.Column(sa.Text, nullable=False)
     activo: Mapped[bool] = sa.Column(sa.Boolean, nullable=False, server_default=sa.text("true"))
 
 class EdificioModel(Base):

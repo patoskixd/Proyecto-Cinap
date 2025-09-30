@@ -1,34 +1,33 @@
+// app/api/assistant/chat/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { forwardSetCookies } from "@/app/api/_utils/cookies";
-
+import { makeSendChatMessage } from "@application/chat/usecases/SendChatMessage";
+import { AssistantBackendAgent } from "@infrastructure/http/bff/chat/ChatBackendAgent";
+import { appendSetCookies } from "@/app/api/_utils/cookies";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const BASE = process.env.ASSISTANT_BASE_URL ?? process.env.BACKEND_BASE_URL ?? "http://localhost:8000";
+const BASE =
+  process.env.ASSISTANT_BASE_URL ??
+  process.env.BACKEND_BASE_URL ??
+  "http://localhost:8000";
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const message: string = body?.message ?? "";
+    const sessionId: string | undefined = body?.thread_id ?? body?.sessionId;
 
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    const cookie = req.headers.get("cookie");
-    if (cookie) headers.cookie = cookie;
+    const agent = new AssistantBackendAgent(BASE, req.headers.get("cookie") ?? "");
+    const sendChatMessage = makeSendChatMessage(agent);
 
-    const upstream = await fetch(`${BASE}/assistant/chat`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ message: body?.message, thread_id: body?.thread_id }),
-      cache: "no-store",
-    });
-
-    const data = await upstream.json().catch(() => ({}));
+    const reply = await sendChatMessage({ message, sessionId });
     const resp = NextResponse.json(
-      { reply: data?.reply ?? "Sin respuesta del asistente.",  thread_id: data?.thread_id },
-      { status: upstream.ok ? 200 : upstream.status, headers: { "Cache-Control": "no-store" } }
+      { reply, thread_id: agent.getLastThreadId() },
+      { status: 200, headers: { "Cache-Control": "no-store" } }
     );
 
-    forwardSetCookies(upstream, resp);
+    appendSetCookies(agent.getSetCookies(), resp);
     return resp;
   } catch {
     return NextResponse.json(

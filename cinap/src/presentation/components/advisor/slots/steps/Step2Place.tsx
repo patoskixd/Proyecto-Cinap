@@ -65,17 +65,17 @@ export default function Step2Place({
   return (
     <div className="space-y-8 p-6 md:p-8">
       <div className="text-center">
-        <h2 className="text-2xl font-bold text-neutral-900">Lugar de atención</h2>
-        <p className="text-neutral-600">Primero selecciona el campus, luego el edificio y finalmente la sala.</p>
+        <h2 className="text-2xl font-bold text-blue-900">Lugar de atención</h2>
+        <p className="text-blue-700">Primero selecciona el campus, luego el edificio y finalmente la sala.</p>
       </div>
 
       <div className="space-y-5">
         <div>
-          <label className="mb-1 block text-sm font-medium text-neutral-900">Campus</label>
+          <label className="mb-1 block text-sm font-medium text-blue-900">Campus</label>
           <select
             value={campusId}
             onChange={(e) => setCampusId(e.target.value)}
-            className="w-full rounded-lg border-2 border-slate-300 bg-white p-2 text-neutral-900"
+            className="w-full rounded-lg border-2 border-blue-300 bg-white p-3 text-blue-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition"
           >
             <option value="">Selecciona un campus…</option>
             {campuses.map((c) => (
@@ -85,12 +85,12 @@ export default function Step2Place({
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-neutral-900">Edificio</label>
+          <label className="mb-1 block text-sm font-medium text-blue-900">Edificio</label>
           <select
             value={buildingId}
             onChange={(e) => setBuildingId(e.target.value)}
             disabled={!campusId}
-            className="w-full rounded-lg border-2 border-slate-300 bg-white p-2 text-neutral-900 disabled:opacity-50"
+            className="w-full rounded-lg border-2 border-blue-300 bg-white p-3 text-blue-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:opacity-50 transition"
           >
             <option value="">{campusId ? "Selecciona un edificio…" : "Primero elige un campus"}</option>
             {buildings.map((b) => (
@@ -100,12 +100,12 @@ export default function Step2Place({
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-neutral-900">Sala</label>
+          <label className="mb-1 block text-sm font-medium text-blue-900">Sala</label>
           <select
             value={recursoId ?? ""}
             onChange={(e) => setRecursoId(e.target.value || undefined)}
             disabled={!buildingId}
-            className="w-full rounded-lg border-2 border-slate-300 bg-white p-2 text-neutral-900 disabled:opacity-50"
+            className="w-full rounded-lg border-2 border-blue-300 bg-white p-3 text-blue-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:opacity-50 transition"
           >
             <option value="">{buildingId ? "Selecciona una sala…" : "Primero elige un edificio"}</option>
             {rooms.map((r) => (
@@ -114,15 +114,15 @@ export default function Step2Place({
               </option>
             ))}
           </select>
-          <p className="mt-1 text-xs text-neutral-500">Requerido para asociar el cupo a una sala específica.</p>
+          <p className="mt-1 text-xs text-blue-600">Requerido para asociar el cupo a una sala específica.</p>
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-neutral-900">Notas (opcional)</label>
+          <label className="mb-1 block text-sm font-medium text-blue-900">Notas (opcional)</label>
           <textarea
             value={roomNotes}
             onChange={(e) => setRoomNotes(e.target.value)}
-            className="h-28 w-full rounded-lg border-2 border-slate-300 bg-white p-2 text-neutral-900"
+            className="h-28 w-full rounded-lg border-2 border-blue-300 bg-white p-3 text-blue-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition"
             placeholder="Instrucciones especiales, referencias para encontrar la sala, etc."
           />
         </div>

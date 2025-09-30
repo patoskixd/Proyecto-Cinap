@@ -12,13 +12,14 @@ export default function Stats({ total, disponibles, ocupadasHM }: Props) {
     { label: "Disponibles", value: disponibles },
     { label: "Horas ocupadas", value: ocupadasHM },
   ];
+  
   return (
-    <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-      {items.map((s, i) => (
-        <div key={i} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div>
-            <div className="text-xl font-bold text-blue-600">{s.value}</div>
-            <div className="text-sm font-medium text-neutral-600">{s.label}</div>
+    <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {items.map((item, i) => (
+        <div key={i} className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-md transition-all duration-200">
+          <div className="text-center">
+            <div className="text-3xl font-bold text-blue-600 mb-2">{item.value}</div>
+            <div className="text-sm font-medium text-neutral-600">{item.label}</div>
           </div>
         </div>
       ))}

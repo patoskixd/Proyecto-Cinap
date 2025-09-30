@@ -1,75 +1,102 @@
-import type { AdminLocationRepo, Campus, Building, Room } from "@/domain/adminLocation";
+"use client";
+
+import type { Campus, Building, Room } from "@domain/adminLocation";
+import type { AdminLocationRepo } from "@application/admin-location/ports/AdminLocationRepo";
+
+async function parse<T>(res: Response): Promise<T> {
+  const txt = await res.text();
+  const ct = res.headers.get("content-type") || "";
+  const isHtml = ct.includes("text/html");
+  if (isHtml) throw new Error("Ruta /api/admin/locations no encontrada (404). Revisa los route.ts y reinicia el dev server.");
+  try { return JSON.parse(txt) as T; } catch { throw new Error(txt || `HTTP ${res.status}`); }
+}
 
 const base = "/api/admin/locations";
 
-async function req<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
-  const res = await fetch(input, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    try {
-      const j = await res.json();
-      msg = j?.message || j?.detail || msg;
-    } catch {}
-    throw new Error(msg);
-  }
-  return res.status === 204 ? (undefined as unknown as T) : res.json();
-}
-
 export class AdminLocationHttpRepo implements AdminLocationRepo {
   // Campus
-  listCampus() { return req<Campus[]>(`${base}/campus`); }
-  createCampus(payload: { name: string; address: string }) {
-    return req<Campus>(`${base}/campus`, { method: "POST", body: JSON.stringify(payload) });
+  async listCampus(): Promise<Campus[]> {
+    const res = await fetch(`${base}/campus`, { method: "GET", credentials: "include", cache: "no-store", headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error((await res.text()) || "No se pudieron cargar los campus");
+    return parse<Campus[]>(res);
   }
-  updateCampus(id: string, patch: { name?: string; address?: string }) {
-    return req<Campus>(`${base}/campus/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+  async createCampus(payload: { name: string; address: string }): Promise<Campus> {
+    const res = await fetch(`${base}/campus`, { method: "POST", credentials: "include", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(payload) });
+    if (!res.ok) throw new Error((await res.text()) || "No se pudo crear el campus");
+    return parse<Campus>(res);
   }
-  reactivateCampus(id: string) {
-    return req<Campus>(`${base}/campus/${id}/reactivate`, { method: "POST" });
+  async updateCampus(id: string, patch: { name?: string; address?: string; active?: boolean }): Promise<Campus> {
+    // Si incluye active, usar PATCH (para desactivar), si no usar PUT (para actualizaciones completas)
+    const method = patch.active !== undefined ? "PATCH" : "PUT";
+    const res = await fetch(`${base}/campus/${id}`, { method, credentials: "include", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(patch) });
+    if (!res.ok) throw new Error((await res.text()) || "No se pudo actualizar el campus");
+    return parse<Campus>(res);
   }
-  deleteCampus(id: string) {
-    return req<void>(`${base}/campus/${id}`, { method: "DELETE" });
+  async deleteCampus(id: string): Promise<void> {
+    const res = await fetch(`${base}/campus/${id}`, { method: "DELETE", credentials: "include", headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error((await res.text()) || "No se pudo eliminar el campus");
+  }
+  async reactivateCampus(id: string): Promise<Campus> {
+    const res = await fetch(`${base}/campus/${id}/reactivate`, { method: "POST", credentials: "include", headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error((await res.text()) || "No se pudo reactivar el campus");
+    return parse<Campus>(res);
   }
 
   // Buildings
-  listBuildings(params?: { campusId?: string }) {
-    const url = new URL(`${base}/buildings`, window.location.origin);
-    if (params?.campusId) url.searchParams.set("campusId", params.campusId);
-    return req<Building[]>(url.toString());
+  async listBuildings(params?: { campusId?: string }): Promise<Building[]> {
+    const qs = params?.campusId ? `?campusId=${encodeURIComponent(params.campusId)}` : "";
+    const res = await fetch(`${base}/buildings${qs}`, { method: "GET", credentials: "include", cache: "no-store", headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error((await res.text()) || "No se pudieron cargar los edificios");
+    return parse<Building[]>(res);
   }
-  createBuilding(payload: { name: string; campusId: string }) {
-    return req<Building>(`${base}/buildings`, { method: "POST", body: JSON.stringify(payload) });
+  async createBuilding(payload: { name: string; campusId: string }): Promise<Building> {
+    const res = await fetch(`${base}/buildings`, { method: "POST", credentials: "include", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(payload) });
+    if (!res.ok) throw new Error((await res.text()) || "No se pudo crear el edificio");
+    return parse<Building>(res);
   }
-  updateBuilding(id: string, patch: { name?: string; campusId?: string }) {
-    return req<Building>(`${base}/buildings/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+  async updateBuilding(id: string, patch: { name?: string; campusId?: string; active?: boolean }): Promise<Building> {
+    // Si incluye active, usar PATCH (para desactivar), si no usar PUT (para actualizaciones completas)
+    const method = patch.active !== undefined ? "PATCH" : "PUT";
+    const res = await fetch(`${base}/buildings/${id}`, { method, credentials: "include", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(patch) });
+    if (!res.ok) throw new Error((await res.text()) || "No se pudo actualizar el edificio");
+    return parse<Building>(res);
   }
-  reactivateBuilding(id: string) {
-    return req<Building>(`${base}/buildings/${id}/reactivate`, { method: "POST" });
+  async deleteBuilding(id: string): Promise<void> {
+    const res = await fetch(`${base}/buildings/${id}`, { method: "DELETE", credentials: "include", headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error((await res.text()) || "No se pudo eliminar el edificio");
   }
-  deleteBuilding(id: string) {
-    return req<void>(`${base}/buildings/${id}`, { method: "DELETE" });
+  async reactivateBuilding(id: string): Promise<Building> {
+    const res = await fetch(`${base}/buildings/${id}/reactivate`, { method: "POST", credentials: "include", headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error((await res.text()) || "No se pudo reactivar el edificio");
+    return parse<Building>(res);
   }
 
   // Rooms
-  listRooms(params?: { buildingId?: string }) {
-    const url = new URL(`${base}/rooms`, window.location.origin);
-    if (params?.buildingId) url.searchParams.set("buildingId", params.buildingId);
-    return req<Room[]>(url.toString());
+  async listRooms(params?: { buildingId?: string }): Promise<Room[]> {
+    const qs = params?.buildingId ? `?buildingId=${encodeURIComponent(params.buildingId)}` : "";
+    const res = await fetch(`${base}/rooms${qs}`, { method: "GET", credentials: "include", cache: "no-store", headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error((await res.text()) || "No se pudieron cargar las salas");
+    return parse<Room[]>(res);
   }
-  createRoom(payload: { name: string; buildingId: string; number: string; type: Room["type"]; capacity: number }) {
-    return req<Room>(`${base}/rooms`, { method: "POST", body: JSON.stringify(payload) });
+  async createRoom(payload: { name: string; buildingId: string; number: string; type: Room["type"]; capacity: number }): Promise<Room> {
+    const res = await fetch(`${base}/rooms`, { method: "POST", credentials: "include", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(payload) });
+    if (!res.ok) throw new Error((await res.text()) || "No se pudo crear la sala");
+    return parse<Room>(res);
   }
-  updateRoom(id: string, patch: { name?: string; buildingId?: string; number?: string; type?: Room["type"]; capacity?: number }) {
-    return req<Room>(`${base}/rooms/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+  async updateRoom(id: string, patch: { name?: string; buildingId?: string; number?: string; type?: Room["type"]; capacity?: number; active?: boolean }): Promise<Room> {
+    // Si incluye active, usar PATCH (para desactivar), si no usar PUT (para actualizaciones completas)
+    const method = patch.active !== undefined ? "PATCH" : "PUT";
+    const res = await fetch(`${base}/rooms/${id}`, { method, credentials: "include", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(patch) });
+    if (!res.ok) throw new Error((await res.text()) || "No se pudo actualizar la sala");
+    return parse<Room>(res);
   }
-  reactivateRoom(id: string) {
-    return req<Room>(`${base}/rooms/${id}/reactivate`, { method: "POST" });
+  async deleteRoom(id: string): Promise<void> {
+    const res = await fetch(`${base}/rooms/${id}`, { method: "DELETE", credentials: "include", headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error((await res.text()) || "No se pudo eliminar la sala");
   }
-  deleteRoom(id: string) {
-    return req<void>(`${base}/rooms/${id}`, { method: "DELETE" });
+  async reactivateRoom(id: string): Promise<Room> {
+    const res = await fetch(`${base}/rooms/${id}/reactivate`, { method: "POST", credentials: "include", headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error((await res.text()) || "No se pudo reactivar la sala");
+    return parse<Room>(res);
   }
 }

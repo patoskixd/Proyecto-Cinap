@@ -11,7 +11,7 @@ type UIRulePayload = {
 
 export class SlotsHttpRepo implements SlotsRepo {
   async getCreateSlotsData(): Promise<CreateSlotsData> {
-    return httpGetCached<CreateSlotsData>("/slots/create-data", { ttlMs: 60_000 });
+    return httpGetCached<CreateSlotsData>("advisor/slots/create-data", { ttlMs: 60_000 });
   }
   
   async createSlots(input: {
@@ -37,7 +37,7 @@ export class SlotsHttpRepo implements SlotsRepo {
       })),
     };
 
-    const res = await httpPost<{ createdSlots: number }>("/slots/open", payload);
+    const res = await httpPost<{ createdSlots: number }>("advisor/slots/open", payload);
     return { createdSlots: res.createdSlots ?? 0 };
   }
 }

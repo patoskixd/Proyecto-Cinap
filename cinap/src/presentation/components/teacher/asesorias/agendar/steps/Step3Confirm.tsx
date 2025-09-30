@@ -6,8 +6,8 @@ import type { FoundSlot } from "@/domain/scheduling";
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col md:flex-row md:items-center justify-between py-3">
-      <dt className="text-sm font-medium text-neutral-700">{label}</dt>
-      <dd className="text-sm font-semibold text-neutral-900">{value}</dd>
+      <dt className="text-sm font-medium text-blue-700">{label}</dt>
+      <dd className="text-sm font-semibold text-blue-900">{value}</dd>
     </div>
   );
 }
@@ -54,8 +54,8 @@ export function Step3Confirm({
   return (
     <div className="space-y-6 p-6 md:p-8">
       <div className="text-center">
-        <h2 className="text-2xl font-bold text-neutral-900">Confirma tu asesoría</h2>
-        <p className="text-neutral-600">Revisa los detalles antes de confirmar tu cita</p>
+        <h2 className="text-2xl font-bold text-blue-900">Confirma tu asesoría</h2>
+        <p className="text-blue-700">Revisa los detalles antes de confirmar tu cita</p>
       </div>
 
       {error && (
@@ -65,12 +65,12 @@ export function Step3Confirm({
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="w-full max-w-xl mx-auto lg:col-span-2 rounded-2xl border-2 border-slate-200 bg-slate-50 p-6">
-          <h3 className="mb-4 border-b-2 border-slate-200 pb-2 text-lg font-semibold text-neutral-900">
+        <div className="w-full max-w-xl mx-auto lg:col-span-2 rounded-2xl border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-white p-6 shadow-md">
+          <h3 className="mb-4 border-b-2 border-blue-200 pb-2 text-lg font-semibold text-blue-900">
             Resumen de tu asesoría
           </h3>
 
-          <dl className="divide-y divide-slate-200">
+          <dl className="divide-y divide-blue-200">
             <Row label="Categoría" value={categoryName} />
             <Row label="Servicio" value={service?.name ?? "-"} />
             <Row label="Duración" value={service?.duration ?? "-"} />

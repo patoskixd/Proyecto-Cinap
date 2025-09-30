@@ -111,7 +111,7 @@ export default function EditModal({ editing, setEditing, onConfirm, notify }: Pr
           <button onClick={() => setEditing(null)} className="flex-1 rounded-full border-2 border-slate-200 px-5 py-2 font-semibold text-neutral-700 hover:border-blue-600 hover:text-blue-600">
             Cancelar
           </button>
-          <button onClick={saveEdit} className="flex-1 rounded-full bg-gradient-to-br from-blue-600 to-blue-700 px-5 py-2 font-semibold text-white">
+          <button onClick={saveEdit} className="flex-1 rounded-full bg-blue-600 px-5 py-2 font-semibold text-white hover:bg-blue-700">
             Guardar cambios
           </button>
         </div>

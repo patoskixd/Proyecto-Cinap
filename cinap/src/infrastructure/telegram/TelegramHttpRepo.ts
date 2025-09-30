@@ -16,4 +16,13 @@ export class TelegramHttpRepo implements TelegramRepo {
     if (!r.ok) return { linked: false };
     return r.json();
   }
+
+
+  async unlink(): Promise<void> {
+    const r = await fetch("/api/telegram/link", {
+      method: "DELETE",
+      credentials: "include",
+    });
+    if (!r.ok) throw new Error(`Unlink HTTP ${r.status}`);
+  }
 }

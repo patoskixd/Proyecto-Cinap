@@ -9,7 +9,7 @@ async function parse<T>(res: Response): Promise<T> {
 
 export class AdvisorCatalogHttpRepo implements AdvisorCatalogQueryRepo {
   async list(): Promise<AdvisorCatalog> {
-    const res = await fetch("/api/advisor-catalog", {
+    const res = await fetch("/api/advisor/catalog", {
       credentials: "include",
       cache: "no-store",
       headers: { accept: "application/json" },

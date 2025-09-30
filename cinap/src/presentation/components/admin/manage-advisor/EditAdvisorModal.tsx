@@ -53,34 +53,63 @@ export default function EditAdvisorModal({ open, advisor, catalog, onClose, onSa
   if (!open || !advisor) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/50 p-4">
-      <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200">
-        <div className="flex items-start justify-between px-6 pt-6">
-          <div>
-            <h3 className="text-lg font-bold text-neutral-900">Editar asesor</h3>
-            <p className="text-sm text-neutral-600">Actualiza datos, categorías y servicios</p>
-          </div>
-          <button onClick={onClose} className="rounded-full px-3 py-1 text-2xl leading-none text-slate-500 hover:bg-slate-100">×</button>
+    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="w-full max-w-3xl bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden transform animate-in zoom-in-95 duration-200">
+        {/* Header con gradiente */}
+        <div className="h-20 bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 relative">
+          <div className="absolute inset-0 bg-black/10"></div>
+          <button
+            className="absolute top-4 right-4 w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white transition-all duration-200"
+            onClick={onClose}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
-        <div className="max-h-[70vh] overflow-y-auto px-6 py-4">
+        {/* Contenido del modal */}
+        <div className="px-8 py-6 -mt-6 relative">
+          {/* Ícono del modal */}
+          <div className="flex justify-center mb-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 to-yellow-500 rounded-full shadow-xl border-4 border-white flex items-center justify-center">
+              <svg className="w-6 h-6 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+              </svg>
+            </div>
+          </div>
+
+          <div className="text-center mb-6">
+            <h3 className="text-2xl font-bold text-gray-900 mb-2">Editar Asesor</h3>
+            <p className="text-gray-600">Actualiza datos, categorías y servicios</p>
+          </div>
+        </div>
+
+        <div className="max-h-[70vh] overflow-y-auto px-8 py-4">
           {/* Datos básicos */}
-          <div className="rounded-xl border border-slate-200 p-4">
-            <h4 className="mb-2 text-sm font-semibold text-neutral-900">Datos básicos</h4>
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-semibold text-neutral-800">Nombre *</span>
+          <div className="rounded-xl border-2 border-blue-200 bg-blue-50/30 p-6 mb-6">
+            <h4 className="mb-4 text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z" clipRule="evenodd" />
+              </svg>
+              Datos básicos
+            </h4>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="block text-sm font-semibold text-gray-700 mb-2">Nombre *</span>
                 <input
-                  className="rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-black outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-xl border-2 border-blue-200 bg-white/90 px-4 py-3 text-gray-900 placeholder-gray-500 outline-none transition-all duration-300 focus:border-yellow-500 focus:ring-4 focus:ring-yellow-100 focus:bg-white"
+                  placeholder="Ingresa el nombre completo"
                   value={basic.name}
                   onChange={(e) => setBasic((b) => ({ ...b, name: e.target.value }))}
                 />
               </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-semibold text-neutral-800">Correo *</span>
+              <label className="block">
+                <span className="block text-sm font-semibold text-gray-700 mb-2">Correo *</span>
                 <input
                   type="email"
-                  className="rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-black outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-xl border-2 border-blue-200 bg-white/90 px-4 py-3 text-gray-900 placeholder-gray-500 outline-none transition-all duration-300 focus:border-yellow-500 focus:ring-4 focus:ring-yellow-100 focus:bg-white"
+                  placeholder="asesor@ejemplo.com"
                   value={basic.email}
                   onChange={(e) => setBasic((b) => ({ ...b, email: e.target.value }))}
                 />
@@ -89,9 +118,14 @@ export default function EditAdvisorModal({ open, advisor, catalog, onClose, onSa
           </div>
 
           {/* Categorías */}
-          <div className="mt-4 rounded-xl border border-slate-200 p-4">
-            <h4 className="mb-2 text-sm font-semibold text-neutral-900">Categorías</h4>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="rounded-xl border-2 border-yellow-200 bg-yellow-50/30 p-6 mb-6">
+            <h4 className="mb-4 text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <svg className="w-5 h-5 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"/>
+              </svg>
+              Categorías
+            </h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {catalog.categories.map((c) => {
                 const active = selectedSet.has(c.id as CategoryId);
                 return (
@@ -99,11 +133,13 @@ export default function EditAdvisorModal({ open, advisor, catalog, onClose, onSa
                     key={c.id}
                     type="button"
                     onClick={() => toggleCategory(c.id as CategoryId)}
-                    className={`w-full rounded-xl border-2 p-3 text-left transition ${
-                      active ? "border-blue-600 bg-blue-50" : "border-slate-200 bg-white hover:border-blue-500"
+                    className={`w-full rounded-xl border-2 p-4 text-left transition-all duration-200 ${
+                      active 
+                        ? "border-yellow-500 bg-gradient-to-r from-yellow-100 to-yellow-200 shadow-lg transform scale-105" 
+                        : "border-blue-200 bg-white hover:border-yellow-400 hover:shadow-md"
                     }`}
                   >
-                    <div className="font-semibold text-neutral-900">{c.name}</div>
+                    <div className={`font-semibold ${active ? "text-yellow-800" : "text-gray-900"}`}>{c.name}</div>
                   </button>
                 );
               })}
@@ -115,11 +151,14 @@ export default function EditAdvisorModal({ open, advisor, catalog, onClose, onSa
             const svcs = catalog.servicesByCategory.get(cid as string) ?? [];
             if (!svcs.length) return null;
             return (
-              <div key={`svc_${cid}`} className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="mb-2 text-sm font-semibold text-neutral-900">
+              <div key={`svc_${cid}`} className="mb-4 rounded-xl border-2 border-blue-200 bg-blue-50/30 p-4">
+                <div className="mb-3 text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                  </svg>
                   Servicios en {catalog.categories.find((c) => c.id === cid)?.name ?? cid}
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-2">
                   {svcs.map((s) => {
                     const ref = { categoryId: cid, id: s.id };
                     const key = `${cid}__${s.id}`;
@@ -127,14 +166,16 @@ export default function EditAdvisorModal({ open, advisor, catalog, onClose, onSa
                     return (
                       <label
                         key={key}
-                        className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-3 py-2 ${
-                          on ? "border-blue-600 bg-white" : "border-slate-200 bg-white hover:border-blue-500"
+                        className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-4 py-3 transition-all duration-200 ${
+                          on 
+                            ? "border-yellow-500 bg-gradient-to-r from-yellow-100 to-yellow-200 shadow-md" 
+                            : "border-blue-200 bg-white hover:border-yellow-400 hover:shadow-sm"
                         }`}
                       >
-                        <span className="text-sm font-medium text-neutral-900">{s.name}</span>
+                        <span className={`text-sm font-medium ${on ? "text-yellow-800" : "text-gray-900"}`}>{s.name}</span>
                         <input
                           type="checkbox"
-                          className="h-4 w-4 accent-blue-600"
+                          className="h-4 w-4 accent-yellow-600"
                           checked={on}
                           onChange={() => toggleService(ref)}
                         />
@@ -147,46 +188,63 @@ export default function EditAdvisorModal({ open, advisor, catalog, onClose, onSa
           })}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-6 py-4">
+        <div className="flex items-center justify-end gap-3 border-t border-gray-200 px-8 py-6 bg-gray-50">
           <button
             onClick={onClose}
-            className="rounded-full border-2 border-slate-200 px-4 py-2 text-sm font-semibold text-neutral-700 hover:border-blue-600 hover:text-blue-600"
+            className="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-all duration-200"
           >
             Cancelar
           </button>
           <button
             onClick={() => setAskConfirm(true)}
-            className="rounded-full bg-gradient-to-br from-blue-600 to-blue-700 px-5 py-2 text-sm font-semibold text-white"
+            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-yellow-500 hover:from-blue-700 hover:to-yellow-600 text-white font-medium rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
           >
-            Guardar cambios
+            Guardar Cambios
           </button>
         </div>
       </div>
 
       {/* confirmación */}
       {askConfirm && (
-        <div className="fixed inset-0 z-[110] grid place-items-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl ring-1 ring-slate-200">
-            <div className="mb-2 text-4xl">✅</div>
-            <h4 className="mb-1 text-lg font-bold text-neutral-900">Confirmar edición</h4>
-            <p className="mb-4 text-sm text-neutral-600">¿Deseas guardar los cambios realizados?</p>
-            <div className="flex justify-center gap-2">
-              <button
-                onClick={() => setAskConfirm(false)}
-                className="rounded-full border-2 border-slate-200 px-4 py-2 text-sm font-semibold text-neutral-700 hover:border-blue-600 hover:text-blue-600"
-              >
-                Volver
-              </button>
-              <button
-                onClick={() => {
-                  onSave({ id: advisor.id, basic, categories, services });
-                  setAskConfirm(false);
-                  onClose();
-                }}
-                className="rounded-full bg-gradient-to-br from-blue-600 to-blue-700 px-5 py-2 text-sm font-semibold text-white"
-              >
-                Confirmar
-              </button>
+        <div className="fixed inset-0 z-[110] grid place-items-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden">
+            {/* Header */}
+            <div className="h-16 bg-gradient-to-r from-yellow-500 to-blue-600 relative">
+              <div className="absolute inset-0 bg-black/10"></div>
+            </div>
+            
+            {/* Content */}
+            <div className="px-6 py-6 -mt-4 relative text-center">
+              {/* Ícono */}
+              <div className="flex justify-center mb-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 to-yellow-500 rounded-full shadow-xl border-4 border-white flex items-center justify-center">
+                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+              </div>
+              
+              <h4 className="text-xl font-bold text-gray-900 mb-2">Confirmar edición</h4>
+              <p className="text-gray-600 mb-6">¿Deseas guardar los cambios realizados?</p>
+              
+              <div className="flex justify-center gap-3">
+                <button
+                  onClick={() => setAskConfirm(false)}
+                  className="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-all duration-200"
+                >
+                  Volver
+                </button>
+                <button
+                  onClick={() => {
+                    onSave({ id: advisor.id, basic, categories, services });
+                    setAskConfirm(false);
+                    onClose();
+                  }}
+                  className="px-6 py-3 bg-gradient-to-r from-blue-600 to-yellow-500 hover:from-blue-700 hover:to-yellow-600 text-white font-medium rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
+                >
+                  Confirmar
+                </button>
+              </div>
             </div>
           </div>
         </div>

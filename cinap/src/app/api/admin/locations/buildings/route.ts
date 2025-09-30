@@ -1,21 +1,31 @@
-import { NextResponse } from "next/server";
-const BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+import { NextRequest, NextResponse } from "next/server";
+import ListBuildings from "@application/admin-location/usecases/Buildings/ListBuidlings";
+import CreateBuilding from "@application/admin-location/usecases/Buildings/CreateBuilding";
+import { AdminLocationBackendRepo } from "@infrastructure/http/bff/admin/locations/AdminLocationBackendRepo";
+import { appendSetCookies } from "@/app/api/_utils/cookies";
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const campusId = searchParams.get("campusId");
-  const url = new URL(`${BASE}/admin/locations/buildings`);
-  if (campusId) url.searchParams.set("campusId", campusId);
-  const r = await fetch(url, { cache: "no-store" });
-  const data = await r.json();
-  return NextResponse.json(data, { status: r.status });
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.BACKEND_URL ?? "http://localhost:8000";
+export const dynamic = "force-dynamic"; export const revalidate = 0;
+
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const campusId = searchParams.get("campusId") ?? undefined;
+    const repo = new AdminLocationBackendRepo(BACKEND, req.headers.get("cookie") ?? "");
+    const data = await new ListBuildings(repo).exec({ campusId });
+    const resp = NextResponse.json(data, { status: 200 });
+    appendSetCookies(repo.getSetCookies?.() ?? [], resp);
+    return resp;
+  } catch (e: any) { return NextResponse.json({ detail: e.message }, { status: 500 }); }
 }
 
-export async function POST(req: Request) {
-  const body = await req.json();
-  const r = await fetch(`${BASE}/admin/locations/buildings`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-  });
-  const data = await r.json().catch(() => ({}));
-  return NextResponse.json(data, { status: r.status });
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json().catch(() => ({}));
+    const repo = new AdminLocationBackendRepo(BACKEND, req.headers.get("cookie") ?? "");
+    const data = await new CreateBuilding(repo).exec({ name: body?.name ?? "", campusId: body?.campusId ?? "" });
+    const resp = NextResponse.json(data, { status: 201 });
+    appendSetCookies(repo.getSetCookies?.() ?? [], resp);
+    return resp;
+  } catch (e: any) { return NextResponse.json({ detail: e.message }, { status: 400 }); }
 }

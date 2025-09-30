@@ -46,19 +46,19 @@ export default function ConfirmModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+      className="fixed inset-0 z-50 grid place-items-center bg-black/50 backdrop-blur-sm p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onCancel();
       }}
       aria-modal="true"
       role="dialog"
     >
-      <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-xl">
-        <div className="border-b border-slate-200 px-5 py-4">
-          <h3 className="text-lg font-semibold text-neutral-900">{title}</h3>
+      <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white/95 backdrop-blur-xl shadow-2xl border border-white/20">
+        <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-4">
+          <h3 className="text-lg font-semibold text-white">{title}</h3>
         </div>
 
-        <div className="space-y-3 px-5 py-4 text-sm text-neutral-800">
+        <div className="space-y-3 px-5 py-4 text-sm text-gray-700">
           {isDanger ? (
             <p>{message ?? defaultDangerMsg}</p>
           ) : message ? (
@@ -68,21 +68,21 @@ export default function ConfirmModal({
           {body}
         </div>
 
-        <div className="flex gap-2 border-t border-slate-200 px-5 py-4">
+        <div className="flex gap-3 px-5 py-4 bg-gray-50/80">
           <button
             type="button"
             onClick={onCancel}
-            className="flex-1 rounded-full border-2 border-slate-200 px-5 py-2 font-semibold text-neutral-700 hover:border-blue-600 hover:text-blue-600"
+            className="flex-1 rounded-xl border border-gray-300 px-4 py-2.5 font-medium text-gray-700 hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 transition-all duration-200"
           >
             {finalCancel}
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className={`flex-1 rounded-full px-5 py-2 font-semibold text-white ${
+            className={`flex-1 rounded-xl px-4 py-2.5 font-medium text-white transition-all duration-200 ${
               isDanger
-                ? "bg-rose-600 hover:bg-rose-700"
-                : "bg-emerald-600 hover:bg-emerald-700"
+                ? "bg-red-600 hover:bg-red-700 shadow-lg hover:shadow-red-200"
+                : "bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 shadow-lg hover:shadow-blue-200"
             }`}
           >
             {finalConfirm}

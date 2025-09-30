@@ -3,7 +3,7 @@ import { FindSlotsInput, FoundSlot, ReserveAsesoriaInput, CreateAsesoriaOut } fr
 
 export class SchedulingHttpRepo implements SchedulingRepo {
   async findSlots(input: FindSlotsInput): Promise<FoundSlot[]> {
-    const res = await fetch("/api/slots/find", {
+    const res = await fetch("/api/advisor/slots/find", {
       method: "POST",
       headers: { "content-type": "application/json" },
       credentials: "include",

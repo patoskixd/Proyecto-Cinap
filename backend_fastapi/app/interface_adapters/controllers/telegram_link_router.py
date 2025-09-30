@@ -27,15 +27,52 @@ def make_telegram_link_router(*, require_auth, cache, get_session_dep):
 
     @router.get("/me", dependencies=[Depends(require_auth)])
     async def me_telegram(request: Request, session: AsyncSession = Depends(get_session_dep)):
+        import logging
+        logger = logging.getLogger("telegram.me")
+        
+        user_claims = request.state.user
+        user_id = user_claims.get("sub") or user_claims.get("id") or user_claims.get("user_id")
+        logger.info(f"Consultando estado de Telegram para user_id={user_id}")
+        
+        if not user_id:
+            logger.warning("No se pudo obtener user_id de los claims")
+            return {"linked": False, "username": None}
+
+        # Consultar si existe el registro de vinculación
+        q = sa.select(
+            TelegramAccountModel.id,
+            TelegramAccountModel.telegram_user_id,
+            TelegramAccountModel.telegram_username
+        ).where(
+            TelegramAccountModel.usuario_id == uuid.UUID(user_id)
+        )
+        result = (await session.execute(q)).first()
+        logger.info(f"Resultado de la consulta completa: {result}")
+        
+        if result is None:
+            logger.info("No se encontró registro de Telegram para este usuario")
+            return {"linked": False, "username": None}
+        
+        # result es una tupla: (id, telegram_user_id, telegram_username)
+        telegram_username = result[2]  # El tercer elemento es telegram_username
+        
+        # Si el usuario está vinculado, siempre devolvemos linked=True
+        # El username puede ser None, un @username, o un nombre completo
+        logger.info(f"Usuario vinculado encontrado. Username/Display name: {telegram_username}")
+        return {"linked": True, "username": telegram_username}
+    
+
+    @router.delete("/link", dependencies=[Depends(require_auth)])
+    async def unlink_telegram(request: Request, session: AsyncSession = Depends(get_session_dep)):
         user_claims = request.state.user
         user_id = user_claims.get("sub") or user_claims.get("id") or user_claims.get("user_id")
         if not user_id:
-            return {"linked": False, "username": None}
+            return {"ok": True}
 
-        q = sa.select(TelegramAccountModel.telegram_username).where(
-            TelegramAccountModel.usuario_id == uuid.UUID(user_id)
+        await session.execute(
+            sa.delete(TelegramAccountModel).where(TelegramAccountModel.usuario_id == uuid.UUID(user_id))
         )
-        username = (await session.execute(q)).scalar_one_or_none()
-        return {"linked": username is not None, "username": username}
+        await session.commit()
+        return {"ok": True}
 
     return router

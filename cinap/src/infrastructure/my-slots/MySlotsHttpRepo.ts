@@ -32,7 +32,7 @@ function toPatchDTO(patch: Partial<MySlot>): PatchDTO {
 
 export class HttpMySlotsRepo implements MySlotsRepo {
   async getMySlots(): Promise<MySlot[]> {
-    const res = await fetch("/api/my-slots", {
+    const res = await fetch("/api/advisor/my-slots", {
       method: "GET",
       cache: "no-store",
       credentials: "include",
@@ -43,7 +43,7 @@ export class HttpMySlotsRepo implements MySlotsRepo {
   }
 
   async updateMySlot(id: string, patch: Partial<MySlot>): Promise<MySlot> {
-    const res = await fetch(`/api/my-slots/${id}`, {
+    const res = await fetch(`/api/advisor/my-slots/${id}`, {
       method: "PATCH",
       credentials: "include",
       headers: { "content-type": "application/json", accept: "application/json" },
@@ -66,7 +66,7 @@ export class HttpMySlotsRepo implements MySlotsRepo {
   }
 
   async deleteMySlot(id: string): Promise<void> {
-    const res = await fetch(`/api/my-slots/${id}`, {
+    const res = await fetch(`/api/advisor/my-slots/${id}`, {
       method: "DELETE",
       credentials: "include",
       headers: { accept: "application/json" },
@@ -75,7 +75,7 @@ export class HttpMySlotsRepo implements MySlotsRepo {
   }
 
   async reactivateMySlot(id: string): Promise<MySlot> {
-    const res = await fetch(`/api/my-slots/${id}/reactivate`, {
+    const res = await fetch(`/api/advisor/my-slots/${id}/reactivate`, {
       method: "POST",
       credentials: "include",
       headers: { accept: "application/json" },
@@ -86,7 +86,7 @@ export class HttpMySlotsRepo implements MySlotsRepo {
     const isHtml = contentType.includes("text/html");
 
     if (isHtml && !res.ok) {
-      throw new Error("Ruta /api/my-slots/[id]/reactivate no encontrada (404). Revisa el route.ts y reinicia el dev server.");
+      throw new Error("Ruta /api/advisor/my-slots/[id]/reactivate no encontrada (404). Revisa el route.ts y reinicia el dev server.");
     }
 
     const data = await parse<MySlot | any>(res);

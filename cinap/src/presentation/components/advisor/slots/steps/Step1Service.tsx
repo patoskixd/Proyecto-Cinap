@@ -24,20 +24,27 @@ export default function Step1Service({
       </div>
 
       <section>
-        <h3 className="mb-4 border-b-2 border-slate-200 pb-2 text-lg font-semibold text-neutral-900">1. Categoría</h3>
+        <h3 className="mb-4 border-b-2 border-blue-200 pb-2 text-lg font-semibold text-blue-900">1. Categoría</h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
           {categories.map((c) => (
             <button
               key={c.id}
               onClick={() => { setCategoryId(c.id); setServiceId(undefined); }}
               className={cx(
-                "rounded-2xl border-2 p-5 text-left transition hover:-translate-y-1 hover:shadow-md",
-                categoryId === c.id ? "border-blue-600 bg-blue-50/40" : "border-slate-200 bg-white"
+                "rounded-2xl border-2 p-5 text-left transition hover:-translate-y-1 hover:shadow-lg",
+                categoryId === c.id 
+                  ? "border-blue-600 bg-gradient-to-br from-blue-50 to-blue-100 shadow-md" 
+                  : "border-slate-200 bg-white hover:border-blue-300"
               )}
             >
-              <div className="mb-2 text-3xl">{c.icon}</div>
-              <h4 className="font-semibold text-neutral-900">{c.name}</h4>
-              <p className="text-sm text-neutral-600">{c.description}</p>
+              <h4 className={cx(
+                "font-semibold text-lg mb-2",
+                categoryId === c.id ? "text-blue-900" : "text-neutral-900"
+              )}>{c.name}</h4>
+              <p className={cx(
+                "text-sm",
+                categoryId === c.id ? "text-blue-700" : "text-neutral-600"
+              )}>{c.description}</p>
             </button>
           ))}
         </div>
@@ -45,20 +52,33 @@ export default function Step1Service({
 
       {categoryId && (
         <section>
-          <h3 className="mb-4 border-b-2 border-slate-200 pb-2 text-lg font-semibold text-neutral-900">2. Servicio</h3>
+          <h3 className="mb-4 border-b-2 border-blue-200 pb-2 text-lg font-semibold text-blue-900">2. Servicio</h3>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {services.map((s) => (
               <button
                 key={s.id}
                 onClick={() => setServiceId(s.id)}
                 className={cx(
-                  "rounded-2xl border-2 p-5 text-left transition hover:-translate-y-1 hover:shadow-md",
-                  serviceId === s.id ? "border-blue-600 bg-blue-50/40" : "border-slate-200 bg-white"
+                  "rounded-2xl border-2 p-5 text-left transition hover:-translate-y-1 hover:shadow-lg",
+                  serviceId === s.id 
+                    ? "border-yellow-500 bg-gradient-to-br from-yellow-50 to-yellow-100 shadow-md" 
+                    : "border-slate-200 bg-white hover:border-yellow-300"
                 )}
               >
-                <h4 className="font-semibold text-neutral-900">{s.name}</h4>
-                <p className="text-sm text-neutral-600">{s.description}</p>
-                <span className="mt-3 inline-block rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-600">
+                <h4 className={cx(
+                  "font-semibold",
+                  serviceId === s.id ? "text-yellow-900" : "text-neutral-900"
+                )}>{s.name}</h4>
+                <p className={cx(
+                  "text-sm",
+                  serviceId === s.id ? "text-yellow-700" : "text-neutral-600"
+                )}>{s.description}</p>
+                <span className={cx(
+                  "mt-3 inline-block rounded-full px-2.5 py-1 text-xs font-bold",
+                  serviceId === s.id 
+                    ? "bg-yellow-200 text-yellow-800" 
+                    : "bg-blue-50 text-blue-600"
+                )}>
                   {s.duration}
                 </span>
               </button>

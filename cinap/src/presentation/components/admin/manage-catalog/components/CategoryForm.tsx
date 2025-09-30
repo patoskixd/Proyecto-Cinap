@@ -11,22 +11,24 @@ export default function CategoryForm({
   const [name, setName] = useState(defaultValues?.name ?? "");
   const [description, setDescription] = useState(defaultValues?.description ?? "");
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onSubmit({ name, description }); }} className="space-y-4">
+    <form onSubmit={(e) => { e.preventDefault(); onSubmit({ name, description }); }} className="space-y-6">
       <FormField label="Nombre de la categoría">
         <input required value={name} onChange={(e) => setName(e.target.value)}
-          className="w-full rounded-xl border-2 border-slate-200 px-4 py-2 outline-none transition focus:border-blue-600 focus:ring-4 focus:ring-blue-600/10" />
+          className="w-full rounded-xl border-2 border-blue-200 bg-white/90 px-4 py-3 text-gray-900 placeholder-gray-500 outline-none transition-all duration-300 focus:border-yellow-500 focus:ring-4 focus:ring-yellow-100 focus:bg-white" 
+          placeholder="Ingresa el nombre de la categoría" />
       </FormField>
       <FormField label="Descripción">
         <textarea required rows={3} value={description} onChange={(e) => setDescription(e.target.value)}
-          className="w-full rounded-xl border-2 border-slate-200 px-4 py-2 outline-none transition focus:border-blue-600 focus:ring-4 focus:ring-blue-600/10" />
+          className="w-full rounded-xl border-2 border-blue-200 bg-white/90 px-4 py-3 text-gray-900 placeholder-gray-500 outline-none transition-all duration-300 focus:border-yellow-500 focus:ring-4 focus:ring-yellow-100 focus:bg-white resize-none" 
+          placeholder="Describe la categoría y su propósito" />
       </FormField>
-      <div className="flex justify-end gap-3 pt-2">
+      <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
         <button type="button" onClick={onCancel}
-          className="rounded-full border-2 border-slate-200 px-4 py-2 font-semibold text-slate-600 transition hover:border-blue-600 hover:text-blue-600">
+          className="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-all duration-200">
           Cancelar
         </button>
         <button type="submit"
-          className="rounded-full bg-gradient-to-br from-blue-600 to-blue-700 px-4 py-2 font-semibold text-white shadow-[0_4px_15px_rgba(37,99,235,0.3)] transition hover:-translate-y-0.5 hover:shadow-[0_8px_25px_rgba(37,99,235,0.4)]">
+          className="px-6 py-3 bg-gradient-to-r from-blue-600 to-yellow-500 hover:from-blue-700 hover:to-yellow-600 text-white font-medium rounded-xl shadow-lg hover:shadow-xl transition-all duration-200">
           {defaultValues ? "Guardar Cambios" : "Crear Categoría"}
         </button>
       </div>
@@ -36,8 +38,8 @@ export default function CategoryForm({
 
 function FormField({ label, children }:{ label: string; children: React.ReactNode }) {
   return (
-    <label className="block text-sm font-semibold text-slate-700">
-      <span className="mb-1 block">{label}</span>
+    <label className="block">
+      <span className="block text-sm font-semibold text-gray-700 mb-2">{label}</span>
       {children}
     </label>
   );

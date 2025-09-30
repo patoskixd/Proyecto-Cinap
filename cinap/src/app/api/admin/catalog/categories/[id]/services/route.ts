@@ -1,30 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-const BACKEND =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  process.env.BACKEND_URL ??
-  "http://localhost:8000";
+import CreateService from "@application/admin-catalog/usecases/Service/CreateService";
+import { AdminCatalogBackendRepo } from "@infrastructure/http/bff/admin/catalog/AdminCatalogBackendRepo";
+import { appendSetCookies } from "@/app/api/_utils/cookies";
 
-export async function POST(
-  req: NextRequest,
-  ctx: { params: Promise<{ id: string }> }
-) {
-  const { id } = await ctx.params; 
-  const cookie = req.headers.get("cookie") ?? "";
-  const payload = await req.json().catch(() => ({}));
-  const res = await fetch(`${BACKEND}/admin/catalog/categories/${id}/services`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      cookie,
-      accept: "application/json",
-    },
-    credentials: "include",
-    body: JSON.stringify(payload),
-  });
-  const txt = await res.text();
-  let body: any = txt;
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.BACKEND_URL ?? "http://localhost:8000";
+export const dynamic = "force-dynamic"; export const revalidate = 0;
+
+export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
-    body = JSON.parse(txt);
-  } catch {}
-  return NextResponse.json(body, { status: res.status });
+    const { id } = await ctx.params;
+    const body = await req.json().catch(() => ({}));
+    const repo = new AdminCatalogBackendRepo(BACKEND, req.headers.get("cookie") ?? "");
+    const data = await new CreateService(repo).exec(id, {
+      name: body?.name ?? "",
+      durationMinutes: Number(body?.durationMinutes ?? 0),
+      active: body?.active ?? true,
+    });
+    const resp = NextResponse.json(data, { status: 201 });
+    appendSetCookies(repo.getSetCookies?.() ?? [], resp);
+    return resp;
+  } catch (e: any) {
+    return NextResponse.json({ detail: e.message }, { status: 400 });
+  }
 }

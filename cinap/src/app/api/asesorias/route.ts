@@ -1,38 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { forwardSetCookies } from "../_utils/cookies";
+import { CreateAsesoria } from "@application/asesorias/agendar/usecases/CreateAsesoria";
+import { AsesoriasBackendRepo } from "@infrastructure/http/bff/teacher/asesorias/agendar/SchedulingBackendRepo";
+import { appendSetCookies } from "@/app/api/_utils/cookies";
+import type { ReserveAsesoriaInput } from "@domain/scheduling";
 
-const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.BACKEND_URL ?? "http://localhost:8000";
-
+const BACKEND =
+  process.env.NEXT_PUBLIC_BACKEND_URL ??
+  process.env.BACKEND_URL ??
+  "http://localhost:8000";
 
 export async function POST(req: NextRequest) {
-  const cookie = req.headers.get("cookie") ?? "";
-  const body = await req.json().catch(() => ({})); 
+  try {
+    const raw = (await req.json().catch(() => ({}))) as any;
 
-  const payload =
-    body && typeof body === "object"
-      ? {
-          cupo_id: body.cupo_id ?? body.cupoId,
-          origen: body.origen ?? null,
-          notas: body.notas ?? null,
-        }
-      : {};
+    
+    const payload: ReserveAsesoriaInput = {
+      cupo_id: raw.cupo_id ?? raw.cupoId,
+      origen: raw.origen ?? null,
+      notas: raw.notas ?? null,
+    };
 
-  const upstream = await fetch(`${BACKEND}/api/asesorias`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      cookie,
-      accept: "application/json",
-    },
-    credentials: "include",
-    body: JSON.stringify(payload),
-  });
+    const repo = new AsesoriasBackendRepo(BACKEND, req.headers.get("cookie") ?? "");
+    const out = await new CreateAsesoria(repo).exec(payload);
 
-  const text = await upstream.text();
-  let data: any = text;
-  try { data = JSON.parse(text); } catch {}
-
-  const resp = NextResponse.json(data, { status: upstream.status });
-  forwardSetCookies(upstream, resp);
-  return resp;
+    const resp = NextResponse.json(out, { status: 200 });
+    appendSetCookies(repo.getSetCookies(), resp);
+    return resp;
+  } catch (e: any) {
+    return NextResponse.json({ detail: e.message }, { status: 400 });
+  }
 }

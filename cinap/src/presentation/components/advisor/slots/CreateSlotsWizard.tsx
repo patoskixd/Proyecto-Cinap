@@ -122,8 +122,11 @@ export default function CreateSlotsWizard() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-[900px] rounded-2xl bg-white p-8 text-center">
-        <span className="text-black">Cargando datos…</span>
+      <div className="mx-auto max-w-[900px] rounded-2xl bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 p-8 text-center shadow-lg">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-white border-t-transparent"></div>
+          <span className="text-white font-semibold">Cargando datos…</span>
+        </div>
       </div>
     );
   }

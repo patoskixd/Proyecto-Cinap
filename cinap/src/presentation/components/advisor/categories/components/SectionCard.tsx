@@ -9,12 +9,14 @@ type Props = {
 
 export default function SectionCard({ title, subtitle, children, className }: Props) {
   return (
-    <section className={`overflow-hidden rounded-2xl bg-white shadow-[0_10px_30px_rgba(0,0,0,0.06)] ring-1 ring-slate-100 ${className ?? ""}`}>
-      <div className="border-b border-slate-100 px-5 py-4">
-        <h2 className="text-lg font-semibold text-neutral-900">{title}</h2>
-        {subtitle && <p className="mt-0.5 text-sm text-neutral-600">{subtitle}</p>}
+    <section className={`overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-blue-100 ${className ?? ""}`}>
+      <div className="flex items-center justify-between border-b border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100 px-6 py-5">
+        <div>
+          <h2 className="text-xl font-semibold text-blue-900">{title}</h2>
+          {subtitle && <p className="mt-1 text-sm text-blue-700">{subtitle}</p>}
+        </div>
       </div>
-      <div className="p-5">{children}</div>
+      <div className="p-6">{children}</div>
     </section>
   );
 }
