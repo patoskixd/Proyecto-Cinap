@@ -1,36 +1,78 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Frontend (Next.js)
 
-## Getting Started
+El **Frontend** del Proyecto CINAP está desarrollado con **Next.js 15** bajo principios de **Arquitectura Limpia**, organizado en capas (**app, application, domain, infrastructure, presentation**).  
+Su función principal es proveer una interfaz moderna e intuitiva que conecta a los **Docentes**, **Asesores** y **Administradores** con los servicios del **Backend (FastAPI)** y el **Servidor MCP**.
 
-First, run the development server:
+---
+
+## Requisitos
+
+- **Node.js** >= 22
+- **pnpm** >= 9
+---
+
+## Instalación
+
+Accede al directorio del frontend e instala las dependencias:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+cd frontend
+pnpm install
+```
+Configura las variables de entorno copiando el archivo .env.local:
+```bash
+cp .env.local.example .env.local
+```
+Ejemplo de .env.local:
+
+```ini
+NEXT_PUBLIC_API_URL=http://localhost:8000
+BACKEND_BASE_URL=http://localhost:8000
+ASSISTANT_BASE_URL=http://localhost:8000
+NEXT_PUBLIC_API_BASE=http://localhost:8000
+
+```
+## Ejecución
+Para iniciar el frontend en desarrollo:
+```bash
 pnpm dev
-# or
-bun dev
+```
+El proyecto quedará disponible en:
+```bash
+http://localhost:3000
+
+```
+Para compilar y ejecutar en modo producción:
+```bash
+pnpm build
+pnpm start
+```
+## Estructura del Proyecto
+
+El frontend está organizado siguiendo Arquitectura Limpia y principios SOLID:
+```bash
+src/
+├── app/               # Entrypoint de Next.js (rutas App Router)
+├── application/       # Casos de uso y lógica de aplicación
+├── domain/            # Modelos de dominio (asesorías, usuarios, etc.)
+├── infrastructure/    # Gateways, integraciones 
+└── presentation/      # Componentes UI, hooks y vistas
+
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Integraciones
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Backend (FastAPI) → API REST para gestión de usuarios, asesorías y catálogos.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Servidor MCP → Asistente conversacional con conexión a Google Calendar.
 
-## Learn More
+- TailwindCSS → Estilado responsivo y utilitario.
 
-To learn more about Next.js, take a look at the following resources:
+## Scripts disponibles
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `pnpm dev` → Inicia el servidor de desarrollo con Turbopack.  
+- `pnpm build` → Compila el proyecto para producción.  
+- `pnpm start` → Inicia el servidor en modo producción.  
+- `pnpm lint` → Ejecuta el linter (ESLint + reglas Next.js).  
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
