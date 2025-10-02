@@ -1,6 +1,8 @@
+from contextlib import suppress
 import os, shlex
 import json
 from typing import Any, Dict, List
+import anyio
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client, StdioServerParameters
 from app.use_cases.ports.mcp_port import MCPPort
@@ -72,11 +74,23 @@ class MCPStdioClient(MCPPort):
             return r
 
     async def close(self):
-        async with astage("mcp.close"):
-            if self._session_ctx:
-                await self._session_ctx.__aexit__(None, None, None)
-                self._session_ctx = None
-                self.session = None
-            if self._stdio_ctx:
-                await self._stdio_ctx.__aexit__(None, None, None)
-                self._stdio_ctx = None
+        if self._session_ctx:
+            with anyio.CancelScope(shield=True):
+                with suppress(Exception):
+                    if getattr(self.session, "shutdown", None):
+                        await self.session.shutdown()
+                    elif getattr(self.session, "close", None):
+                        await self.session.close()
+
+                with suppress(GeneratorExit, RuntimeError, Exception):
+                    await self._session_ctx.__aexit__(None, None, None)
+
+            self._session_ctx = None
+            self.session = None
+
+        if self._stdio_ctx:
+            with anyio.CancelScope(shield=True):
+                with suppress(GeneratorExit, RuntimeError, Exception):
+                    await self._stdio_ctx.__aexit__(None, None, None)
+
+            self._stdio_ctx = None

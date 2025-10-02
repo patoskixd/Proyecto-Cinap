@@ -14,14 +14,15 @@ from app.frameworks_drivers.config.settings import REDIS_URL
 from app.frameworks_drivers.mcp.stdio_client import MCPStdioClient
 from app.frameworks_drivers.llm.langgraph_agent import LangGraphAgent
 from app.frameworks_drivers.config.settings import (
-    VLLM_BASE_URL, VLLM_API_KEY, LLM_MODEL, LLM_TEMP, LLM_TOP_P,
+    VLLM_BASE_URL, VLLM_API_KEY, LLM_MODEL, LLM_TEMP, LLM_TOP_P, MCP_CAL_COMMAND, MCP_CAL_ARGS, MCP_CAL_CWD
 )
 
 class Container:
     oauth: GoogleOAuthClient
     jwt: PyJWTService
 
-    mcp: MCPStdioClient | None
+    db_mcp: MCPStdioClient | None
+    cal_mcp: MCPStdioClient | None
     graph_agent: LangGraphAgent | None
     main_loop: asyncio.AbstractEventLoop | None
 
@@ -43,6 +44,9 @@ class Container:
         mcp_command: str = "node",
         mcp_args: str = "index.js",
         mcp_cwd: str = ".",
+        cal_mcp_command: str | None = None,
+        cal_mcp_args: str | None = None,
+        cal_mcp_cwd: str | None = None,
         llm_model_name: str = "Qwen/Qwen3-4B",
         langgraph_db_path: str = "checkpoints.db",
     ):
@@ -58,7 +62,12 @@ class Container:
         self.jwt = PyJWTService(secret=jwt_secret, issuer=jwt_issuer, minutes=int(jwt_minutes))
         
 
-        self.mcp = MCPStdioClient(mcp_command, mcp_args, mcp_cwd)
+        self.db_mcp = MCPStdioClient(mcp_command, mcp_args, mcp_cwd)
+        self.cal_mcp = MCPStdioClient(
+            cal_mcp_command or MCP_CAL_COMMAND,
+            cal_mcp_args or MCP_CAL_ARGS,
+            cal_mcp_cwd or MCP_CAL_CWD,
+        )
         self.graph_agent = None
         self.main_loop = None
         self._llm_model_name = llm_model_name or LLM_MODEL
@@ -86,9 +95,10 @@ class Container:
 
     async def startup(self):
         self.main_loop = asyncio.get_running_loop()
-        await self.mcp.connect()
+        await self.db_mcp.connect()
+        await self.cal_mcp.connect()
         self.graph_agent = LangGraphAgent(
-            self.mcp,
+            mcps={"db": self.db_mcp, "cal": self.cal_mcp},
             model_name=self._llm_model_name,
             db_path=self._langgraph_db_path,
             main_loop=self.main_loop,
@@ -102,8 +112,10 @@ class Container:
         await self.graph_agent.startup()
 
     async def shutdown(self):
-        if self.mcp:
-            await self.mcp.close()
+        if self.db_mcp:
+            await self.db_mcp.close()
+        if self.cal_mcp:
+            await self.cal_mcp.close()
         if self.redis:
             await self.redis.close()
 

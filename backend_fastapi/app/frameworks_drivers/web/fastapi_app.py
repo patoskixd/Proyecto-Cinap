@@ -164,6 +164,9 @@ async def graph_chat(req: GraphChatRequest, request: Request):
         client_ip=(request.client.host if request.client else None),
     )
 
+    if container.graph_agent:
+        container.graph_agent.set_current_user(getattr(request.state, "user", None))
+
     await _validate_graph_chat(req)
 
     async with astage("agent.invoke"):

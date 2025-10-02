@@ -14,6 +14,14 @@ from app.frameworks_drivers.mcp.stdio_client import MCPStdioClient
 from app.observability.confirm_store import is_confirmation
 from app.observability.metrics import set_meta, stage, astage, measure_stage
 from app.observability.metrics_llm import MetricsCallbackHandler
+try:
+    from langchain_ollama import ChatOllama
+except Exception:
+    ChatOllama = None
+from app.frameworks_drivers.config.settings import (
+    USE_OLLAMA,
+    OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TEMP, OLLAMA_TOP_P,
+)
 
 _TOOL_JSON_RE = re.compile(
     r"^\s*```(?:json)?\s*\{.*?(?:\"name\"|\"function\")\s*:\s*\"[^\"]+\".*?(?:\"arguments\"|\"parameters\")\s*:\s*\{.*?\}\s*\}\s*```"
@@ -235,8 +243,9 @@ class LangGraphRunner:
             return await asyncio.to_thread(_run)
 
 class LangGraphAgent:
-    def __init__(self, mcp: MCPStdioClient, *, model_name: str, db_path: str, main_loop: asyncio.AbstractEventLoop):
-        self._mcp = mcp
+    def __init__(self, mcps: dict[str, MCPStdioClient], *, model_name: str, db_path: str, main_loop):
+        self._mcps = mcps
+        self._tool_to_client: dict[str, str] = {}
         self._model_name = model_name
         self._db_path = db_path
         self._runner: LangGraphRunner | None = None
@@ -246,9 +255,13 @@ class LangGraphAgent:
     def set_confirm_store(self, store) -> None:
         self._confirm_store = store
 
+    def set_current_user(self, user: dict | None):
+        self._current_user = user or {}
+
     def _make_tool(self, name: str, description: str, ModelIn: type[BaseModel]) -> StructuredTool:
         async def caller_async(**kwargs) -> str:
             set_meta(route="inline_tool")
+            client = self._client_for_tool(name)
 
             async with astage("agent.mcp.total", extra={"tool": name}):
                 async with astage("agent.mcp.normalize"):
@@ -256,6 +269,11 @@ class LangGraphAgent:
                         args = _normalize_event_delete_by_title_args(kwargs)
                     elif name == "event_update":
                         args = _normalize_event_update_args(kwargs)
+                    elif name == "book_asesoria" and "docente_id" not in args:
+                        user = getattr(self, "_current_user", {}) or {}
+                        sub = user.get("sub")
+                        if sub:
+                            args["docente_id"] = sub
                     else:
                         args = kwargs
 
@@ -278,20 +296,20 @@ class LangGraphAgent:
                             if not exists:
                                 set_meta(confirm_store_verify="miss")
                         async with astage("agent.mcp.total", extra={"tool": name}):
-                            res = await self._mcp.call_tool(name, {**args, "confirm": False})
+                            res = await client.call_tool(name, {**args, "confirm": False})
 
                     # Ejecutar
                     async with astage("mcp.serialize", extra={"tool": name}):
                         pass
                     async with astage("mcp.rpc", extra={"tool": name}):
-                        res = await self._mcp.call_tool(name, args)
+                        res = await client.call_tool(name, args)
                     async with astage("mcp.deserialize", extra={"tool": name}):
                         pass
                     return _format_mcp_result(res, name)
 
                 # Llamar tool
                 async with astage("agent.mcp.total", extra={"tool": name}):
-                    res = await self._mcp.call_tool(name, args)
+                    res = await client.call_tool(name, args)
                 return _format_mcp_result(res, name)
 
         def caller_sync(**kwargs) -> str:
@@ -308,19 +326,28 @@ class LangGraphAgent:
         )
 
     async def _build_tools_from_mcp(self) -> list[StructuredTool]:
-        specs = await self._mcp.list_tools_openai_schema()
         tools: list[StructuredTool] = []
+        for label, client in self._mcps.items():
+            specs = await client.list_tools_openai_schema()
+            for spec in specs:
+                fn = spec.get("function", {}) or {}
+                name = str(fn.get("name") or "")
+                if not name:
+                    continue
+                public_name = name
 
-        for spec in specs:
-            fn = spec.get("function", {}) or {}
-            name = str(fn.get("name") or "")
-            if not name:
-                continue
-            schema = fn.get("parameters") or {"type": "object", "properties": {}}
-            ModelIn = _pydantic_model_from_json_schema(f"{name}_Input", schema)
-            tools.append(self._make_tool(name, fn.get("description") or "", ModelIn))
+                self._tool_to_client[public_name] = label
 
+                schema = fn.get("parameters") or {"type": "object", "properties": {}}
+                ModelIn = _pydantic_model_from_json_schema(f"{public_name}_Input", schema)
+                tools.append(self._make_tool(public_name, fn.get("description") or "", ModelIn))
         return tools
+    
+    def _client_for_tool(self, tool_name: str) -> MCPStdioClient:
+        label = self._tool_to_client.get(tool_name)
+        if not label:
+            label = next(iter(self._mcps.keys()))
+        return self._mcps[label]
     
     def configure_openai(self, *, base_url: str, api_key: str,
                          temperature: float | None = None, top_p: float | None = None):
@@ -330,15 +357,26 @@ class LangGraphAgent:
         if top_p is not None: self._top_p = top_p
 
     async def startup(self):
-        llm = ChatOpenAI(
-            model=self._model_name,
-            base_url=getattr(self, "_base_url", None),
-            api_key=getattr(self, "_api_key", None),
-            temperature=getattr(self, "_temperature", 0.2),
-            top_p=getattr(self, "_top_p", 0.95),
-            timeout=60,
-            callbacks=[MetricsCallbackHandler(stage_name="llm.http")]
-        )
+        if USE_OLLAMA:
+            if ChatOllama is None:
+                raise RuntimeError("langchain_ollama no está instalado. Instala: pip install langchain-ollama")
+            llm = ChatOllama(
+                model=OLLAMA_MODEL,
+                base_url=OLLAMA_BASE_URL,
+                temperature=OLLAMA_TEMP,
+                top_p=OLLAMA_TOP_P,
+                timeout=60
+            )
+        else:
+            llm = ChatOpenAI(
+                model=self._model_name,
+                base_url=getattr(self, "_base_url", None),
+                api_key=getattr(self, "_api_key", None),
+                temperature=getattr(self, "_temperature", 0.2),
+                top_p=getattr(self, "_top_p", 0.95),
+                timeout=60,
+                callbacks=[MetricsCallbackHandler(stage_name="llm.http")]
+            )
 
         tools = await self._build_tools_from_mcp()
         conn = sqlite3.connect(self._db_path, check_same_thread=False)
@@ -349,6 +387,17 @@ class LangGraphAgent:
         SYSTEM_STATIC_EN = """
         You are a tool-using assistant. 
         Your answers must always be in Spanish. 
+
+        TOOL HINTS (Cinap)
+        - See advisers: use the tool `list_advisors`.
+        - See services: use the tool `list_services`.
+        - For booking:
+        1) `resolve_advisor` and `resolve_service` if the user gave text.
+        2) `detect_overlaps(include_calendar=true)` to avoid overlaps.
+        3) `check_availability` to obtain slot (id).
+        4) `book_asesoria` with confirmation (preview → confirm).
+        5) Next `event_create` with confirmation (preview → confirm).
+        - Never create a calendar event without reserving first in the DB
 
         TOOL USE POLICY (Calendar)
         - Never perform destructive or state-changing actions without an explicit two-step confirmation.
@@ -383,7 +432,8 @@ class LangGraphAgent:
                 args["confirm"] = True
                 set_meta(route="confirm_fastpath", tool=tool)
                 async with astage("confirm.fastpath.mcp", extra={"tool": tool}):
-                    res = await self._mcp.call_tool(tool, args)
+                    client = self._client_for_tool(tool)
+                    res = await client.call_tool(tool, args)
                 return _strip_think(_format_mcp_result(res, tool))
             set_meta(fastpath="miss_no_pending")
 
