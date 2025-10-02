@@ -1,0 +1,25 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+timings.jsonl
+
+uv.lock
+.python-version
+
+# Virtual environments
+.venv
+
+# Config files
+.env
+
+# DB
+checkpoints.db
+*.db-shm
+*.db-wal
+timings.jsonl
+.jsonl
