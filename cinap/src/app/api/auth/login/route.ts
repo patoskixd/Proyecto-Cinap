@@ -1,45 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
-import { forwardSetCookies } from "@/app/api/_utils/cookies";
+import { makeLogin } from "@application/auth/usecases/Login";
+import { AuthBackendRepo } from "@infrastructure/http/bff/auth/AuthBackendRepo";
+import { appendSetCookies } from "@/app/api/_utils/cookies";
 
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.BACKEND_URL ?? "http://localhost:8000";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const BASE = process.env.BACKEND_BASE_URL ?? "http://localhost:8000";
-
 export async function POST(req: NextRequest) {
   try {
-
     const body = await req.json().catch(() => ({}));
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const { email, password } = body;
 
-    const cookie = req.headers.get("cookie");
-    if (cookie) headers.cookie = cookie;
+    if (!email || !password) {
+      return NextResponse.json(
+        { detail: "Email and password are required" },
+        { status: 400, headers: { "Cache-Control": "no-store" } }
+      );
+    }
 
-    const upstream = await fetch(`${BASE}/auth/login`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      cache: "no-store",
-      redirect: "manual",
+    const repo = new AuthBackendRepo(BACKEND, req.headers.get("cookie") ?? "");
+    const loginUC = makeLogin(repo);
+    const result = await loginUC(email, password);
+
+    const resp = NextResponse.json(result, { 
+      status: 200,
+      headers: { "Cache-Control": "no-store" }
     });
-
-
-    const resp = new NextResponse(upstream.body, {
-      status: upstream.status,
-      headers: {
-        "Cache-Control": "no-store",
-        ...(upstream.headers.get("content-type")
-          ? { "content-type": upstream.headers.get("content-type") as string }
-          : {}),
-      },
-    });
-
-    forwardSetCookies(upstream, resp); 
+    appendSetCookies(repo.getSetCookies(), resp);
     return resp;
-  } catch (e) {
+  } catch (e: any) {
     return NextResponse.json(
-      { detail: "Login proxy failed" },
-      { status: 500, headers: { "Cache-Control": "no-store" } }
+      { detail: e.message || "Login failed" },
+      { status: 400, headers: { "Cache-Control": "no-store" } }
     );
   }
 }

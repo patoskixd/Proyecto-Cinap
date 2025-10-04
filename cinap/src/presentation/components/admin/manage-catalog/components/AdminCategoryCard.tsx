@@ -43,7 +43,7 @@ export default function AdminCategoryCard({
                   type="button" title="Desactivar" aria-label="Desactivar" onClick={onDeactivate}
                   className="group/btn flex h-8 w-8 items-center justify-center rounded-xl bg-red-100/80 text-red-600 transition-all duration-200 hover:bg-red-200 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-red-300">
                   <svg className="h-4 w-4 transition-transform duration-200 group-hover/btn:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </button>
               ) : (

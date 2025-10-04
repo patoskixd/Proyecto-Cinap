@@ -1,5 +1,6 @@
 import os, shlex
 import json
+import asyncio
 from typing import Any, Dict, List
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client, StdioServerParameters
@@ -73,10 +74,19 @@ class MCPStdioClient(MCPPort):
 
     async def close(self):
         async with astage("mcp.close"):
-            if self._session_ctx:
-                await self._session_ctx.__aexit__(None, None, None)
-                self._session_ctx = None
-                self.session = None
+            if self._session_ctx and self.session:
+                try:
+                    await self._session_ctx.__aexit__(None, None, None)
+                except (asyncio.CancelledError, RuntimeError, GeneratorExit, Exception) as e:
+                    pass
+                finally:
+                    self._session_ctx = None
+                    self.session = None
+            
             if self._stdio_ctx:
-                await self._stdio_ctx.__aexit__(None, None, None)
-                self._stdio_ctx = None
+                try:
+                    await self._stdio_ctx.__aexit__(None, None, None)
+                except (asyncio.CancelledError, RuntimeError, GeneratorExit, Exception) as e:
+                    pass
+                finally:
+                    self._stdio_ctx = None

@@ -1,41 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
-import { forwardSetCookies } from "@/app/api/_utils/cookies";
+import { makeSignOut } from "@application/auth/usecases/SignOut";
+import { AuthBackendRepo } from "@infrastructure/http/bff/auth/AuthBackendRepo";
+import { appendSetCookies } from "@/app/api/_utils/cookies";
 
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.BACKEND_URL ?? "http://localhost:8000";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const BASE = process.env.BACKEND_BASE_URL ?? "http://localhost:8000";
-
 export async function POST(req: NextRequest) {
   try {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    const cookie = req.headers.get("cookie");
-    if (cookie) headers.cookie = cookie;
-    const auth = req.headers.get("authorization");
-    if (auth) headers.authorization = auth;
+    const repo = new AuthBackendRepo(BACKEND, req.headers.get("cookie") ?? "");
+    const signOutUC = makeSignOut(repo);
+    await signOutUC();
 
-    const upstream = await fetch(`${BASE}/auth/logout`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({}),
-      cache: "no-store",
+    const resp = new NextResponse(null, { 
+      status: 204,
+      headers: { "Cache-Control": "no-store" }
     });
-
-    if (upstream.status === 204) {
-      const resp = new NextResponse(null, { status: 204 });
-      resp.headers.set("Cache-Control", "no-store");
-      forwardSetCookies(upstream, resp);  
-      return resp;
-    }
-
-    const data = await upstream.json().catch(() => ({}));
-    const resp = NextResponse.json(data, { status: upstream.status });
-    resp.headers.set("Cache-Control", "no-store");
-
-    forwardSetCookies(upstream, resp);    
-
+    appendSetCookies(repo.getSetCookies(), resp);
     return resp;
-  } catch {
-    return NextResponse.json({ ok: false, error: "Logout failed" }, { status: 500, headers: { "Cache-Control": "no-store" } });
+  } catch (e: any) {
+    return NextResponse.json(
+      { detail: e.message || "Logout failed" },
+      { status: 500, headers: { "Cache-Control": "no-store" } }
+    );
   }
 }

@@ -5,21 +5,29 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.use_cases.asesorias.create_asesorias import CreateAsesoria
+from app.use_cases.asesorias.create_asesoria_and_invite import CreateAsesoriaAndInvite
 from app.use_cases.ports.asesoria_port import CreateAsesoriaIn
 from app.use_cases.ports.token_port import JwtPort
 from app.interface_adapters.gateways.db.sqlalchemy_asesoria_repo import SqlAlchemyAsesoriaRepo
-from app.interface_adapters.gateways.db.sqlalchemy_slots_repo import SqlAlchemySlotsRepo
+from app.interface_adapters.gateways.db.sqlalchemy_slot_reader import SqlAlchemySlotReader
+from app.interface_adapters.gateways.db.sqlalchemy_user_repo import SqlAlchemyUserRepo
+from app.interface_adapters.gateways.calendar.google_calendar_client import GoogleCalendarClient
+from app.frameworks_drivers.config.settings import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 from app.interface_adapters.orm.models_scheduling import (
     CategoriaModel, ServicioModel, AsesorPerfilModel, AsesorServicioModel, CupoModel
 )
 from app.interface_adapters.orm.models_auth import UsuarioModel
+import uuid
+from app.frameworks_drivers.config.settings import (
+    GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, TEACHER_ROLE_ID
+)
 
 
 class CreateAsesoriaBody(BaseModel):
     cupoId: str = Field(..., alias="cupo_id")
     origen: str | None = None
     notas: str | None = None
+
 
 def make_asesorias_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: JwtPort) -> APIRouter:
     r = APIRouter(prefix="/api/asesorias", tags=["asesorias"])
@@ -39,10 +47,22 @@ def make_asesorias_router(*, get_session_dep: Callable[[], AsyncSession], jwt_po
         body: CreateAsesoriaBody,
         db: AsyncSession = Depends(get_session_dep),
     ):
+
         data = ensure_user(request)
         usuario_id = str(data.get("sub"))
-        usecase = CreateAsesoria(SqlAlchemyAsesoriaRepo(db))
-        out = await usecase.exec(
+        asesoria_repo = SqlAlchemyAsesoriaRepo(db)      
+        slot_reader  = SqlAlchemySlotReader(db)         
+        user_repo    = SqlAlchemyUserRepo(db, default_role_id=None)  
+
+        cal = GoogleCalendarClient(
+            client_id=GOOGLE_CLIENT_ID,
+            client_secret=GOOGLE_CLIENT_SECRET,
+            get_refresh_token_by_usuario_id=user_repo.get_refresh_token_by_usuario_id,
+        )
+        uc = CreateAsesoriaAndInvite(asesoria_repo, cal, slot_reader)
+
+
+        out = await uc.exec(
             CreateAsesoriaIn(
                 docente_usuario_id=usuario_id,
                 cupo_id=body.cupoId,
@@ -70,11 +90,12 @@ def make_asesorias_router(*, get_session_dep: Callable[[], AsyncSession], jwt_po
             .where(CupoModel.estado == "ABIERTO")
         )).all()
         servicios_con_cupo = set(str(sid) for sid, _ in cupos_abiertos)
-        asesores_por_servicio = {}
+        asesores_por_servicio: dict[str, set[str]] = {}
         for sid, aid in cupos_abiertos:
             asesores_por_servicio.setdefault(str(sid), set()).add(str(aid))
+
         svcs = (await db.execute(select(ServicioModel).where(ServicioModel.activo == True))).scalars().all()
-        services_by_cat = {}
+        services_by_cat: dict[str, list[dict]] = {}
         for s in svcs:
             if str(s.id) not in servicios_con_cupo:
                 continue
@@ -85,11 +106,13 @@ def make_asesorias_router(*, get_session_dep: Callable[[], AsyncSession], jwt_po
                 "description": "",
                 "duration": f"{s.duracion_minutos} min",
             })
+
         cats = (await db.execute(select(CategoriaModel).where(CategoriaModel.activo == True))).scalars().all()
         categories = [
             {"id": str(c.id), "icon": "🎓", "name": c.nombre, "description": c.descripcion or ""}
             for c in cats if str(c.id) in services_by_cat
         ]
+
         asesores = (await db.execute(
             select(AsesorPerfilModel, UsuarioModel)
             .join(UsuarioModel, UsuarioModel.id == AsesorPerfilModel.usuario_id)
@@ -98,7 +121,7 @@ def make_asesorias_router(*, get_session_dep: Callable[[], AsyncSession], jwt_po
         asesores_dict = {str(a[0].id): a for a in asesores}
 
         asesores_servicio = (await db.execute(select(AsesorServicioModel))).scalars().all()
-        advisors_by_service = {}
+        advisors_by_service: dict[str, list[dict]] = {}
         for asv in asesores_servicio:
             sid = str(asv.servicio_id)
             aid = str(asv.asesor_id)
@@ -115,7 +138,6 @@ def make_asesorias_router(*, get_session_dep: Callable[[], AsyncSession], jwt_po
                     "email": usuario.email,
                     "specialties": [],
                 })
-
 
         times = [f"{h:02d}:00" for h in range(8, 19)]
 

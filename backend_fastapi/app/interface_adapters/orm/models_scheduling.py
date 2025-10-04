@@ -2,7 +2,7 @@ from __future__ import annotations
 import uuid
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped
+from sqlalchemy.orm import Mapped, relationship
 from app.interface_adapters.orm.base import Base
 from enum import Enum as PyEnum
 
@@ -11,6 +11,10 @@ class AsesorPerfilModel(Base):
     id: Mapped[uuid.UUID] = sa.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     usuario_id: Mapped[uuid.UUID] = sa.Column(UUID(as_uuid=True), sa.ForeignKey("usuario.id", ondelete="CASCADE"), nullable=False)
     activo: Mapped[bool] = sa.Column(sa.Boolean, nullable=False, server_default=sa.text("true"))
+    
+
+    usuario = relationship("UsuarioModel", lazy="selectin")
+    servicios = relationship("AsesorServicioModel", back_populates="asesor", lazy="selectin")
 
 class CategoriaModel(Base):
     __tablename__ = "categoria"
@@ -26,12 +30,15 @@ class ServicioModel(Base):
     nombre: Mapped[str] = sa.Column(sa.Text, nullable=False)
     duracion_minutos: Mapped[int] = sa.Column(sa.Integer, nullable=False)
     activo: Mapped[bool] = sa.Column(sa.Boolean, nullable=False, server_default=sa.text("true"))
+    categoria = relationship("CategoriaModel", lazy="selectin")
 
 class AsesorServicioModel(Base):
     __tablename__ = "asesor_servicio"
     id: Mapped[uuid.UUID] = sa.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     asesor_id: Mapped[uuid.UUID] = sa.Column(UUID(as_uuid=True), sa.ForeignKey("asesor_perfil.id", ondelete="CASCADE"), nullable=False)
     servicio_id: Mapped[uuid.UUID] = sa.Column(UUID(as_uuid=True), sa.ForeignKey("servicio.id", ondelete="RESTRICT"), nullable=False)
+    asesor = relationship("AsesorPerfilModel", back_populates="servicios")
+    servicio = relationship("ServicioModel", lazy="selectin")
 
 class CampusModel(Base):
     __tablename__ = "campus"
