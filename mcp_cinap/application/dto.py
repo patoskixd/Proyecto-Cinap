@@ -1,0 +1,35 @@
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional, List
+from uuid import UUID
+
+@dataclass
+class AvailabilityIn:
+    asesor_id: UUID
+    servicio_id: Optional[UUID]
+    start: datetime
+    end: datetime
+    page: int = 1
+    per_page: int = 50
+
+@dataclass
+class SlotOut:
+    id: UUID
+    inicio: datetime
+    fin: datetime
+    servicio_id: UUID
+
+@dataclass
+class OverlapIn:
+    asesor_id: UUID
+    start: datetime
+    end: datetime
+    include_calendar: bool = False
+
+@dataclass
+class OverlapOut:
+    source: str
+    id: Optional[UUID]
+    inicio: datetime
+    fin: datetime
+    estado: Optional[str] = None

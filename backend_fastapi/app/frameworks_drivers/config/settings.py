@@ -31,6 +31,10 @@ MCP_COMMAND  = _get("MCP_COMMAND", "node")
 MCP_ARGS     = _get("MCP_ARGS", "index.js")
 MCP_CWD      = _get("MCP_CWD", ".")
 
+MCP_CAL_COMMAND  = _get("MCP_CAL_COMMAND", "node")
+MCP_CAL_ARGS     = _get("MCP_CAL_ARGS", "index.js")
+MCP_CAL_CWD      = _get("MCP_CAL_CWD", ".")
+
 API_DEBUG    = _get_bool("API_DEBUG", True)
 
 CORS_ORIGINS = [o.strip() for o in _get("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
@@ -57,6 +61,13 @@ FRONTEND_ORIGIN = _get("FRONTEND_ORIGIN", "http://localhost:3000")
 
 TEACHER_ROLE_ID = _get("TEACHER_ROLE_ID", "00000000-0000-0000-0000-000000000001")
 
+USE_OLLAMA = os.getenv("USE_OLLAMA", "0") in ("1", "true", "True")
+
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
+OLLAMA_TEMP = float(os.getenv("OLLAMA_TEMP"))
+OLLAMA_TOP_P = float(os.getenv("OLLAMA_TOP_P"))
+
 VLLM_BASE_URL = _get("VLLM_BASE_URL")
 VLLM_API_KEY  = _get("VLLM_API_KEY", "dummy")
 LLM_MODEL     = _get("LLM_MODEL", "Qwen/Qwen3-4B")
@@ -71,4 +82,3 @@ ASR_BASE_URL   = _get("ASR_BASE_URL", "http://localhost:8001")
 ASR_MODEL_NAME = _get("ASR_MODEL_NAME", "clu-ling/whisper-large-v2-spanish")
 ASR_API_KEY    = _get("ASR_API_KEY", "EMPTY")
 ASR_LANG       = _get("ASR_LANG", "es")
-
