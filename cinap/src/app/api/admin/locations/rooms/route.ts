@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import ListRooms from "@application/admin-location/usecases/Rooms/ListRooms";
-import CreateRoom from "@application/admin-location/usecases/Rooms/CreateRooms";
+import ListRooms from "@/application/admin/location/usecases/Rooms/ListRooms";
+import CreateRoom from "@/application/admin/location/usecases/Rooms/CreateRooms";
 import { AdminLocationBackendRepo } from "@infrastructure/http/bff/admin/locations/AdminLocationBackendRepo";
 import { appendSetCookies } from "@/app/api/_utils/cookies";
 

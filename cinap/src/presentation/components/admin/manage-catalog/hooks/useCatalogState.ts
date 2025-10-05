@@ -1,19 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { AdminCategory, AdminService } from "@domain/adminCatalog";
-import { AdminCatalogHttpRepo } from "@infrastructure/admin-catalog/AdminCatalogHttpRepo";
+import type { AdminCategory, AdminService } from "@/domain/admin/catalog";
+import { AdminCatalogHttpRepo } from "@/infrastructure/admin/catalog/AdminCatalogHttpRepo";
 
 // Use cases (según tus rutas actuales)
-import ListCategories from "@/application/admin-catalog/usecases/ListCategories";
-import CreateCategory from "@/application/admin-catalog/usecases/Category/CreateCategory";
-import UpdateCategory from "@/application/admin-catalog/usecases/Category/UpdateCategory";
-import DeleteCategory from "@/application/admin-catalog/usecases/Category/DeleteCategory";
-import ReactivateCategory from "@/application/admin-catalog/usecases/Category/ReactivateCategory";
+import ListCategories from "@/application/admin/catalog/usecases/ListCategories";
+import CreateCategory from "@/application/admin/catalog/usecases/Category/CreateCategory";
+import UpdateCategory from "@/application/admin/catalog/usecases/Category/UpdateCategory";
+import DeleteCategory from "@/application/admin/catalog/usecases/Category/DeleteCategory";
+import ReactivateCategory from "@/application/admin/catalog/usecases/Category/ReactivateCategory";
 
-import CreateService from "@/application/admin-catalog/usecases/Service/CreateService";
-import UpdateService from "@/application/admin-catalog/usecases/Service/UpdateService";
-import DeleteService from "@/application/admin-catalog/usecases/Service/DeleteService";
+import CreateService from "@/application/admin/catalog/usecases/Service/CreateService";
+import UpdateService from "@/application/admin/catalog/usecases/Service/UpdateService";
+import DeleteService from "@/application/admin/catalog/usecases/Service/DeleteService";
 
 type EditOpenState = { open: boolean; category: AdminCategory | null };
 

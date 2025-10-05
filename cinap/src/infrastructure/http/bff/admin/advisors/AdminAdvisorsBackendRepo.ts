@@ -1,11 +1,11 @@
-import type { AdminAdvisorRepo } from "@application/admin-advisors/ports/AdminAdvisorRepo";
+import type { AdminAdvisorRepo } from "@/application/admin/advisors/ports/AdminAdvisorRepo";
 import type { 
   Advisor, 
   AdvisorId, 
   RegisterAdvisorRequest, 
   UpdateAdvisorRequest,
   AdvisorServiceInfo
-} from "@domain/adminAdvisors";
+} from "@/domain/admin/advisors";
 
 export class AdminAdvisorsBackendRepo implements AdminAdvisorRepo {
   private readonly baseUrl: string;

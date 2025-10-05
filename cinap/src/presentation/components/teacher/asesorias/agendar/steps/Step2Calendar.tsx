@@ -1,6 +1,6 @@
 "use client";
 
-import type { FoundSlot } from "@/domain/scheduling";
+import type { FoundSlot } from "@/domain/teacher/scheduling";
 import type { WizardState } from "../types";
 import { WEEKDAYS, buildMonthGrid, isPastDate, isSameDay, monthLabelES, weekIndexMon0 } from "../utils/date";
 import { cx } from "../utils/cx";

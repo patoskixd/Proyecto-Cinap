@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ListAdvisors } from "@application/admin-advisors/usecases/ListAdvisors";
-import { RegisterAdvisor } from "@application/admin-advisors/usecases/RegisterAdvisor";
+import { ListAdvisors } from "@/application/admin/advisors/usecases/ListAdvisors";
+import { RegisterAdvisor } from "@/application/admin/advisors/usecases/RegisterAdvisor";
 import { AdminAdvisorsBackendRepo } from "@infrastructure/http/bff/admin/advisors/AdminAdvisorsBackendRepo";
 import { appendSetCookies } from "@/app/api/_utils/cookies";
 

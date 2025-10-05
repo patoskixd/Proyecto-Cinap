@@ -3,11 +3,13 @@ import type { Me } from "@/domain/auth";
 
 export class AuthBackendRepo implements AuthRepo {
   private lastSetCookies: string[] = [];
+  private readonly baseUrl: string;
+  private readonly cookie: string;
 
-  constructor(
-    private readonly baseUrl: string,
-    private readonly cookie: string,
-  ) {}
+  constructor(cookie: string) {
+    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.cookie = cookie;
+  }
 
   getSetCookies(): string[] {
     return this.lastSetCookies;

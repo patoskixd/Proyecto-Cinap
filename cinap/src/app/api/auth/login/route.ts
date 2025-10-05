@@ -3,7 +3,9 @@ import { makeLogin } from "@application/auth/usecases/Login";
 import { AuthBackendRepo } from "@infrastructure/http/bff/auth/AuthBackendRepo";
 import { appendSetCookies } from "@/app/api/_utils/cookies";
 
-const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.BACKEND_URL ?? "http://localhost:8000";
+function getCookieString(req: NextRequest): string {
+  return req.headers.get("cookie") ?? "";
+}
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
@@ -19,7 +21,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const repo = new AuthBackendRepo(BACKEND, req.headers.get("cookie") ?? "");
+    const repo = new AuthBackendRepo(getCookieString(req));
     const loginUC = makeLogin(repo);
     const result = await loginUC(email, password);
 

@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { AdvisorCatalog } from "@domain/advisorCatalog";
-import { GetAdvisorCatalog } from "@application/advisor-catalog/usecases/GetAdvisorCatalog";
-import { AdvisorCatalogHttpRepo } from "@infrastructure/advisor-catalog/AdvisorCatalogHttpRepo";
+import type { AdvisorCatalog } from "@/domain/advisor/catalog";
+import { GetAdvisorCatalog } from "@/application/advisor/catalog/usecases/GetAdvisorCatalog";
+import { AdvisorCatalogHttpRepo } from "@/infrastructure/advisor/catalog/AdvisorCatalogHttpRepo";
 
 
 const repo = new AdvisorCatalogHttpRepo();

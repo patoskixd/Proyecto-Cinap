@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
-import type { Advisor, AdvisorBasicInfo, AdvisorServiceRef, CategoryId } from "@/domain/adminAdvisors";
+import type { Advisor, AdvisorBasicInfo, AdvisorServiceRef, CategoryId } from "@/domain/admin/advisors";
 
 type CatalogCategory = { id: string; name: string; icon?: string };
 type CatalogService  = { id: string; name: string; description?: string; duration?: string };

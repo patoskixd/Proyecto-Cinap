@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import ReactivateCampus from "@application/admin-location/usecases/Campus/ReactivateCampus";
+import ReactivateCampus from "@/application/admin/location/usecases/Campus/ReactivateCampus";
 import { AdminLocationBackendRepo } from "@infrastructure/http/bff/admin/locations/AdminLocationBackendRepo";
 import { appendSetCookies } from "@/app/api/_utils/cookies";
 

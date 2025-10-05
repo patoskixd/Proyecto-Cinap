@@ -1,6 +1,6 @@
 "use client";
 import type { Category, CategoryId, Service } from "../types";
-import type { Resource } from "@domain/slots";
+import type { Resource } from "@/domain/advisor/slots";
 import { formatEsDate } from "../utils/date";
 
 function Row({ label, value }: { label: string; value: string }) {

@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GetPendingConfirmations } from "@application/confirmations/usecases/GetPendingConfirmations";
+import { GetPendingConfirmations } from "@/application/advisor/confirmations/usecases/GetPendingConfirmations";
 import { ConfirmationsBackendRepo } from "@infrastructure/http/bff/advisor/confirmations/ConfirmationsBackendRepo";
 
-const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.BACKEND_URL ?? "http://localhost:8000";
+function getCookieString(req: NextRequest): string {
+  return req.headers.get("cookie") ?? "";
+}
 
 export async function GET(req: NextRequest) {
   try {
-    const repo = new ConfirmationsBackendRepo(BACKEND, req.headers.get("cookie") ?? "");
+    const repo = new ConfirmationsBackendRepo(getCookieString(req));
     const data = await new GetPendingConfirmations(repo).exec();
     return NextResponse.json(data, { status: 200 });
   } catch (e: any) {

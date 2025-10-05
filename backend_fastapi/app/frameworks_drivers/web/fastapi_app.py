@@ -28,6 +28,7 @@ from app.interface_adapters.controllers.telegram_link_router import make_telegra
 from app.interface_adapters.controllers.admin_catalog_router import make_admin_catalog_router  
 from app.interface_adapters.controllers.admin_location_router import make_admin_location_router
 from app.interface_adapters.controllers.admin_advisors_router import make_admin_advisors_router
+from app.interface_adapters.controllers.admin_teachers_router import make_admin_teachers_router
 
 from app.observability.middleware import JSONTimingMiddleware
 from app.observability.metrics import measure_stage, set_meta, stage, astage
@@ -243,3 +244,9 @@ admin_advisors_router = make_admin_advisors_router(
 app.include_router(admin_advisors_router)
 
 
+
+admin_teachers_router = make_admin_teachers_router(
+    get_session_dep=get_session,
+    jwt_port=container.jwt
+)
+app.include_router(admin_teachers_router)

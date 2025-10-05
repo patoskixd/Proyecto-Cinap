@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import type { Role } from "@/domain/auth";
 import type { DashboardData } from "@/application/dashboard/ports/DashboardRepo";
 import { GetDashboardData } from "@/application/dashboard/usecases/GetDashboardData";
-import { InMemoryReservationsRepo } from "@/infrastructure/asesorias/InMemoryReservationsRepo";
+import { InMemoryReservationsRepo } from "@/infrastructure/teachers/asesorias/InMemoryReservationsRepo";
 
 const EMPTY_DATA: DashboardData = {
   isCalendarConnected: false,

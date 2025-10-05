@@ -1,4 +1,4 @@
-import type { WeekdayId } from "@domain/slots";
+import type { WeekdayId } from "@/domain/advisor/slots";
 
 export const WEEKDAYS_UI = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 export const weekIndexMon0 = (d: Date) => (d.getDay() + 6) % 7;

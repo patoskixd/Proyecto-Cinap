@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import type { Resource } from "@domain/slots";
+import type { Resource } from "@/domain/advisor/slots";
 
 type Props = {
   resources: Resource[];

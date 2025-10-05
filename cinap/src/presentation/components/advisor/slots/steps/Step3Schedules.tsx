@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { normalizeSchedules, type UIRule } from "@application/slots/usecases/NormalizeSchedules";
+import { normalizeSchedules, type UIRule } from "@/application/advisor/slots/usecases/NormalizeSchedules";
 import {
   WEEKDAYS_UI,
   buildMonthGrid,

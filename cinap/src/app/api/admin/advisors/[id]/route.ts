@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { UpdateAdvisor } from "@application/admin-advisors/usecases/UpdateAdvisors";
+import { UpdateAdvisor } from "@/application/admin/advisors/usecases/UpdateAdvisors";
 import { AdminAdvisorsBackendRepo } from "@infrastructure/http/bff/admin/advisors/AdminAdvisorsBackendRepo";
 import { appendSetCookies } from "@/app/api/_utils/cookies";
 

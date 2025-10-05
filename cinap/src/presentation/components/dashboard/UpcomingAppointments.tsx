@@ -99,7 +99,7 @@ export default function UpcomingAppointments({ appointments }: Props) {
       {/* Enlace para ver todas */}
       <div className="border-t border-blue-100 bg-gradient-to-r from-blue-50/50 to-white px-6 py-3">
         <Link 
-          href="/asesorias/"
+          href="/profesor/asesorias/"
           className="block w-full text-center text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors"
         >
           Ver todas las asesorías →

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { PendingConfirmation } from "@domain/confirmations";
+import type { PendingConfirmation } from "@/domain/advisor/confirmations";
 
 import { HeaderCard } from "./components/HeaderCard";
 import { StatsCards } from "./components/StatsCard";

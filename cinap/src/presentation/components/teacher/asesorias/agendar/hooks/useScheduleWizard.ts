@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type {FoundSlot } from "@/domain/scheduling";
+import type {FoundSlot } from "@/domain/teacher/scheduling";
 import type { Advisor, Category, CategoryId, Service, WizardState } from "../types";
-import { SchedulingHttpRepo } from "@/infrastructure/asesorias/agendar/SchedulingHttpRepo";
+import { SchedulingHttpRepo } from "@/infrastructure/teachers/asesorias/agendar/SchedulingHttpRepo";
 import { isPastDate, startOfDay } from "../utils/date";
 
 export function useScheduleWizard({

@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GetSchedulingData } from "@application/asesorias/agendar/usecases/GetSchedulingData";
+import { GetSchedulingData } from "@/application/teacher/asesorias/agendar/usecases/GetSchedulingData";
 import { AsesoriasBackendRepo } from "@infrastructure/http/bff/teacher/asesorias/agendar/SchedulingBackendRepo";
 import { appendSetCookies } from "@/app/api/_utils/cookies";
 
-const BACKEND =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  process.env.BACKEND_URL ??
-  "http://localhost:8000";
-
+function getCookieString(req: NextRequest): string {
+  return req.headers.get("cookie") ?? "";
+}
 const CL_TZ = "America/Santiago";
 
 
@@ -31,7 +29,7 @@ export async function GET(req: NextRequest) {
       input.dateTo = singleDate;
     }
 
-    const repo = new AsesoriasBackendRepo(BACKEND, req.headers.get("cookie") ?? "");
+    const repo = new AsesoriasBackendRepo(getCookieString(req));
     const data = await new GetSchedulingData(repo).exec(input);
 
     const resp = NextResponse.json(data, { status: 200 });
@@ -57,7 +55,7 @@ export async function POST(req: NextRequest) {
       tz: CL_TZ,
     };
 
-    const repo = new AsesoriasBackendRepo(BACKEND, req.headers.get("cookie") ?? "");
+    const repo = new AsesoriasBackendRepo(getCookieString(req));
     const data = await new GetSchedulingData(repo).exec(input);
 
     const resp = NextResponse.json(data, { status: 200 });

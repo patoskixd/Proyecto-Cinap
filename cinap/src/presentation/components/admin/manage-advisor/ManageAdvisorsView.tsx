@@ -6,13 +6,13 @@ import AdvisorCard from "./AdvisorCard";
 import EditAdvisorModal from "./EditAdvisorModal";
 import ConfirmDialog from "./ConfirmDialog";
 
-import { ListAdvisors } from "@application/admin-advisors/usecases/ListAdvisors";
-import { UpdateAdvisor } from "@application/admin-advisors/usecases/UpdateAdvisors";
-import { DeleteAdvisor } from "@application/admin-advisors/usecases/DeleteAdvisor";
-import { AdminAdvisorsHttpRepo } from "@infrastructure/admin-advisors/AdminAdvisorsHttpRepo";
+import { ListAdvisors } from "@/application/admin/advisors/usecases/ListAdvisors";
+import { UpdateAdvisor } from "@/application/admin/advisors/usecases/UpdateAdvisors";
+import { DeleteAdvisor } from "@/application/admin/advisors/usecases/DeleteAdvisor";
+import { AdminAdvisorsHttpRepo } from "@/infrastructure/admin/advisors/AdminAdvisorsHttpRepo";
 
 
-import type { Advisor } from "@/domain/adminAdvisors";
+import type { Advisor } from "@/domain/admin/advisors";
 
 
 const FRONTEND_URL = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";

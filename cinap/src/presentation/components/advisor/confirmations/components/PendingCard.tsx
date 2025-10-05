@@ -1,7 +1,7 @@
 "use client";
 
 import { prettyDateTime, timeAgo } from "../utils/date";
-import type { PendingConfirmation } from "@domain/confirmations";
+import type { PendingConfirmation } from "@/domain/advisor/confirmations";
 
 export default function PendingCard({ r }: { r: PendingConfirmation }) {
   return (

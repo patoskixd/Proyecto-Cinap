@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import BaseModal from "./BaseModal";
-import { AdminLocationHttpRepo } from "@/infrastructure/admin-location/AdminLocationHttpRepo";
-import type { Room } from "@/domain/adminLocation";
+import { AdminLocationHttpRepo } from "@/infrastructure/admin/location/AdminLocationHttpRepo";
+import type { Room } from "@/domain/admin/location";
 
 type Values = {
   name: string;

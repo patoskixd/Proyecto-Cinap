@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import ReactivateCategory from "@application/admin-catalog/usecases/Category/ReactivateCategory";
+import ReactivateCategory from "@/application/admin/catalog/usecases/Category/ReactivateCategory";
 import { AdminCatalogBackendRepo } from "@infrastructure/http/bff/admin/catalog/AdminCatalogBackendRepo";
 import { appendSetCookies } from "@/app/api/_utils/cookies";
 

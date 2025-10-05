@@ -1,5 +1,5 @@
 import type { Role } from "@/domain/auth";
-import type { ReservationsRepo } from "@/application/asesorias/ports/ReservationsRepo";
+import type { ReservationsRepo } from "@/application/teacher/asesorias/ports/ReservationsRepo";
 import { reservationsToAppointments } from "../adapters/ReservationToAppointmentAdapter";
 import type { DashboardData } from "../ports/DashboardRepo";
 

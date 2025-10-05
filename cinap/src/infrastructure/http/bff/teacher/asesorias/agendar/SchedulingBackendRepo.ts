@@ -1,10 +1,10 @@
-import type { SchedulingRepo } from "@application/asesorias/agendar/ports/SchedulingRepo";
+import type { SchedulingRepo } from "@/application/teacher/asesorias/agendar/ports/SchedulingRepo";
 import type {
   ReserveAsesoriaInput,
   CreateAsesoriaOut,
   FindSlotsInput,
   FoundSlot,
-} from "@domain/scheduling";
+} from "@/domain/teacher/scheduling";
 
 const CL_TZ = "America/Santiago";
 
@@ -67,11 +67,13 @@ function toFoundSlot(dto: any): FoundSlot {
 
 export class AsesoriasBackendRepo implements SchedulingRepo {
   private lastSetCookies: string[] = [];
+  private readonly baseUrl: string;
+  private readonly cookie: string;
 
-  constructor(
-    private readonly baseUrl: string,
-    private readonly cookie: string,
-  ) {}
+  constructor(cookie: string) {
+    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.cookie = cookie;
+  }
 
   getSetCookies(): string[] {
     return this.lastSetCookies;

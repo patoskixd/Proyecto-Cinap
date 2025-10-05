@@ -3,17 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
-import type { AdminCategory } from "@domain/adminCatalog";
+import type { AdminCategory } from "@/domain/admin/catalog";
 import type { 
   AdvisorBasicInfo, 
   AdvisorServiceRef, 
   CategoryId, 
   Advisor,
   RegisterAdvisorRequest 
-} from "@domain/adminAdvisors";
-import { RegisterAdvisor } from "@application/admin-advisors/usecases/RegisterAdvisor";
-import { AdminAdvisorsHttpRepo } from "@infrastructure/admin-advisors/AdminAdvisorsHttpRepo";
-import { AdminCatalogHttpRepo } from "@infrastructure/admin-catalog/AdminCatalogHttpRepo";
+} from "@/domain/admin/advisors";
+import { RegisterAdvisor } from "@/application/admin/advisors/usecases/RegisterAdvisor";
+import { AdminAdvisorsHttpRepo } from "@/infrastructure/admin/advisors/AdminAdvisorsHttpRepo";
+import { AdminCatalogHttpRepo } from "@/infrastructure/admin/catalog/AdminCatalogHttpRepo";
 
 type Step = 1 | 2 | 3 | 4;
 const createRepos = () => {

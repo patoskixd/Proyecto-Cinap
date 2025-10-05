@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import BaseModal from "./BaseModal";
-import { AdminLocationHttpRepo } from "@/infrastructure/admin-location/AdminLocationHttpRepo";
+import { AdminLocationHttpRepo } from "@/infrastructure/admin/location/AdminLocationHttpRepo";
 
 type Values = { name: string; campusId: string };
 
