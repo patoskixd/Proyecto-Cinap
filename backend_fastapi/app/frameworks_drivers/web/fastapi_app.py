@@ -46,24 +46,24 @@ def require_auth(request: Request):
     except jwt.PyJWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    try:
-        await container.startup()
+logger = logging.getLogger(__name__)
 
-        if getattr(container, "graph_agent", None) and hasattr(container.graph_agent, "set_confirm_store"):
+@asynccontextmanager
+async def lifespan(app):
+    await container.startup()
+    if getattr(container, "graph_agent", None) and hasattr(container.graph_agent, "set_confirm_store"):
             container.graph_agent.set_confirm_store(confirm_store)
+    try:
         yield
-    except Exception as e:
-        logging.error(f"Error durante startup: {e}")
-        raise
+    except asyncio.CancelledError:
+        pass
     finally:
         try:
-            await container.shutdown()
-            logging.info("✅ Shutdown completado")
-        except (asyncio.CancelledError, RuntimeError, Exception) as e:
-            logging.warning(f"Error durante shutdown (ignorado): {e}")
+            await asyncio.shield(container.shutdown())
+        except asyncio.CancelledError:
             pass
+        except Exception as e:
+            logger.exception("Error durante shutdown: %r", e)
 
 app = FastAPI(title="MCP Assistant", debug=API_DEBUG, lifespan=lifespan)
 
@@ -180,9 +180,6 @@ async def graph_chat(req: GraphChatRequest, request: Request):
         user_id=(getattr(getattr(request, "state", None), "user", {}) or {}).get("sub"),
         client_ip=(request.client.host if request.client else None),
     )
-
-    if container.graph_agent:
-        container.graph_agent.set_current_user(getattr(request.state, "user", None))
 
     await _validate_graph_chat(req)
 
