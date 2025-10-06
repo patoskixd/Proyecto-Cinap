@@ -8,9 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from redis.asyncio import from_url as redis_from_url
 from app.use_cases.auth.google_callback import GoogleCallbackUseCase
 from app.use_cases.auth.logout import LogoutUseCase
+from app.use_cases.auth.ensure_docente_profile import EnsureDocenteProfileUseCase
 from app.interface_adapters.gateways.oauth.google_oauth_client import GoogleOAuthClient
 from app.interface_adapters.gateways.token.jwt_service import PyJWTService
 from app.interface_adapters.gateways.db.sqlalchemy_user_repo import SqlAlchemyUserRepo
+from app.interface_adapters.gateways.db.sqlalchemy_docente_repo import SqlAlchemyDocentePerfilRepo
+from app.interface_adapters.gateways.db.sqlalchemy_asesor_repo import SqlAlchemyAsesorRepo
 from app.interface_adapters.gateways.cache.redis_cache import RedisCache
 from app.frameworks_drivers.config.settings import REDIS_URL
 from app.frameworks_drivers.mcp.stdio_client import MCPStdioClient
@@ -81,12 +84,19 @@ class Container:
 
     def uc_google_callback(self, session: AsyncSession) -> GoogleCallbackUseCase:
         user_repo = SqlAlchemyUserRepo(session, default_role_id=self._default_role_id)
+        docente_repo = SqlAlchemyDocentePerfilRepo(session)
 
         from datetime import datetime, timezone
 
         class _Clock:
             def now_utc(self):
                 return datetime.now(timezone.utc)
+
+        ensure_docente_profile_uc = EnsureDocenteProfileUseCase(
+            docente_repo=docente_repo,
+            user_repo=user_repo,
+            profesor_role_name="Profesor"
+        )
 
         return GoogleCallbackUseCase(
             user_repo=user_repo,
@@ -95,6 +105,8 @@ class Container:
             clock=_Clock(),
             redirect_uri=self._google_redirect_uri,
             jwt_minutes=self._jwt_minutes,
+            ensure_docente_profile_uc=ensure_docente_profile_uc,
+            session=session,  
         )
 
     async def startup(self):

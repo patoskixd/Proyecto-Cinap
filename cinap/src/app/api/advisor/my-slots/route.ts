@@ -1,13 +1,15 @@
 // app/api/my-slots/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { GetMySlots } from "@application/my-slots/usecases/GetMySlots";
+import { GetMySlots } from "@/application/advisor/my-slots/usecases/GetMySlots";
 import { MySlotsBackendRepo } from "@infrastructure/http/bff/advisor/my-slots/MySlotsBackendRepo";
 
-const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.BACKEND_URL ?? "http://localhost:8000";
+function getCookieString(req: NextRequest): string {  
+  return req.headers.get("cookie") ?? "";
+}
 
 export async function GET(req: NextRequest) {
   try {
-    const repo = new MySlotsBackendRepo(BACKEND, req.headers.get("cookie") ?? "");
+    const repo = new MySlotsBackendRepo(getCookieString(req));
     const data = await new GetMySlots(repo).exec();
     return NextResponse.json(data);
   } catch (e:any) {

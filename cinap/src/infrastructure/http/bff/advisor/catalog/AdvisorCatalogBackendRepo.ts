@@ -1,14 +1,18 @@
-// infrastructure/http/bff/advisor/catalog/AdvisorCatalogBackendRepo.ts
-import type { AdvisorCatalogQueryRepo } from "@application/advisor-catalog/ports/AdvisorCatalogRepo";
-import type { AdvisorCatalog } from "@domain/advisorCatalog";
+import type { AdvisorCatalogQueryRepo } from "@/application/advisor/catalog/ports/AdvisorCatalogRepo";
+import type { AdvisorCatalog } from "@/domain/advisor/catalog";
 
 export class AdvisorCatalogBackendRepo implements AdvisorCatalogQueryRepo {
   private lastSetCookies: string[] = [];
+  private readonly baseUrl: string;
+  private readonly cookie: string;
 
-  constructor(
-    private readonly baseUrl: string,
-    private readonly cookie: string,
-  ) {}
+  constructor(cookie: string) {
+    this.baseUrl =
+      process.env.NEXT_PUBLIC_BACKEND_URL ??
+      process.env.BACKEND_URL ??
+      "http://localhost:8000";
+    this.cookie = cookie ?? "";
+  }
 
   getSetCookies(): string[] {
     return this.lastSetCookies;

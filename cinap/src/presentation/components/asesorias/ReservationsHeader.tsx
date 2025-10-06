@@ -9,7 +9,7 @@ export default function ReservationsHeader() {
           <p className="mt-1 text-blue-700">Gestiona y visualiza todas tus reservas de asesorías</p> 
         </div> 
         <Link 
-          href="/asesorias/agendar" 
+          href="/profesor/asesorias/agendar" 
           className="inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl hover:scale-105" 
         > 
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -1,29 +1,29 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Campus, Building, Room } from "@/domain/adminLocation";
-import { AdminLocationHttpRepo } from "@/infrastructure/admin-location/AdminLocationHttpRepo";
+import type { Campus, Building, Room } from "@/domain/admin/location";
+import { AdminLocationHttpRepo } from "@/infrastructure/admin/location/AdminLocationHttpRepo";
 
 // Campus 
-import ListCampus from "@/application/admin-location/usecases/Campus/ListCampus";
-import CreateCampus from "@/application/admin-location/usecases/Campus/CreateCampus";
-import UpdateCampus from "@/application/admin-location/usecases/Campus/UpdateCampus";
-import ReactivateCampus from "@/application/admin-location/usecases/Campus/ReactivateCampus";
-import DeleteCampus from "@/application/admin-location/usecases/Campus/DeleteCampus";
+import ListCampus from "@/application/admin/location/usecases/Campus/ListCampus";
+import CreateCampus from "@/application/admin/location/usecases/Campus/CreateCampus";
+import UpdateCampus from "@/application/admin/location/usecases/Campus/UpdateCampus";
+import ReactivateCampus from "@/application/admin/location/usecases/Campus/ReactivateCampus";
+import DeleteCampus from "@/application/admin/location/usecases/Campus/DeleteCampus";
 
 // Buildings 
-import ListBuildings from "@/application/admin-location/usecases/Buildings/ListBuidlings";
-import CreateBuilding from "@/application/admin-location/usecases/Buildings/CreateBuilding";
-import UpdateBuilding from "@/application/admin-location/usecases/Buildings/UpdateBuildings";
-import ReactivateBuilding from "@/application/admin-location/usecases/Buildings/ReactivateBuildings";
-import DeleteBuilding from "@/application/admin-location/usecases/Buildings/DeleteBuildings";
+import ListBuildings from "@/application/admin/location/usecases/Buildings/ListBuidlings";
+import CreateBuilding from "@/application/admin/location/usecases/Buildings/CreateBuilding";
+import UpdateBuilding from "@/application/admin/location/usecases/Buildings/UpdateBuildings";
+import ReactivateBuilding from "@/application/admin/location/usecases/Buildings/ReactivateBuildings";
+import DeleteBuilding from "@/application/admin/location/usecases/Buildings/DeleteBuildings";
 
 // Rooms 
-import ListRooms from "@/application/admin-location/usecases/Rooms/ListRooms";
-import CreateRoom from "@/application/admin-location/usecases/Rooms/CreateRooms";
-import UpdateRoom from "@/application/admin-location/usecases/Rooms/UpdateRooms";
-import ReactivateRoom from "@/application/admin-location/usecases/Rooms/ReactivateRooms";
-import DeleteRoom from "@/application/admin-location/usecases/Rooms/DeleteRooms";
+import ListRooms from "@/application/admin/location/usecases/Rooms/ListRooms";
+import CreateRoom from "@/application/admin/location/usecases/Rooms/CreateRooms";
+import UpdateRoom from "@/application/admin/location/usecases/Rooms/UpdateRooms";
+import ReactivateRoom from "@/application/admin/location/usecases/Rooms/ReactivateRooms";
+import DeleteRoom from "@/application/admin/location/usecases/Rooms/DeleteRooms";
 
 function parseError(e: unknown) {
   const s = (e as any)?.message || "Algo salió mal";

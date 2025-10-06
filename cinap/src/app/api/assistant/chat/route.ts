@@ -7,18 +7,16 @@ import { appendSetCookies } from "@/app/api/_utils/cookies";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const BASE =
-  process.env.ASSISTANT_BASE_URL ??
-  process.env.BACKEND_BASE_URL ??
-  "http://localhost:8000";
-
+function getCookieString(req: NextRequest): string {
+  return req.headers.get("cookie") ?? "";
+}
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const message: string = body?.message ?? "";
     const sessionId: string | undefined = body?.thread_id ?? body?.sessionId;
 
-    const agent = new AssistantBackendAgent(BASE, req.headers.get("cookie") ?? "");
+    const agent = new AssistantBackendAgent(getCookieString(req));
     const sendChatMessage = makeSendChatMessage(agent);
 
     const reply = await sendChatMessage({ message, sessionId });

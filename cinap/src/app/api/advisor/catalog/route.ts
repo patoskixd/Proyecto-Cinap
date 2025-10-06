@@ -1,21 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GetAdvisorCatalog } from "@application/advisor-catalog/usecases/GetAdvisorCatalog";
+import { GetAdvisorCatalog } from "@/application/advisor/catalog/usecases/GetAdvisorCatalog";
 import { AdvisorCatalogBackendRepo } from "@infrastructure/http/bff/advisor/catalog/AdvisorCatalogBackendRepo";
 import { appendSetCookies } from "@/app/api/_utils/cookies";
 
-const BACKEND =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  process.env.BACKEND_URL ??
-  "http://localhost:8000";
+
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+function getCookieString(req: NextRequest): string {
+  return req.headers.get("cookie") ?? "";
+}
+
 export async function GET(req: NextRequest) {
   try {
-    const cookie = req.headers.get("cookie") ?? "";
-
-    const repo = new AdvisorCatalogBackendRepo(BACKEND, cookie);
+    const repo = new AdvisorCatalogBackendRepo(getCookieString(req));
     const data = await new GetAdvisorCatalog(repo).exec();
 
     const resp = NextResponse.json(data, { status: 200 });

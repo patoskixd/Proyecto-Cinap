@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Category, CategoryId, Service } from "./types";
-import type { Resource, SlotRule } from "@domain/slots";
-import { normalizeSchedules, type UIRule } from "@application/slots/usecases/NormalizeSchedules";
-import { GetCreateSlotsData } from "@application/slots/usecases/GetCreateSlotsData";
-import { CreateSlots } from "@application/slots/usecases/CreateSlots";
-import { SlotsHttpRepo } from "@/infrastructure/slots/SlotsHttpRepo";
+import type { Resource, SlotRule } from "@/domain/advisor/slots";
+import { normalizeSchedules, type UIRule } from "@/application/advisor/slots/usecases/NormalizeSchedules";
+import { GetCreateSlotsData } from "@/application/advisor/slots/usecases/GetCreateSlotsData";
+import { CreateSlots } from "@/application/advisor/slots/usecases/CreateSlots";
+import { SlotsHttpRepo } from "@/infrastructure/advisor/my-slots/SlotsHttpRepo";
 
 import Header from "./components/Header";
 import Progress from "./components/Progress";

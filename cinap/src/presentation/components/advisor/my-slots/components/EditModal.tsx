@@ -1,6 +1,6 @@
 "use client";
 
-import type { MySlot } from "@domain/mySlots";
+import type { MySlot } from "@/domain/advisor/mySlots";
 import { isPastISO, isWeekendISO, todayLocalISO, validStartWithinShift } from "../utils/time";
 
 type Props = {

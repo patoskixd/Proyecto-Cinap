@@ -1,11 +1,19 @@
-import type { ConfirmationsRepo } from "@application/confirmations/ports/ConfirmationsRepo";
-import type { PendingConfirmation } from "@domain/confirmations";
+import type { ConfirmationsRepo } from "@/application/advisor/confirmations/ports/ConfirmationsRepo";
+import type { PendingConfirmation } from "@/domain/advisor/confirmations";
 
 export class ConfirmationsBackendRepo implements ConfirmationsRepo {
-  constructor(
-    private readonly baseUrl: string,
-    private readonly cookie: string, 
-  ) {}
+  private readonly baseUrl: string;
+  private readonly cookie: string;
+  private lastSetCookies: string[] = [];
+
+  getSetCookies(): string[] {
+    return this.lastSetCookies;
+  }
+
+  constructor(cookie: string) {
+    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.cookie = cookie;
+  }
 
   private async parse<T>(res: Response): Promise<T> {
     const txt = await res.text();

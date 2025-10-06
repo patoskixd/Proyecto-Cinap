@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { MySlot, SlotStatus } from "@domain/mySlots";
-import { HttpMySlotsRepo } from "@infrastructure/my-slots/MySlotsHttpRepo";
-import { GetMySlots } from "@application/my-slots/usecases/GetMySlots";
-import { UpdateMySlot } from "@application/my-slots/usecases/UpdateMySlot";
-import { DeleteMySlot } from "@application/my-slots/usecases/DeleteMySlot";
-import { ReactivateMySlot } from "@application/my-slots/usecases/ReactivateMySlot";
+import type { MySlot, SlotStatus } from "@/domain/advisor/mySlots";
+import { HttpMySlotsRepo } from "@/infrastructure/advisor/my-slots/MySlotsHttpRepo";
+import { GetMySlots } from "@/application/advisor/my-slots/usecases/GetMySlots";
+import { UpdateMySlot } from "@/application/advisor/my-slots/usecases/UpdateMySlot";
+import { DeleteMySlot } from "@/application/advisor/my-slots/usecases/DeleteMySlot";
+import { ReactivateMySlot } from "@/application/advisor/my-slots/usecases/ReactivateMySlot";
 
 export type Filters = {
   category: string;

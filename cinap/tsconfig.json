@@ -14,8 +14,6 @@
     "jsx": "preserve",
     "incremental": true,
     "plugins": [{ "name": "next" }],
-
-    // 👇 Clave para que paths funcionen bien
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],

@@ -27,6 +27,8 @@ from app.interface_adapters.controllers.telegram_webhook import make_telegram_ro
 from app.interface_adapters.controllers.telegram_link_router import make_telegram_link_router
 from app.interface_adapters.controllers.admin_catalog_router import make_admin_catalog_router  
 from app.interface_adapters.controllers.admin_location_router import make_admin_location_router
+from app.interface_adapters.controllers.admin_advisors_router import make_admin_advisors_router
+from app.interface_adapters.controllers.admin_teachers_router import make_admin_teachers_router
 
 from app.observability.middleware import JSONTimingMiddleware
 from app.observability.metrics import measure_stage, set_meta, stage, astage
@@ -127,15 +129,26 @@ async def _present_reply(reply: str, thread_id: str):
 async def health():
     return {"ok": True}
 
-@app.get("/health/db")
-async def health_db(session = Depends(get_session)):
-    """Health check que verifica la conexión a la base de datos"""
+@app.get("/observability/telegram/analyze")
+async def analyze_telegram_performance(hours: int = 24):
+    """Analiza el rendimiento de Telegram de las últimas N horas"""
     try:
-        from sqlalchemy import text
-        await session.execute(text("SELECT 1"))
-        return {"db": "ok", "status": "healthy"}
+        from app.observability.telegram_analyzer import log_telegram_analysis
+        analysis = log_telegram_analysis(hours)
+        return {"success": True, "analysis": analysis}
     except Exception as e:
-        return {"db": "error", "status": "unhealthy", "error": str(e)}
+        return {"success": False, "error": str(e)}
+
+@app.get("/observability/telegram/summary")
+async def telegram_performance_summary():
+    """Obtiene un resumen de performance de Telegram (última hora + 24h)"""
+    try:
+        from app.observability.telegram_analyzer import log_performance_summary
+        summary = log_performance_summary()
+        return {"success": True, "summary": summary}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 
 @app.get("/health/db")
 async def health_db(session = Depends(get_session)):
@@ -199,10 +212,12 @@ asesorias_router = make_asesorias_router(
 )
 app.include_router(asesorias_router)
 
+
 telegram_router = make_telegram_router(
     cache=container.cache,
     agent_getter=lambda: container.graph_agent,
 )
+app.telegram_router = telegram_router
 app.include_router(telegram_router)
 
 telegram_link_router = make_telegram_link_router(
@@ -218,3 +233,17 @@ app.include_router(admin_catalog_router)
 
 admin_location_router = make_admin_location_router(get_session_dep=get_session)
 app.include_router(admin_location_router)
+
+admin_advisors_router = make_admin_advisors_router(
+    get_session_dep=get_session,
+    jwt_port=container.jwt
+)
+app.include_router(admin_advisors_router)
+
+
+
+admin_teachers_router = make_admin_teachers_router(
+    get_session_dep=get_session,
+    jwt_port=container.jwt
+)
+app.include_router(admin_teachers_router)

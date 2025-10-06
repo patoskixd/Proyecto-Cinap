@@ -1,17 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Teacher } from "@domain/teachers";
-import { InMemoryTeachersRepo } from "@infrastructure/teachers/InMemoryTeachersRepo";
-import { ListTeachers } from "@application/teachers/usecases/ListTeachers";
-import { UpdateTeacher } from "@application/teachers/usecases/UpdateTeacher";
-import { DeleteTeacher } from "@application/teachers/usecases/DeleteTeacher";
+import type { Teacher } from "@/domain/admin/teachers";
+
+import { HttpTeachersRepo } from "@/infrastructure/admin/teachers/AdminTeachersHttpRepo";
+import { ListTeachers } from "@/application/admin/teachers/usecases/ListTeachers";
+import { UpdateTeacher } from "@/application/admin/teachers/usecases/UpdateTeacher";
+import { DeleteTeacher } from "@/application/admin/teachers/usecases/DeleteTeacher";
 
 import TeacherCard from "./TeacherCard";
 import EditTeacherModal from "./EditTeacherModal";
 import ConfirmDialog from "./ConfirmDialog";
 
-const repo = new InMemoryTeachersRepo();
+const repo = new HttpTeachersRepo();
 const ucList = new ListTeachers(repo);
 const ucUpdate = new UpdateTeacher(repo);
 const ucDelete = new DeleteTeacher(repo);
@@ -20,7 +21,6 @@ export default function ManageTeachersView() {
   const [loading, setLoading] = useState(true);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [editing, setEditing] = useState<Teacher | null>(null);
-
 
   const [confirm, setConfirm] = useState<
     | { kind: "edit"; draft: Teacher }

@@ -1,6 +1,6 @@
 "use client";
 
-import type { PendingConfirmation } from "@domain/confirmations";
+import type { PendingConfirmation } from "@/domain/advisor/confirmations";
 import PendingCard from "./PendingCard";
 
 export default function PendingList({ items }: { items: PendingConfirmation[] }) {

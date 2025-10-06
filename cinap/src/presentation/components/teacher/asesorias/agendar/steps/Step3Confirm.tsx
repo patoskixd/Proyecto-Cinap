@@ -1,7 +1,7 @@
 "use client";
 
 import type { Advisor, Category, Service,  WizardState } from "../types";
-import type { FoundSlot } from "@/domain/scheduling";
+import type { FoundSlot } from "@/domain/teacher/scheduling";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (

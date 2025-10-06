@@ -1,6 +1,6 @@
 "use client";
 
-import type { MySlot } from "@domain/mySlots";
+import type { MySlot } from "@/domain/advisor/mySlots";
 import { endTime, formatDateEs } from "../utils/time";
 
 type Props = {
@@ -124,9 +124,9 @@ export default function SlotCard({ slot: s, onEdit, onDelete, onReactivate, onDi
                   className="flex items-center justify-center gap-2 flex-1 rounded-full bg-gradient-to-r from-yellow-500 to-yellow-600 px-4 py-2.5 text-sm font-bold text-white transition-all hover:from-yellow-600 hover:to-yellow-700 hover:shadow-lg shadow-yellow-200"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18 12M6 6l12 12" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  Pausar
+                  Inactivo
                 </button>
               </>
             )}

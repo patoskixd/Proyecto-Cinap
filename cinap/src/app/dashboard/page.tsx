@@ -43,8 +43,8 @@ export default function DashboardPage() {
   if (error) return <div className="flex justify-center items-center min-h-screen text-red-600">{error}</div>;
 
   const headers = {
-    teacher: { title: "Panel Docente",      subtitle: "Tus próximas asesorías y recomendaciones", ctaHref: "/asesorias/agendar", ctaLabel: "Agendar asesoría" },
-    advisor: { title: "Panel Asesor",       subtitle: "Gestiona cupos y solicitudes",             ctaHref: "/asesorias/crear-cupos",     ctaLabel: "Abrir cupo" },
+    teacher: { title: "Panel Docente",      subtitle: "Tus próximas asesorías y recomendaciones", ctaHref: "/profesor/asesorias/agendar", ctaLabel: "Agendar asesoría" },
+    advisor: { title: "Panel Asesor",       subtitle: "Gestiona cupos y solicitudes",             ctaHref: "/asesor/crear-cupos",     ctaLabel: "Abrir cupo" },
     admin:   { title: "Panel Administrador", subtitle: "Visión general del sistema",              ctaHref: "/admin/registrar-asesor",  ctaLabel: "Registrar asesor" },
   } as const;
 

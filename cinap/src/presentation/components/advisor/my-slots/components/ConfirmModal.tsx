@@ -1,6 +1,6 @@
 "use client";
 
-import { MySlot } from "@domain/mySlots";
+import { MySlot } from "@/domain/advisor/mySlots";
 import { endTime, formatDateEs } from "../utils/time";
 
 type Props = {

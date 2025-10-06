@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Teacher } from "@domain/teachers";
+import type { Teacher } from "@/domain/admin/teachers";
 
 type Props = {
   open: boolean;

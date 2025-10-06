@@ -1,12 +1,16 @@
-import type { SchedulingRepo } from "@application/asesorias/agendar/ports/SchedulingRepo";
-import type { FindSlotsInput, FoundSlot, ReserveAsesoriaInput, CreateAsesoriaOut } from "@domain/scheduling";
+import type { SchedulingRepo } from "@/application/teacher/asesorias/agendar/ports/SchedulingRepo";
+import type { FindSlotsInput, FoundSlot, ReserveAsesoriaInput, CreateAsesoriaOut } from "@/domain/teacher/scheduling";
 import { AsesoriasBackendRepo } from "@infrastructure/http/bff/teacher/asesorias/agendar/SchedulingBackendRepo";
 
 export class SlotsFindBackendRepo implements SchedulingRepo {
   private inner: AsesoriasBackendRepo;
+  private readonly baseUrl: string;
+  private readonly cookie: string;
 
-  constructor(private readonly baseUrl: string, private readonly cookie: string) {
-    this.inner = new AsesoriasBackendRepo(baseUrl, cookie);
+  constructor(cookie: string) {
+    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.cookie = cookie;
+    this.inner = new AsesoriasBackendRepo(cookie); 
   }
 
   getSetCookies(): string[] {

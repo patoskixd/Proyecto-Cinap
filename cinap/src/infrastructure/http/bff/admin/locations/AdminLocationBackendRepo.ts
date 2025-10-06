@@ -1,14 +1,15 @@
-// infrastructure/http/bff/admin/locations/AdminLocationBackendRepo.ts
-import type { Campus, Building, Room } from "@domain/adminLocation";
-import type AdminLocationRepo from "@application/admin-location/ports/AdminLocationRepo";
+import type { Campus, Building, Room } from "@/domain/admin/location";
+import type AdminLocationRepo from "@/application/admin/location/ports/AdminLocationRepo";
 
 export class AdminLocationBackendRepo implements AdminLocationRepo {
   private lastSetCookies: string[] = [];
+  private readonly baseUrl: string;
+  private readonly cookie: string;
 
-  constructor(
-    private readonly baseUrl: string,
-    private readonly cookie: string,
-  ) {}
+  constructor(cookie: string) {
+    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.cookie = cookie;
+  }
 
   getSetCookies(): string[] {
     return this.lastSetCookies;

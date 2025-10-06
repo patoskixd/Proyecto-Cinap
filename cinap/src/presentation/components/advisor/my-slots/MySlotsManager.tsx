@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import type { MySlot } from "@domain/mySlots";
+import type { MySlot } from "@/domain/advisor/mySlots";
 import { useMySlots } from "./hooks/useMySlots";
 import FiltersBar from "./components/Filters";
 import Stats from "./components/Stats";
@@ -74,7 +74,7 @@ export default function MySlotsManager() {
             </p>
           </div>
           <Link
-            href="/asesorias/crear-cupos"
+            href="/asesor/crear-cupos"
             className="inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl hover:scale-105"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -140,7 +140,7 @@ export default function MySlotsManager() {
             <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
               <h3 className="mb-1 text-lg font-semibold text-neutral-900">No hay cupos</h3>
               <p className="mb-4 text-neutral-600">Crea tu primer cupo para comenzar</p>
-              <Link href="/asesorias/crear-cupos" className="rounded-full bg-blue-600 px-5 py-2.5 font-semibold text-white hover:bg-blue-700">
+              <Link href="/asesor/crear-cupos" className="rounded-full bg-blue-600 px-5 py-2.5 font-semibold text-white hover:bg-blue-700">
                 Crear cupo
               </Link>
             </div>

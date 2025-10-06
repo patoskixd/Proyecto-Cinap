@@ -1,13 +1,15 @@
-import type { AdminCatalogRepo } from "@application/admin-catalog/ports/AdminCatalogRepo";
-import type { AdminCategory, AdminService } from "@domain/adminCatalog";
+import type { AdminCatalogRepo } from "@/application/admin/catalog/ports/AdminCatalogRepo";
+import type { AdminCategory, AdminService } from "@/domain/admin/catalog";
 
 export class AdminCatalogBackendRepo implements AdminCatalogRepo {
   private lastSetCookies: string[] = [];
+  private readonly baseUrl: string;
+  private readonly cookie: string;
 
-  constructor(
-    private readonly baseUrl: string,
-    private readonly cookie: string,
-  ) {}
+  constructor(cookie: string) {
+    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.cookie = cookie;
+  }
 
   getSetCookies(): string[] {
     return this.lastSetCookies;

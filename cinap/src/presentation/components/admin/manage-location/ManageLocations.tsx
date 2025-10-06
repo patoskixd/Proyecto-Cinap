@@ -9,7 +9,7 @@ import CampusModal from "./components/CampusModal";
 import BuildingModal from "./components/BuildingModal";
 import RoomModal from "./components/RoomModal";
 import ConfirmModal from "./components/ConfirmModal";
-import type { Room } from "@/domain/adminLocation";
+import type { Room } from "@/domain/admin/location";
 
 type Tab = "campus" | "buildings" | "rooms";
 

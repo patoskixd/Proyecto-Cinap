@@ -1,8 +1,19 @@
-import type { MySlotsRepo } from "@application/my-slots/ports/MySlotsRepo";
-import type { MySlot } from "@domain/mySlots";
+import type { MySlotsRepo } from "@/application/advisor/my-slots/ports/MySlotsRepo";
+import type { MySlot } from "@/domain/advisor/mySlots";
 
 export class MySlotsBackendRepo implements MySlotsRepo {
-  constructor(private baseUrl: string, private cookie: string) {}
+  private readonly baseUrl: string;
+  private readonly cookie: string;
+  private lastSetCookies: string[] = [];
+
+  getSetCookies(): string[] {
+    return this.lastSetCookies;
+  }
+
+  constructor(cookie: string) {
+    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.cookie = cookie;
+  }
 
   private async json<T>(res: Response): Promise<T> {
     const txt = await res.text();

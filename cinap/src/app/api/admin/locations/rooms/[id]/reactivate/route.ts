@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import ReactivateRoom from "@application/admin-location/usecases/Rooms/ReactivateRooms";
+import ReactivateRoom from "@/application/admin/location/usecases/Rooms/ReactivateRooms";
 import { AdminLocationBackendRepo } from "@infrastructure/http/bff/admin/locations/AdminLocationBackendRepo";
 import { appendSetCookies } from "@/app/api/_utils/cookies";
 
