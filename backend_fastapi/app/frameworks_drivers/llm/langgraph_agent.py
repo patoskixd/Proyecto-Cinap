@@ -255,9 +255,6 @@ class LangGraphAgent:
     def set_confirm_store(self, store) -> None:
         self._confirm_store = store
 
-    def set_current_user(self, user: dict | None):
-        self._current_user = user or {}
-
     def _make_tool(self, name: str, description: str, ModelIn: type[BaseModel]) -> StructuredTool:
         async def caller_async(**kwargs) -> str:
             set_meta(route="inline_tool")
@@ -269,15 +266,28 @@ class LangGraphAgent:
                         args = _normalize_event_delete_by_title_args(kwargs)
                     elif name == "event_update":
                         args = _normalize_event_update_args(kwargs)
-                    elif name == "book_asesoria" and "docente_id" not in args:
-                        user = getattr(self, "_current_user", {}) or {}
-                        sub = user.get("sub")
-                        if sub:
-                            args["docente_id"] = sub
                     else:
                         args = kwargs
 
                 thread_id = CURRENT_THREAD_ID.get()
+                args = dict(args)
+
+                if name in ("schedule_asesoria", "cancel_asesoria"):
+                    user = getattr(self, "_current_user", {}) or {}
+                    uid = user.get("sub") or user.get("user_id")
+                    if not uid:
+                        import re
+                        tid = CURRENT_THREAD_ID.get()
+                        if thread_id and re.fullmatch(r"[0-9a-fA-F-]{36}", thread_id):
+                            uid = thread_id
+                    if "input" in args and isinstance(args["input"], dict):
+                        if uid and not args["input"].get("user_id"):
+                            args["input"]["user_id"] = uid
+                    else:
+                        payload = dict(args.get("input") or {})
+                        if uid and not payload.get("user_id"):
+                            payload["user_id"] = uid
+                        args["input"] = payload
 
                 if getattr(self, "_confirm_store", None) and thread_id:
                     pending_exists = await self._confirm_store.peek(thread_id)
@@ -391,13 +401,10 @@ class LangGraphAgent:
         TOOL HINTS (Cinap)
         - See advisers: use the tool `list_advisors`.
         - See services: use the tool `list_services`.
-        - For booking:
-        1) `resolve_advisor` and `resolve_service` if the user gave text.
-        2) `detect_overlaps(include_calendar=true)` to avoid overlaps.
-        3) `check_availability` to obtain slot (id).
-        4) `book_asesoria` with confirmation (preview → confirm).
-        5) Next `event_create` with confirmation (preview → confirm).
-        - Never create a calendar event without reserving first in the DB
+        - Two-step workflow for schedule:
+          1) First produce a PREVIEW by calling the tool with confirm=false.
+          2) Only if the user explicitly confirms in their next message, call the tool again with confirm=true to execute.
+        - A confirmation applies only to the immediately preceding action and cannot be reused.
 
         TOOL USE POLICY (Calendar)
         - Never perform destructive or state-changing actions without an explicit two-step confirmation.
@@ -416,7 +423,7 @@ class LangGraphAgent:
         - After executing a confirmed tool, you may add a short Spanish summary for the user.
         """
         today = datetime.now(ZoneInfo("America/Santiago")).strftime("%d-%m-%Y")
-        system_msg = SYSTEM_STATIC_EN + f"\nContext: TZ=America/Santiago, today={today}\n /no_think"
+        system_msg = SYSTEM_STATIC_EN + f"\nContext: TZ=GMT-3, today={today}\n /no_think"
         self._runner = LangGraphRunner(app, system_text=system_msg)
 
     async def invoke(self, message: str, *, thread_id: str) -> str:
@@ -429,12 +436,38 @@ class LangGraphAgent:
             if pending:
                 tool = pending.get("tool")
                 args = dict(pending.get("args") or {})
-                args["confirm"] = True
+
+                def _fallback_user_id():
+                    user = getattr(self, "_current_user", {}) or {}
+                    uid = user.get("sub") or user.get("user_id")
+                    if not uid:
+                        import re
+                        tid = CURRENT_THREAD_ID.get()
+                        if tid and re.fullmatch(r"[0-9a-fA-F-]{8}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{12}", tid):
+                            uid = tid
+                    return uid
+
+                def _put_confirm_and_user_id_in_input(a: dict) -> dict:
+                    out = dict(a or {})
+                    if "input" not in out or not isinstance(out["input"], dict):
+                        out["input"] = {}
+                    out["input"] = {**out["input"], "confirm": True}
+                    uid = out["input"].get("user_id") or _fallback_user_id()
+                    if uid:
+                        out["input"]["user_id"] = uid
+                    return out
+
+                if tool in ("schedule_asesoria", "cancel_asesoria"):
+                    args = _put_confirm_and_user_id_in_input(args)
+                else:
+                    args["confirm"] = True
+
                 set_meta(route="confirm_fastpath", tool=tool)
                 async with astage("confirm.fastpath.mcp", extra={"tool": tool}):
                     client = self._client_for_tool(tool)
                     res = await client.call_tool(tool, args)
                 return _strip_think(_format_mcp_result(res, tool))
+
             set_meta(fastpath="miss_no_pending")
 
         token = CURRENT_THREAD_ID.set(thread_id)

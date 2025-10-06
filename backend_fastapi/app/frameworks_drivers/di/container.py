@@ -1,4 +1,6 @@
 from __future__ import annotations
+from contextlib import suppress
+import logging
 import uuid
 import asyncio
 from typing import Union
@@ -16,6 +18,8 @@ from app.frameworks_drivers.llm.langgraph_agent import LangGraphAgent
 from app.frameworks_drivers.config.settings import (
     VLLM_BASE_URL, VLLM_API_KEY, LLM_MODEL, LLM_TEMP, LLM_TOP_P, MCP_CAL_COMMAND, MCP_CAL_ARGS, MCP_CAL_CWD
 )
+
+logger = logging.getLogger(__name__)
 
 class Container:
     oauth: GoogleOAuthClient
@@ -111,13 +115,24 @@ class Container:
         )
         await self.graph_agent.startup()
 
-    async def shutdown(self):
+    async def shutdown(self) -> None:
+        tasks = []
+
         if self.db_mcp:
-            await self.db_mcp.close()
+            tasks.append(self.db_mcp.close())
         if self.cal_mcp:
-            await self.cal_mcp.close()
+            tasks.append(self.cal_mcp.close())
         if self.redis:
-            await self.redis.close()
+            tasks.append(self.redis.close())
+
+        for t in tasks:
+            with suppress(asyncio.CancelledError):
+                try:
+                    await asyncio.wait_for(t, timeout=2.0)
+                except asyncio.TimeoutError:
+                    logger.warning("Timeout cerrando recurso: %r", t)
+                except Exception:
+                    logger.exception("Error cerrando recurso: %r", t)
 
     def uc_logout(self, session: AsyncSession) -> LogoutUseCase:
         repo = SqlAlchemyUserRepo(session, default_role_id=self._default_role_id)  
