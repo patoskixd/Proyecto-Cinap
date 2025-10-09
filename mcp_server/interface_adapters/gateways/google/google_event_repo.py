@@ -1,28 +1,21 @@
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, Optional, List
 from datetime import datetime
 from googleapiclient.discovery import build
+from google.oauth2.credentials import Credentials
 
 from entities.event import Event
 from usecases.ports import EventRepository
-from interface_adapters.gateways.google.google_auth import get_credentials
 from interface_adapters.gateways.google.google_mappers import to_google_body, from_google_event, to_google_patch_body
 
 class GoogleCalendarEventRepository(EventRepository):
-    def __init__(
-        self,
-        *,
-        credentials_file: str = "credentials.json",
-        token_file: str = "token.json",
-        default_timezone: Optional[str] = None,
-        headless: bool = False,
-    ) -> None:
-        self.creds = get_credentials(
-            credentials_file=credentials_file,
-            token_file=token_file,
-            headless=headless,
-        )
-        self.service = build("calendar", "v3", credentials=self.creds)
+    def __init__(self, *, default_timezone: Optional[str] = "America/Santiago") -> None:
         self.default_timezone = default_timezone
+
+    def _svc(self, bearer: str):
+        if not bearer:
+            raise RuntimeError("Se requiere un access token válido (oauth_access_token).")
+        creds = Credentials(token=bearer)
+        return build("calendar", "v3", credentials=creds)
 
     def add(
         self,
@@ -31,12 +24,13 @@ class GoogleCalendarEventRepository(EventRepository):
         title: str,
         start: datetime,
         end: datetime,
-        description: Optional[str],
-        location: Optional[str],
-        attendees: List[str],
-        requested_by_role: Optional[str],
-        requested_by_email: Optional[str],
+        oauth_access_token: str,
+        description: Optional[str] = None,
+        location: Optional[str] = None,
+        attendees: Optional[List[str]] = None,
+        send_updates: str = "all",
     ) -> Event:
+        svc = self._svc(oauth_access_token)
         body = to_google_body(
             title=title,
             start_iso=start.isoformat(),
@@ -46,8 +40,10 @@ class GoogleCalendarEventRepository(EventRepository):
             attendees=attendees or [],
             timezone=self.default_timezone,
         )
-        created = self.service.events().insert(
-            calendarId=calendar_id, body=body, sendUpdates="all"
+        created = svc.events().insert(
+            calendarId=calendar_id,
+            body=body,
+            sendUpdates=(send_updates or "all"),
         ).execute()
         return from_google_event(created, calendar_id=calendar_id)
 

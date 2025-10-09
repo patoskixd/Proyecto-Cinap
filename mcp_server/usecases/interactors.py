@@ -24,8 +24,6 @@ def _to_response(e: Event) -> EventResponse:
         description=e.description,
         location=e.location,
         attendees=list(e.attendees),
-        requested_by_role=e.requested_by_role,
-        requested_by_email=e.requested_by_email,
     )
 
 class CreateEvent:
@@ -40,11 +38,11 @@ class CreateEvent:
             title=req.title,
             start=req.start,
             end=req.end,
+            oauth_access_token=req.oauth_access_token,
             description=req.description,
             location=req.location,
             attendees=req.attendees or [],
-            requested_by_role=req.requested_by_role,
-            requested_by_email=req.requested_by_email,
+            send_updates=req.send_updates,
         )
         return _to_response(ev)
 

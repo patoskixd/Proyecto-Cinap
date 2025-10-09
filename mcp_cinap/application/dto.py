@@ -5,12 +5,12 @@ from uuid import UUID
 
 @dataclass
 class AvailabilityIn:
-    asesor_id: UUID
-    servicio_id: Optional[UUID]
+    servicio_id: UUID
     start: datetime
     end: datetime
     page: int = 1
-    per_page: int = 50
+    per_page: int = 10
+    asesor_id: Optional[UUID] = None
 
 @dataclass
 class SlotOut:

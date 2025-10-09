@@ -351,23 +351,118 @@ function Avatar({ role }: { role: Role }) {
   );
 }
 
+function PaginatedList({
+  items,
+  pageSize = 3,
+  boxHeight = 220,
+}: { items: Array<any>, pageSize?: number, boxHeight?: number }) {
+  const [page, setPage] = useState(0);
+  const total = items.length;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const start = page * pageSize;
+  const slice = items.slice(start, start + pageSize);
+
+  return (
+    <div className="mt-2 text-left">
+      <div
+        className="flex flex-col items-center justify-center w-full"
+        style={{ height: boxHeight }}
+      >
+        <ul className="flex flex-col justify-center items-stretch w-full max-w-[300px] gap-2">
+          {slice.map((it, idx) => (
+            <li
+              key={`it-${start + idx}`}
+              className="rounded-lg border border-blue-100 bg-white/70 p-2
+                         flex flex-col justify-center text-center shadow-sm"
+            >
+              <div className="font-medium text-blue-900">
+                {it.title || "(sin título)"}
+              </div>
+
+              {it.subtitle ? (
+                <div className="text-xs text-blue-500 mt-0.5">{it.subtitle}</div>
+              ) : null}
+
+              {(it.start || it.end) ? (
+                <div className="text-xs text-blue-500 mt-0.5">
+                  {(it.start || "")}{(it.start || it.end) ? " — " : ""}{(it.end || "")}
+                </div>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Paginador */}
+      {pages > 1 && (
+        <div className="mt-3 flex items-center justify-center gap-3">
+          <button
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={page === 0}
+            className="rounded-full border border-blue-200 bg-white px-3 py-1.5 
+                       text-sm text-blue-700 disabled:opacity-40"
+          >
+            ◀
+          </button>
+          <span className="text-xs text-blue-600">
+            Página {page + 1} de {pages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(pages - 1, p + 1))}
+            disabled={page >= pages - 1}
+            className="rounded-full border border-blue-200 bg-white px-3 py-1.5 
+                       text-sm text-blue-700 disabled:opacity-40"
+          >
+            ▶
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function parseCinapListMarker(content: string): { clean: string; list: null | { kind: string; items: any[] } } {
+  const re = /<!--CINAP_LIST:([A-Za-z0-9+/=]+)-->/g;
+  let match: RegExpExecArray | null;
+  let lastList: any = null;
+  let clean = content;
+
+  while ((match = re.exec(content)) !== null) {
+    try {
+      const b64 = match[1];
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const jsonStr = new TextDecoder("utf-8").decode(bytes);
+      lastList = JSON.parse(jsonStr);
+    } catch { /* ignore */ }
+    clean = clean.replace(match[0], "").trim();
+  }
+  return { clean, list: lastList };
+}
+
 function MessageBubble({ message }: { message: ChatMessage }) {
   const time = useMemo(
     () => new Date(message.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
     [message.createdAt]
   );
   const isUser = message.role === "user";
+
+  const { clean, list } = useMemo(() => parseCinapListMarker(message.content), [message.content]);
+
   return (
     <div className={classNames("flex items-start gap-3", isUser && "flex-row-reverse")}>
       <Avatar role={message.role} />
       <div className={classNames("max-w-[80%] space-y-2", isUser && "items-end text-right")}>
-        <div className={classNames(
-          "rounded-2xl px-4 py-3 text-sm shadow-lg backdrop-blur-sm",
-          isUser 
-            ? "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white ring-1 ring-emerald-400" 
-            : "border border-blue-200 bg-white/90 text-blue-900 ring-1 ring-blue-100"
-        )}>
-          {message.content}
+        <div
+          className={classNames(
+            "rounded-2xl px-4 py-3 text-sm shadow-lg backdrop-blur-sm",
+            isUser
+              ? "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white ring-1 ring-emerald-400"
+              : "border border-blue-200 bg-white/90 text-blue-900 ring-1 ring-blue-100"
+          )}
+          style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+        >
+          {clean}
+          {(!isUser && list?.items?.length) ? <PaginatedList items={list.items} /> : null}
         </div>
         <div className={classNames("px-1 text-xs", isUser ? "text-emerald-600" : "text-blue-500")}>{time}</div>
       </div>

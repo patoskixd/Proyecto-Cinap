@@ -53,3 +53,15 @@ class AsesoriaORM(Base):
     )
     origen: Mapped[str] = mapped_column(String, nullable=False)
     notas: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+class UserIdentityORM(Base):
+    __tablename__ = "user_identity"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    usuario_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("usuario.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(50), default="google", index=True)
+    provider_user_id: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255))
+    conectado: Mapped[bool] = mapped_column(sa.Boolean, default=False, nullable=False)
+    refresh_token_hash: Mapped[Optional[str]] = mapped_column(sa.Text)
+    ultimo_sync: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))

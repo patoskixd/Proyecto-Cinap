@@ -41,8 +41,6 @@ def from_google_event(item: Dict[str, Any], *, calendar_id: str) -> Event:
         description=item.get("description"),
         location=item.get("location"),
         attendees=emails,
-        requested_by_role=None,
-        requested_by_email=None,
     )
 
 def to_google_patch_body(

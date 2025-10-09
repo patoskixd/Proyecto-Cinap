@@ -49,7 +49,7 @@ class SAAdvisorRepository(AdvisorRepository):
             select(AsesorPerfilORM.id.label("id"), UsuarioORM.nombre, UsuarioORM.email)
             .join(UsuarioORM, UsuarioORM.id == AsesorPerfilORM.usuario_id)
             .where(AsesorPerfilORM.activo == True)
-            .where(func.lower(UsuarioORM.nombre).like(t))
+            .where(func.unaccent(func.lower(UsuarioORM.nombre)).like(func.unaccent(t)))
             .order_by(UsuarioORM.nombre.asc())
             .limit(limit)
         )
@@ -68,15 +68,18 @@ class SAAdvisorRepository(AdvisorRepository):
 
     async def find_with_services(self, asesor_id: UUID) -> Dict[str, Any]:
         q = (
-            select(AsesorPerfilORM.id, UsuarioORM.nombre, UsuarioORM.email,
-                   ServicioORM.id.label("servicio_id"), ServicioORM.nombre.label("servicio_nombre"))
+            select(
+                AsesorPerfilORM.id, UsuarioORM.nombre, UsuarioORM.email,
+                ServicioORM.id.label("servicio_id"), ServicioORM.nombre.label("servicio_nombre")
+            )
             .join(UsuarioORM, UsuarioORM.id == AsesorPerfilORM.usuario_id)
             .join(AsesorServicioORM, AsesorServicioORM.asesor_id == AsesorPerfilORM.id)
             .join(ServicioORM, ServicioORM.id == AsesorServicioORM.servicio_id)
             .where(AsesorPerfilORM.id == asesor_id)
         )
         rows = (await self.s.execute(q)).all()
-        if not rows: return {}
+        if not rows:
+            return {}
         base = {"id": str(rows[0].id), "nombre": rows[0].nombre, "email": rows[0].email}
         base["servicios"] = [{"id": str(r.servicio_id), "nombre": r.servicio_nombre} for r in rows]
         return base
@@ -86,9 +89,10 @@ class SAServiceRepository(ServiceRepository):
 
     async def search_by_name(self, text: str, limit: int = 10) -> Sequence[Dict[str, Any]]:
         t = f"%{text.lower()}%"
+
         q = (
             select(ServicioORM.id.label("id"), ServicioORM.nombre.label("nombre"))
-            .where(func.lower(ServicioORM.nombre).like(t))
+            .where(func.unaccent(func.lower(ServicioORM.nombre)).like(func.unaccent(t)))
             .order_by(ServicioORM.nombre.asc())
             .limit(limit)
         )
@@ -159,6 +163,25 @@ class SASlotRepository(SlotRepository):
             .order_by(CupoORM.inicio)
             .limit(pag.per_page)
             .offset((pag.page - 1) * pag.per_page)
+        )
+        rows = (await self.s.execute(q)).all()
+        return [dict(r._mapping) for r in rows]
+    
+    async def list_open_by_service_range(self, servicio_id: UUID, tr: TimeRange, pag: Pagination) -> Sequence[Dict[str, Any]]:
+        q = (
+            select(
+                CupoORM.id.label("id"),
+                CupoORM.inicio.label("inicio"),
+                CupoORM.fin.label("fin"),
+                CupoORM.servicio_id.label("servicio_id"),
+            )
+            .where(CupoORM.servicio_id == servicio_id)
+            .where(CupoORM.inicio >= tr.start)
+            .where(CupoORM.fin    <= tr.end)
+            .where(CupoORM.estado == EstadoCupo.ABIERTO)
+            .order_by(CupoORM.inicio.asc())
+            .offset((pag.page - 1) * pag.per_page)
+            .limit(pag.per_page)
         )
         rows = (await self.s.execute(q)).all()
         return [dict(r._mapping) for r in rows]
