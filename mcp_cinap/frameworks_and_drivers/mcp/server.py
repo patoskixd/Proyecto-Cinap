@@ -7,7 +7,9 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
+from application.ports import Pagination, TimeRange
 from frameworks_and_drivers.db.sa_repos import ServicioORM
+from interface_adapters.services.text_norm import norm_key
 from sqlalchemy import select, text
 
 from application.dto import AvailabilityIn, OverlapIn
@@ -17,6 +19,8 @@ from application.use_cases.check_availability import CheckAvailability
 from application.use_cases.detect_overlaps import DetectOverlaps
 from frameworks_and_drivers.db.config import SAUnitOfWork
 from frameworks_and_drivers.db.orm_models import AsesoriaORM, CupoORM, EstadoAsesoria, EstadoCupo
+from frameworks_and_drivers.db.sa_repos import UsuarioORM as UsuarioModel, AsesorPerfilORM as AsesorPerfilModel
+from frameworks_and_drivers.db.orm_models import UserIdentityORM as UserIdentityModel
 from interface_adapters.gateways.calendar_gateway import NullCalendarGateway
 
 class OverlapInput(BaseModel):
@@ -29,13 +33,13 @@ class ResolveInput(BaseModel):
     query: str
     limit: int = 10
 
-class AvailabilityInput(BaseModel):
-        advisor: str = Field(..., description="nombre o email")
-        service: Optional[str] = Field(None, description="nombre del servicio (opcional)")
-        start: datetime
-        end: datetime
-        page: int = 1
-        per_page: int = 50
+class CheckAvailabilityInput(BaseModel):
+    service: str = Field(..., description="Nombre del servicio (obligatorio)")
+    start: datetime = Field(..., description="Inicio ISO8601 con TZ America/Santiago")
+    end: datetime = Field(..., description="Término ISO8601 con TZ America/Santiago")
+    advisor: Optional[str] = Field(None, description="Nombre o email del asesor (opcional)")
+    page: int = Field(1, ge=1)
+    per_page: int = Field(10, ge=1, le=100)
 
 class ScheduleAsesoriaInput(BaseModel):
     advisor: str = Field(..., description="Nombre o email del asesor")
@@ -73,6 +77,35 @@ async def _profiles_from_user_id(session, user_id: UUID) -> dict:
     )).first()
     return {"docente_id": row[0] if row else None, "asesor_id": row[1] if row else None}
 
+async def _get_usuario_email(session, usuario_id: UUID) -> str | None:
+    q = select(UsuarioModel.email).where(UsuarioModel.id == usuario_id)
+    return (await session.execute(q)).scalar_one_or_none()
+
+async def _asesor_usuario_y_email(session, asesor_perfil_id: UUID) -> tuple[UUID | None, str | None]:
+    q = (
+        select(AsesorPerfilModel.usuario_id, UsuarioModel.email)
+        .join(UsuarioModel, UsuarioModel.id == AsesorPerfilModel.usuario_id)
+        .where(AsesorPerfilModel.id == asesor_perfil_id)
+    )
+    row = (await session.execute(q)).first()
+    if not row:
+        return None, None
+    return row[0], row[1]
+
+async def _google_refresh_token(session, usuario_id: UUID) -> str | None:
+    q = (
+        select(UserIdentityModel.refresh_token_hash)
+        .where(UserIdentityModel.usuario_id == usuario_id)
+        .where(UserIdentityModel.provider == "google")
+        .limit(1)
+    )
+    return (await session.execute(q)).scalar_one_or_none()
+
+TZ_CL = ZoneInfo("America/Santiago")
+
+def _fmt_local(dt):
+    return dt.astimezone(TZ_CL).strftime("%d-%m-%Y %H:%M")
+
 def build_mcp() -> FastMCP:
     app = FastMCP(name="cinap-db-mcp")
     TZ_CL = ZoneInfo("America/Santiago")
@@ -81,19 +114,19 @@ def build_mcp() -> FastMCP:
     async def list_advisors():
         async with SAUnitOfWork() as uow:
             rows = await uow.advisors.list_all()
-        items = [{"title": f"{r['nombre']} — {r.get('email','')}", "id": r["id"]} for r in rows]
-        return {"ok": True, "say": f"{len(items)} asesores encontrados.", "data": {"items": items}}
+        items = [{"title": f"{r['nombre']}\n{r.get('email','')}", "id": r["id"]} for r in rows]
+        return {"ok": True, "data": {"items": items}}
 
     @app.tool(name="list_services", description="Lista todos los servicios disponibles.")
     async def list_services():
         async with SAUnitOfWork() as uow:
             rows = await uow.services.list_all()
         items = [{"title": r["nombre"], "id": r["id"]} for r in rows]
-        return {"ok": True, "say": f"{len(items)} servicios disponibles.", "data": {"items": items}}
+        return {"ok": True, "data": {"items": items}}
 
     @app.tool(
     name="resolve_advisor",
-    description="Resuelve un asesor por nombre o email, devuelve 1 match o candidatos."
+    description="Resuelve y busca un asesor por nombre o email, devuelve 1 match o candidatos."
     )
     async def resolve_advisor(query: str, limit: int = 10):
         async with SAUnitOfWork() as uow:
@@ -106,7 +139,7 @@ def build_mcp() -> FastMCP:
 
     @app.tool(
         name="resolve_service",
-        description="Resuelve un servicio por nombre, devuelve servicio con asesores."
+        description="Resuelve y busca un servicio por nombre, devuelve servicio con asesores."
     )
     async def resolve_service(query: str, limit: int = 10):
         async with SAUnitOfWork() as uow:
@@ -118,70 +151,93 @@ def build_mcp() -> FastMCP:
             return {"ok": False, "reason":"AmbiguousService", "candidates":[c.__dict__ for c in cands]}
 
     @app.tool(
-    name="check_availability",
-    description=(
-        "Verifica cupos abiertos de un asesor entre start y end. "
-        "Parámetros: advisor (nombre o email), service (opcional, nombre), "
-        "start y end en ISO8601 con TZ America/Santiago. "
-        "Devuelve data.items con id, title, start, end."
+        name="check_availability",
+        description=(
+            "Verifica y busca cupos abiertos entre start y end para un servicio (obligatorio) "
+            "y opcionalmente un asesor. "
+        )
     )
-    )
-    async def check_availability(
-        advisor: str,
-        start: datetime,
-        end: datetime,
-        service: Optional[str] = None,
-        page: int = 1,
-        per_page: int = 10,
-    ):
-        async with SAUnitOfWork() as uow:
-            adv_win, adv_cands = await ResolveAdvisor(uow.advisors).execute(
-                ResolveAdvisorIn(query=advisor, limit=10)
-            )
-            if not adv_win:
-                return {
-                    "ok": False,
-                    "reason": "AmbiguousAdvisor",
-                    "candidates": [c.__dict__ for c in adv_cands],
-                }
+    async def check_availability(input: CheckAvailabilityInput):
+        try:
+            start = input.start.astimezone(TZ_CL) if input.start.tzinfo else input.start.replace(tzinfo=TZ_CL)
+            end   = input.end.astimezone(TZ_CL)   if input.end.tzinfo   else input.end.replace(tzinfo=TZ_CL)
+            if start >= end:
+                return {"ok": False, "error": {"code": "VALIDATION", "message": "start debe ser anterior a end"}}
+        except Exception as e:
+            return {"ok": False, "error": {"code": "VALIDATION", "message": f"Fechas inválidas: {e}"}}
 
-            svc_id: Optional[UUID] = None
-            svc_name: Optional[str] = None
-            if service:
-                svc_win, svc_cands = await ResolveService(uow.services).execute(
-                    ResolveServiceIn(query=service, limit=10)
-                )
-                if not svc_win:
+        q_service = norm_key(input.service)
+        q_advisor = norm_key(input.advisor) if input.advisor else None
+
+        async with SAUnitOfWork() as uow:
+            svc_win, svc_cands = await ResolveService(uow.services).execute(
+                ResolveServiceIn(query=input.service, limit=20)
+            )
+            if not svc_win:
+                norm_hits = [c for c in (svc_cands or []) if norm_key(c.nombre) == q_service]
+                if len(norm_hits) == 1:
+                    svc_win = norm_hits[0]
+                else:
                     return {
                         "ok": False,
-                        "reason": "AmbiguousService",
-                        "candidates": [c.__dict__ for c in svc_cands],
+                        "error": {"code": "AmbiguousService", "message": "No se pudo resolver el servicio"},
+                        "candidates": [c.__dict__ for c in (svc_cands or [])]
                     }
-                svc_id = UUID(svc_win.id)
-                svc_name = svc_win.nombre
+            svc_id = UUID(svc_win.id)
+            svc_name = svc_win.nombre
 
-            out = await CheckAvailability(uow).execute(
-                AvailabilityIn(
-                    asesor_id=UUID(adv_win.id),
-                    servicio_id=svc_id,
-                    start=start,
-                    end=end,
-                    page=page,
-                    per_page=per_page,
+            adv_id: Optional[UUID] = None
+            adv_name: Optional[str] = None
+            if input.advisor:
+                adv_win, adv_cands = await ResolveAdvisor(uow.advisors).execute(
+                    ResolveAdvisorIn(query=input.advisor, limit=20)
                 )
-            )
+                if not adv_win:
+                    norm_hits = [
+                        c for c in (adv_cands or [])
+                        if norm_key(c.nombre) == q_advisor or (c.email and norm_key(c.email) == q_advisor)
+                    ]
+                    if len(norm_hits) == 1:
+                        adv_win = norm_hits[0]
+                    else:
+                        return {
+                            "ok": False,
+                            "error": {"code": "AmbiguousAdvisor", "message": "No se pudo resolver el asesor"},
+                            "candidates": [c.__dict__ for c in (adv_cands or [])]
+                        }
+                adv_id = UUID(adv_win.id)
+                adv_name = adv_win.nombre
 
-            advisor_title = getattr(adv_win, "nombre", None) or "Asesor"
-            service_title = svc_name or "Servicio"
-            items = [{
-                "id": str(slot.id),
-                "title": f"Cupo — {advisor_title}" + (f" — {service_title}" if svc_name else ""),
-                "start": slot.inicio.astimezone(TZ_CL).isoformat(),
-                "end":   slot.fin.astimezone(TZ_CL).isoformat(),
-                "servicio_id": str(slot.servicio_id),
-            } for slot in out]
+            out = await CheckAvailability(uow).execute(AvailabilityIn(
+                servicio_id=svc_id,
+                asesor_id=adv_id,
+                start=start,
+                end=end,
+                page=input.page,
+                per_page=input.per_page,
+            ))
+            out = out or []
 
-            return {"ok": True, "say": f"{len(items)} cupo(s) disponibles.", "data": {"items": items}}
+            if not out:
+                msg = (
+                    f"No se encontraron cupos disponibles para el servicio '{svc_name}' "
+                    f"{f"con {adv_name} " if adv_name else ''}en el rango indicado."
+                )
+                return {"ok": True, "say": msg}
+
+            items = []
+            for slot in out:
+                title = f"Cupo — {adv_name}" if adv_name else f"Cupo — {svc_name}"
+                items.append({
+                    "id": str(slot.id),
+                    "title": title,
+                    "subtitle": svc_name,
+                    "start": _fmt_local(slot.inicio),
+                    "end":   slot.fin.astimezone(TZ_CL).strftime("%H:%M"),
+                    "servicio_id": str(slot.servicio_id),
+                })
+
+            return {"ok": True, "data": {"items": items}}
     
     @app.tool(
         name="schedule_asesoria",
@@ -223,6 +279,16 @@ def build_mcp() -> FastMCP:
             asesor_id = UUID(adv_win.id)
             servicio_id = UUID(svc_win.id)
 
+            docente_usuario_id = UUID(str(input.user_id))
+            docente_email = await _get_usuario_email(uow.session, docente_usuario_id)
+
+            asesor_usuario_id, asesor_email = await _asesor_usuario_y_email(uow.session, asesor_id)
+            if not asesor_usuario_id:
+                return {"ok": False, "error": {"code": "MISSING_ADVISOR_USER", "message": "No se encontró el usuario del asesor"}}
+
+            asesor_refresh_token = await _google_refresh_token(uow.session, asesor_usuario_id)
+            attendees = [docente_email] if docente_email else []
+
             slots = await CheckAvailability(uow).execute(AvailabilityIn(
                 asesor_id=asesor_id, servicio_id=servicio_id,
                 start=start, end=end, page=1, per_page=50
@@ -258,8 +324,9 @@ def build_mcp() -> FastMCP:
                         "title": f"Asesoría — {preview['servicio']} con {preview['asesor']}",
                         "start": preview["inicio"],
                         "end": preview["fin"],
-                        "attendees": [],
+                        "attendees": attendees,
                         "description": input.notas or "",
+                        "calendar_id": "primary",
                     }
                 }
                 return {"ok": True, "say": say, "data": {"preview": preview, "next_hint": next_hint}}
@@ -282,8 +349,10 @@ def build_mcp() -> FastMCP:
                     "title": f"Asesoría — {svc_win.nombre} con {getattr(adv_win,'nombre','Asesor')}",
                     "start": chosen.inicio.astimezone(TZ_CL).isoformat(),
                     "end": chosen.fin.astimezone(TZ_CL).isoformat(),
-                    "attendees": [],
+                    "attendees": attendees,
                     "description": input.notas or "",
+                    "calendar_id": "primary",
+                    **({"refresh_token": asesor_refresh_token} if asesor_refresh_token else {}),
                 }
             }
             return {

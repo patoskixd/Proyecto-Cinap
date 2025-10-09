@@ -8,11 +8,11 @@ class CreateEventRequest:
     title: str
     start: datetime
     end: datetime
+    oauth_access_token: str
     description: Optional[str] = None
     location: Optional[str] = None
     attendees: Optional[List[str]] = None
-    requested_by_role: Optional[str] = None
-    requested_by_email: Optional[str] = None
+    send_updates: str = "all"
 
 @dataclass
 class EventResponse:
@@ -24,8 +24,6 @@ class EventResponse:
     description: Optional[str]
     location: Optional[str]
     attendees: List[str]
-    requested_by_role: Optional[str]
-    requested_by_email: Optional[str]
 
 @dataclass
 class ListEventsRequest:

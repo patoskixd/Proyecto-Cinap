@@ -12,8 +12,6 @@ class EventOut(BaseModel):
     description: str | None = None
     location: str | None = None
     attendees: List[str] = []
-    requested_by_role: str | None = None
-    requested_by_email: str | None = None
 
 def present_event(resp: EventResponse) -> EventOut:
     return EventOut.model_validate(resp.__dict__)

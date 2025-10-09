@@ -12,11 +12,11 @@ class EventRepository(ABC):
         title: str,
         start: datetime,
         end: datetime,
-        description: Optional[str],
-        location: Optional[str],
-        attendees: List[str],
-        requested_by_role: Optional[str],
-        requested_by_email: Optional[str],
+        oauth_access_token: str,
+        description: Optional[str] = None,
+        location: Optional[str] = None,
+        attendees: Optional[List[str]] = None,
+        send_updates: str = "all",
     ) -> Event: ...
 
     @abstractmethod

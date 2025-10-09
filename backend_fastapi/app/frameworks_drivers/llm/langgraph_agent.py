@@ -1,4 +1,5 @@
 from __future__ import annotations
+import base64
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import json, sqlite3, asyncio, re
@@ -98,6 +99,19 @@ def _normalize_event_delete_by_title_args(kwargs: dict) -> dict:
 
     return out
 
+def _attach_items_payload(text: str, items: list[dict], kind: str) -> str:
+    ui_items = []
+    for it in items:
+        ui_items.append({
+            "title": it.get("title") or "",
+            "subtitle": it.get("subtitle") or it.get("email") or "",
+            "start": it.get("start"),
+            "end": it.get("end"),
+        })
+    payload = {"kind": kind, "items": ui_items}
+    blob = base64.b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
+    return text + f"\n\n<!--CINAP_LIST:{blob}-->"
+
 def _strip_think(text: str | None) -> str:
     if not isinstance(text, str):
         return ""
@@ -110,17 +124,18 @@ def _strip_code_fences(s: str) -> str:
         s = re.sub(r"\s*```$", "", s)
     return s.strip()
 
-def _fmt_event_line(ev: dict) -> str:
-    t = ev.get("title") or "(sin título)"
-    s = str(ev.get("start") or "")
-    e = str(ev.get("end") or "")
-    return f"{t} — {s}–{e}"
+def _fmt_list_item(it: dict) -> str:
+    title = str(it.get("title") or "(sin título)").strip()
+    sub = str(it.get("subtitle") or it.get("email") or "").strip()
+    return f"{title}\n{sub}" if sub else title
 
 def _render_numbered(items: list[dict], limit: int = 10) -> str:
     shown = items[:limit]
-    lines = [f"{idx+1}) {_fmt_event_line(ev)}" for idx, ev in enumerate(shown)]
+    lines = [f"{idx+1}) {_fmt_list_item(ev)}" for idx, ev in enumerate(shown)]
+
     if len(items) > limit:
-        lines.append(f"... y {len(items)-limit} más")
+        lines.append(f"... y {len(items) - limit} más")
+
     return "\n".join(lines)
 
 def _format_mcp_result(res: dict, tool_name: str) -> str:
@@ -128,14 +143,15 @@ def _format_mcp_result(res: dict, tool_name: str) -> str:
         data = res.get("data") or {}
         items = data.get("items") or data.get("events")
         if isinstance(items, list) and items:
-            header = res.get("say") or f"{len(items)} evento(s) encontrados."
-            return header + "\n" + _render_numbered(items)
+            header = (res.get("say") or "").strip()
+            text = (header + "\n" + _render_numbered(items)) if header else ""
+            return _attach_items_payload(text, items, kind=tool_name)
+
         ev = data.get("event")
         if isinstance(ev, dict):
             say = (res.get("say") or "").strip()
-            if say:
-                return say
-            return _fmt_event_line(ev)
+            return say or _fmt_list_item(ev)
+
         if res.get("say"):
             return str(res["say"])
         return "Operación completada."
@@ -292,35 +308,39 @@ class LangGraphAgent:
                 if getattr(self, "_confirm_store", None) and thread_id:
                     pending_exists = await self._confirm_store.peek(thread_id)
 
-                    # Forzar preview
                     if args.get("confirm") is True and not pending_exists:
                         args["confirm"] = False
                         set_meta(enforced_preview=True)
 
-                    # Guardar preview
                     if not bool(args.get("confirm")):
                         async with astage("confirm.store.put", extra={"tool": name}):
                             pending_id = await self._confirm_store.put(thread_id, name, args)
-                        async with astage("confirm.store.verify", extra={"tool": name, "pending_id": pending_id}):
-                            exists = await self._confirm_store.peek(thread_id)
-                            if not exists:
-                                set_meta(confirm_store_verify="miss")
-                        async with astage("agent.mcp.total", extra={"tool": name}):
-                            res = await client.call_tool(name, {**args, "confirm": False})
 
-                    # Ejecutar
-                    async with astage("mcp.serialize", extra={"tool": name}):
-                        pass
-                    async with astage("mcp.rpc", extra={"tool": name}):
-                        res = await client.call_tool(name, args)
-                    async with astage("mcp.deserialize", extra={"tool": name}):
-                        pass
-                    return _format_mcp_result(res, name)
+                        async with astage("mcp.rpc", extra={"tool": name, "phase": "preview"}):
+                            preview_res = await client.call_tool(name, {**args, "confirm": False})
 
-                # Llamar tool
-                async with astage("agent.mcp.total", extra={"tool": name}):
-                    res = await client.call_tool(name, args)
-                return _format_mcp_result(res, name)
+                        try:
+                            if isinstance(preview_res, dict):
+                                next_hint = None
+                                data = preview_res.get("data") or {}
+                                if isinstance(data, dict):
+                                    next_hint = data.get("next_hint")
+                                if not next_hint:
+                                    next_hint = preview_res.get("next_hint")
+
+                                if next_hint:
+                                    post = [{"tool": next_hint.get("next_tool"), "args": next_hint.get("suggested_args")}]
+                                    await self._confirm_store.patch(thread_id, {
+                                        "post_confirm": post
+                                    })
+                        except Exception:
+                            pass
+
+                        return _format_mcp_result(preview_res, name)
+
+                    # Fallback
+                    set_meta(confirm_requested_inline=True)
+                    return "Necesito tu confirmación primero. Responde con “sí” para continuar."
 
         def caller_sync(**kwargs) -> str:
             fut = asyncio.run_coroutine_threadsafe(caller_async(**kwargs), self._main_loop)
@@ -406,24 +426,17 @@ class LangGraphAgent:
           2) Only if the user explicitly confirms in their next message, call the tool again with confirm=true to execute.
         - A confirmation applies only to the immediately preceding action and cannot be reused.
 
-        TOOL USE POLICY (Calendar)
-        - Never perform destructive or state-changing actions without an explicit two-step confirmation.
-        - Two-step workflow for create/update/delete:
-          1) First produce a PREVIEW by calling the tool with confirm=false.
-          2) Only if the user explicitly confirms in their next message, call the tool again with confirm=true to execute.
-        - A confirmation applies only to the immediately preceding action and cannot be reused.
-        - An imperative (“Delete…”, “Create…”, “Update…”) is not a confirmation.
-        - If no time range is provided, use the default window: today−30 days to today+365 days.
-        - For destructive intent, do not “find first”; build a selector from the user’s message and call the delete tool with confirm=false (preview), then wait for confirmation.
-
         TOOL CALL FORMAT
         - When you decide to use a tool, respond with a single JSON object only (no extra text, no code fences):
           {"name":"<tool_name>","arguments":{...}}
         - Use snake_case parameter names exactly as defined by the tool. Omit null/unknown fields.
-        - After executing a confirmed tool, you may add a short Spanish summary for the user.
         """
-        today = datetime.now(ZoneInfo("America/Santiago")).strftime("%d-%m-%Y")
-        system_msg = SYSTEM_STATIC_EN + f"\nContext: TZ=GMT-3, today={today}\n /no_think"
+        now_cl = datetime.now(ZoneInfo("America/Santiago"))
+        offset = now_cl.utcoffset()
+        offset_h = int(offset.total_seconds() // 3600)
+        offset_sign = "+" if offset_h >= 0 else "-"
+        offset_txt = f"UTC{offset_sign}{abs(offset_h):02d}:00"
+        system_msg = SYSTEM_STATIC_EN + f"\nContext: TZ=America/Santiago ({offset_txt}), today={now_cl:%d-%m-%Y}\n /no_think"
         self._runner = LangGraphRunner(app, system_text=system_msg)
 
     async def invoke(self, message: str, *, thread_id: str) -> str:
@@ -463,10 +476,74 @@ class LangGraphAgent:
                     args["confirm"] = True
 
                 set_meta(route="confirm_fastpath", tool=tool)
-                async with astage("confirm.fastpath.mcp", extra={"tool": tool}):
-                    client = self._client_for_tool(tool)
+                client = self._client_for_tool(tool)
+
+                async with astage("confirm.fastpath.mcp", extra={"tool": tool, "phase": "confirm"}):
                     res = await client.call_tool(tool, args)
-                return _strip_think(_format_mcp_result(res, tool))
+
+                msgs: list[str] = []
+                msgs.append(_strip_think(_format_mcp_result(res, tool)))
+
+                post_ops = []
+                try:
+                    post_ops = (pending.get("post_confirm") or []) if isinstance(pending, dict) else []
+                except Exception:
+                    post_ops = []
+
+                confirm_hint = None
+                if isinstance(res, dict):
+                    data = res.get("data") or {}
+                    nh = data.get("next_hint") or res.get("next_hint")
+                    if isinstance(nh, dict) and nh.get("next_tool") and nh.get("suggested_args"):
+                        confirm_hint = {"tool": nh["next_tool"], "args": dict(nh["suggested_args"] or {})}
+
+                def _deep_merge(dst: dict, src: dict) -> dict:
+                    out = dict(dst or {})
+                    for k, v in (src or {}).items():
+                        if isinstance(v, dict) and isinstance(out.get(k), dict):
+                            out[k] = _deep_merge(out[k], v)
+                        else:
+                            out[k] = v
+                    return out
+
+                if confirm_hint:
+                    if post_ops:
+                        for op in post_ops:
+                            if op.get("tool") == confirm_hint["tool"]:
+                                op["args"] = _deep_merge(op.get("args") or {}, confirm_hint["args"])
+                                break
+                        else:
+                            post_ops.append(confirm_hint)
+                    else:
+                        post_ops = [confirm_hint]
+
+                for op in post_ops:
+                    tname = op.get("tool")
+                    targs = dict(op.get("args") or {})
+                    if not tname:
+                        continue
+
+                    if tname == "event_create":
+                        for k in ("start", "end"):
+                            if k in targs and isinstance(targs[k], str):
+                                pass
+                        if isinstance(targs.get("attendees"), list):
+                            seen=set(); atts=[]
+                            for a in targs["attendees"]:
+                                a = (a or "").strip().lower()
+                                if a and a not in seen:
+                                    seen.add(a); atts.append(a)
+                            targs["attendees"] = atts
+
+                    try:
+                        c2 = self._client_for_tool(tname)
+                        async with astage("confirm.fastpath.mcp", extra={"tool": tname, "phase": "post"}):
+                            r2 = await c2.call_tool(tname, targs)
+                        msgs.append(_strip_think(_format_mcp_result(r2, tname)))
+                    except Exception as e:
+                        msgs.append(f"Ocurrió un error encadenando {tname}: {e}")
+
+                return "\n".join([m for m in msgs if m]).strip()
 
             set_meta(fastpath="miss_no_pending")
 

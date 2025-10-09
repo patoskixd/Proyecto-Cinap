@@ -14,12 +14,20 @@ class CheckAvailability:
         pag = Pagination(page=data.page, per_page=data.per_page)
 
         async with self.uow:
-            if data.servicio_id:
+            if data.asesor_id and data.servicio_id:
                 rows = await self.uow.slots.list_open_by_advisor_service_range(
                     data.asesor_id, data.servicio_id, tr, pag
                 )
-            else:
+            elif data.asesor_id and not data.servicio_id:
                 rows = await self.uow.slots.list_open_by_advisor_range(
                     data.asesor_id, tr, pag
                 )
+            elif data.servicio_id and not data.asesor_id:
+                rows = await self.uow.slots.list_open_by_service_range(
+                    data.servicio_id, tr, pag
+                )
+            else:
+                raise ValidationError("Falta servicio para la búsqueda")
+
+        rows = rows or []
         return [SlotOut(id=r["id"], inicio=r["inicio"], fin=r["fin"], servicio_id=r["servicio_id"]) for r in rows]
