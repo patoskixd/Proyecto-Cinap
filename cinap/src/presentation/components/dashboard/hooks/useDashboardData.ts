@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import type { Role } from "@/domain/auth";
 import type { DashboardData } from "@/application/dashboard/ports/DashboardRepo";
-import { GetDashboardData } from "@/application/dashboard/usecases/GetDashboardData";
-import { InMemoryReservationsRepo } from "@/infrastructure/teachers/asesorias/InMemoryReservationsRepo";
+import { GetDashboard } from "@/application/dashboard/usecases/GetDashboard";
+import { DashboardHttpRepo } from "@/infrastructure/dashboard/DashboardHttpRepo";
 
 const EMPTY_DATA: DashboardData = {
   isCalendarConnected: false,
@@ -14,22 +14,27 @@ const EMPTY_DATA: DashboardData = {
   drafts: [],
 };
 
-export function useDashboardData(role: Role, userId?: string) {
+export function useDashboardData(role: Role | null, userId?: string) {
   const [data, setData] = useState<DashboardData>(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchData() {
+      if (!role) {
+        setLoading(false);
+        return;
+      }
+      
       try {
         setLoading(true);
         setError(null);
         
-        // Instanciar dependencias (esto después puede venir del DI container)
-        const reservationsRepo = new InMemoryReservationsRepo();
-        const getDashboardData = new GetDashboardData(reservationsRepo);
+        // Instanciar dependencias - usar DashboardHttpRepo que conecta con el backend real
+        const dashboardRepo = new DashboardHttpRepo();
+        const getDashboard = new GetDashboard(dashboardRepo);
         
-        const result = await getDashboardData.exec(role, userId);
+        const result = await getDashboard.exec({ role, userId });
         setData(result);
       } catch (err) {
         console.error("Error fetching dashboard data:", err);
@@ -40,9 +45,7 @@ export function useDashboardData(role: Role, userId?: string) {
       }
     }
 
-    if (role && userId) {
-      fetchData();
-    }
+    fetchData();
   }, [role, userId]);
 
   return { data, loading, error };

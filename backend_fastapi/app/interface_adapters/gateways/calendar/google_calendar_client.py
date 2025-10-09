@@ -7,6 +7,8 @@ from app.use_cases.ports.calendar_port import CalendarPort, CalendarEventInput, 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 CAL_EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
 SCOPES = "https://www.googleapis.com/auth/calendar"
+CAL_EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+CAL_WATCH_URL  = "https://www.googleapis.com/calendar/v3/calendars/primary/events/watch"
 
 class GoogleCalendarClient(CalendarPort):
     def __init__(self, *, client_id: str, client_secret: str, timeout: int = 20, get_refresh_token_by_usuario_id):
@@ -85,3 +87,41 @@ class GoogleCalendarClient(CalendarPort):
                 provider_event_id=j.get("id", ""),
                 html_link=j.get("htmlLink"),
             )
+        
+    async def get_event(self, *, organizer_usuario_id: str, event_id: str) -> dict:
+        rt = await self._get_rt(organizer_usuario_id)
+        if not rt:
+            raise RuntimeError("El asesor no tiene Google conectado (refresh_token ausente)")
+        access = await self._exchange_refresh(rt)
+        headers = {"Authorization": f"Bearer {access}"}
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            r = await client.get(f"{CAL_EVENTS_URL}/{event_id}", headers=headers)
+            r.raise_for_status()
+            return r.json()
+
+    async def watch_primary_calendar(self, *, organizer_usuario_id: str, callback_url: str,
+                                     channel_id: str, token: str | None = None,
+                                     ttl_seconds: int = 86_000) -> dict:
+        rt = await self._get_rt(organizer_usuario_id)
+        if not rt:
+            raise RuntimeError("El asesor no tiene Google conectado (refresh_token ausente)")
+        access = await self._exchange_refresh(rt)
+        headers = {"Authorization": f"Bearer {access}"}
+        body = {
+            "id": channel_id,           # UUID que generas
+            "type": "web_hook",
+            "address": callback_url,    # tu endpoint público https
+            "token": token or "",       # opcional, para validar que la notificación es tuya
+            "params": {"ttl": str(ttl_seconds)}
+        }
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            # app/interface_adapters/gateways/calendar/google_calendar_client.py
+
+            r = await client.post(
+                "https://www.googleapis.com/calendar/v3/calendars/primary/events/watch",
+                headers=headers,
+                json=body
+            )
+
+            r.raise_for_status()
+            return r.json()

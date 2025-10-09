@@ -13,7 +13,7 @@ from app.frameworks_drivers.config.settings import (
     API_DEBUG, CORS_ORIGINS,
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI,
     JWT_SECRET, JWT_ISSUER, JWT_MINUTES, FRONTEND_ORIGIN, TEACHER_ROLE_ID,
-    MCP_COMMAND, MCP_ARGS, MCP_CWD,
+    MCP_COMMAND, MCP_ARGS, MCP_CWD, WEBHOOK_PUBLIC_URL,
 )
 from app.frameworks_drivers.config.db import get_session
 from app.frameworks_drivers.di.container import Container
@@ -29,6 +29,7 @@ from app.interface_adapters.controllers.admin_catalog_router import make_admin_c
 from app.interface_adapters.controllers.admin_location_router import make_admin_location_router
 from app.interface_adapters.controllers.admin_advisors_router import make_admin_advisors_router
 from app.interface_adapters.controllers.admin_teachers_router import make_admin_teachers_router
+from app.interface_adapters.controllers.dashboard_controller import router as dashboard_router
 
 from app.observability.middleware import JSONTimingMiddleware
 from app.observability.metrics import measure_stage, set_meta, stage, astage
@@ -85,6 +86,7 @@ container = Container(
     jwt_issuer=JWT_ISSUER,
     jwt_minutes=JWT_MINUTES,
     teacher_role_id=TEACHER_ROLE_ID,
+    webhook_public_url=WEBHOOK_PUBLIC_URL,
     mcp_command=MCP_COMMAND,
     mcp_args=MCP_ARGS,
     mcp_cwd=MCP_CWD,
@@ -247,3 +249,36 @@ admin_teachers_router = make_admin_teachers_router(
     jwt_port=container.jwt
 )
 app.include_router(admin_teachers_router)
+
+app.include_router(dashboard_router, dependencies=[Depends(require_auth)])
+
+
+
+from app.interface_adapters.controllers.google_calendar_webhook import make_google_calendar_webhook_router
+from app.interface_adapters.controllers.calendar_router import make_calendar_router
+
+# ...
+calendar_router = make_calendar_router(
+    get_session_dep=get_session,
+    jwt_port=container.jwt,
+    cache=container.cache,
+    webhook_public_url=WEBHOOK_PUBLIC_URL
+)
+app.include_router(calendar_router)
+
+from app.interface_adapters.gateways.db.sqlalchemy_user_repo import SqlAlchemyUserRepo
+from app.interface_adapters.gateways.calendar.google_calendar_client import GoogleCalendarClient
+
+# fastapi_app.py
+google_webhook_router = make_google_calendar_webhook_router(
+    get_session_dep=get_session,
+    cache=container.cache,
+    cal_client_factory=lambda session: GoogleCalendarClient(
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        get_refresh_token_by_usuario_id=lambda usuario_id: 
+            SqlAlchemyUserRepo(session, default_role_id=None).get_refresh_token_by_usuario_id(usuario_id)
+    )
+)
+
+app.include_router(google_webhook_router)
