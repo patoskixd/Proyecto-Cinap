@@ -142,12 +142,12 @@ export function useLocationState() {
   }
 
   //  acciones campus
-  async function createCampus(payload: { name: string; address: string }) {
+  async function createCampus(payload: { name: string; address: string; code: string }) {
     const saved = await ucCreateCampus.exec(payload);
     setCampus((prev) => upsert(prev, saved));
     return saved;
   }
-  async function updateCampus(id: string, patch: { name?: string; address?: string; active?: boolean }) {
+  async function updateCampus(id: string, patch: { name?: string; address?: string; code?: string; active?: boolean }) {
     const saved = await ucUpdateCampus.exec(id, patch);
     setCampus((prev) => upsert(prev, saved));
     return saved;
@@ -166,12 +166,12 @@ export function useLocationState() {
   }
 
   //  acciones buildings
-  async function createBuilding(payload: { name: string; campusId: string }) {
+  async function createBuilding(payload: { name: string; campusId: string; code: string }) {
     const saved = await ucCreateBuilding.exec(payload);
     setBuildings((prev) => upsert(prev, saved));
     return saved;
   }
-  async function updateBuilding(id: string, patch: { name?: string; campusId?: string; active?: boolean }) {
+  async function updateBuilding(id: string, patch: { name?: string; campusId?: string; code?: string; active?: boolean }) {
     const saved = await ucUpdateBuilding.exec(id, patch);
     setBuildings((prev) => upsert(prev, saved));
     return saved;

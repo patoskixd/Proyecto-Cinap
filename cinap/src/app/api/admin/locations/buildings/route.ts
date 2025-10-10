@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const repo = new AdminLocationBackendRepo(getCookieString(req));
-    const data = await new CreateBuilding(repo).exec({ name: body?.name ?? "", campusId: body?.campusId ?? "" });
+    const data = await new CreateBuilding(repo).exec({ name: body?.name ?? "", campusId: body?.campusId ?? "" , code: body?.code ?? "" });
     const resp = NextResponse.json(data, { status: 201 });
     appendSetCookies(repo.getSetCookies?.() ?? [], resp);
     return resp;

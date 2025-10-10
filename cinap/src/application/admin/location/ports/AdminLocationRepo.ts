@@ -3,15 +3,15 @@ import type { Campus, Building, Room, } from "@/domain/admin/location";
 export interface AdminLocationRepo {
   // Campus
   listCampus(): Promise<Campus[]>;
-  createCampus(payload: { name: string; address: string }): Promise<Campus>;
-  updateCampus(id: string, patch: { name?: string; address?: string; active?: boolean }): Promise<Campus>;
+  createCampus(payload: { name: string; address: string; code: string; }): Promise<Campus>;
+  updateCampus(id: string, patch: { name?: string; address?: string; code?: string; active?: boolean }): Promise<Campus>;
   deleteCampus(id: string): Promise<void>;
   reactivateCampus(id: string): Promise<Campus>;
 
   // Buildings
   listBuildings(params?: { campusId?: string }): Promise<Building[]>;
-  createBuilding(payload: { name: string; campusId: string }): Promise<Building>;
-  updateBuilding(id: string, patch: { name?: string; campusId?: string; active?: boolean }): Promise<Building>;
+  createBuilding(payload: { name: string; campusId: string; code?: string }): Promise<Building>;
+  updateBuilding(id: string, patch: { name?: string; campusId?: string; code?: string; active?: boolean }): Promise<Building>;
   deleteBuilding(id: string): Promise<void>;
   reactivateBuilding(id: string): Promise<Building>;
 

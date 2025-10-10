@@ -4,10 +4,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 def row_to_campus(r) -> Dict[str, Any]:
-    return dict(id=r.id, name=r.nombre, address=r.direccion, active=r.activo)
+    return dict(id=r.id, name=r.nombre, address=r.direccion, code=r.codigo, active=r.activo)
 
 def row_to_building(r) -> Dict[str, Any]:
-    return dict(id=r.id, name=r.nombre, campusId=r.campus_id, campusName=r.campus_nombre, active=r.activo)
+    return dict(id=r.id, name=r.nombre, campusId=r.campus_id, code=r.codigo, campusName=r.campus_nombre, active=r.activo)
 
 def frontend_to_db_type(frontend_type: str) -> str:
     """Convierte tipos del frontend a valores válidos en la BD"""
@@ -15,7 +15,8 @@ def frontend_to_db_type(frontend_type: str) -> str:
         "aula": "SALA", 
         "laboratorio": "LAB",
         "auditorio": "AUDITORIO",
-        "sala_reuniones": "SALA_REUNIONES", 
+        "sala_reuniones": "SALA_REUNIONES",
+        "sala_virtual": "SALA_VIRTUAL",
         "oficina": "OFICINA"
     }
     return mapping.get(frontend_type.lower(), frontend_type.upper())
@@ -33,7 +34,7 @@ class SqlAlchemyAdminLocationRepo:
     # ===== Campus
     async def list_campus(self) -> List[Dict[str, Any]]:
         rs = await self.session.execute(text("""
-            SELECT id, nombre, direccion, activo
+            SELECT id, nombre, direccion, codigo, activo
             FROM public.campus
             ORDER BY nombre
         """))
@@ -41,7 +42,7 @@ class SqlAlchemyAdminLocationRepo:
 
     async def get_campus(self, campus_id: str) -> Dict[str, Any]:
         rs = await self.session.execute(text("""
-            SELECT id, nombre, direccion, activo
+            SELECT id, nombre, direccion, codigo, activo
             FROM public.campus
             WHERE id = :id
         """), dict(id=campus_id))
@@ -49,13 +50,13 @@ class SqlAlchemyAdminLocationRepo:
         if not row: raise ValueError("Campus not found")
         return row_to_campus(row)
 
-    async def create_campus(self, name: str, address: str) -> Dict[str, Any]:
+    async def create_campus(self, name: str, address: str, code: str) -> Dict[str, Any]:
         try:
             rs = await self.session.execute(text("""
-                INSERT INTO public.campus (id, nombre, direccion, activo)
-                VALUES (gen_random_uuid(), :name, :address, true)
-                RETURNING id, nombre, direccion, activo
-            """), dict(name=name, address=address))
+                INSERT INTO public.campus (id, nombre, direccion, codigo, activo)
+                VALUES (gen_random_uuid(), :name, :address, :code, true)
+                RETURNING id, nombre, direccion, codigo, activo
+            """), dict(name=name, address=address, code=code))
             await self.session.commit()
             r = rs.mappings().one()
             return row_to_campus(r)
@@ -63,18 +64,24 @@ class SqlAlchemyAdminLocationRepo:
             await self.session.rollback()
             raise e
 
-    async def update_campus(self, campus_id: str, name: Optional[str], address: Optional[str]) -> Dict[str, Any]:
-        rs = await self.session.execute(text("""
-            UPDATE public.campus
-            SET nombre = COALESCE(:name, nombre),
-                direccion = COALESCE(:address, direccion)
-            WHERE id = :id
-            RETURNING id, nombre, direccion, activo
-        """), dict(id=campus_id, name=name, address=address))
-        row = rs.mappings().first()
-        await self.session.commit()
-        if not row: raise ValueError("Campus not found")
-        return row_to_campus(row)
+    
+    async def update_campus(self, campus_id: str, name: Optional[str], address: Optional[str], code: Optional[str]) -> Dict[str, Any]:
+        try:
+            rs = await self.session.execute(text("""
+                UPDATE public.campus
+                SET nombre   = COALESCE(:name, nombre),
+                    direccion= COALESCE(:address, direccion),
+                    codigo   = COALESCE(:code, codigo)
+                WHERE id = :id
+                RETURNING id, nombre, direccion, codigo, activo
+            """), dict(id=campus_id, name=name, address=address, code=code))
+            row = rs.mappings().first()
+            await self.session.commit()
+            if not row: raise ValueError("Campus not found")
+            return row_to_campus(row)
+        except IntegrityError as e:
+            await self.session.rollback()
+            raise e
 
     async def soft_delete_campus(self, campus_id: str) -> None:
         await self.session.execute(text("UPDATE public.campus SET activo=false WHERE id=:id"), dict(id=campus_id))
@@ -83,7 +90,7 @@ class SqlAlchemyAdminLocationRepo:
     async def reactivate_campus(self, campus_id: str) -> Dict[str, Any]:
         rs = await self.session.execute(text("""
             UPDATE public.campus SET activo=true WHERE id=:id
-            RETURNING id, nombre, direccion, activo
+            RETURNING id, nombre, direccion, codigo, activo
         """), dict(id=campus_id))
         row = rs.mappings().first()
         await self.session.commit()
@@ -93,7 +100,7 @@ class SqlAlchemyAdminLocationRepo:
     # ===== Buildings
     async def list_buildings(self, campus_id: Optional[str] = None) -> List[Dict[str, Any]]:
         rs = await self.session.execute(text(f"""
-            SELECT e.id, e.nombre, e.campus_id, e.activo, c.nombre AS campus_nombre
+            SELECT e.id, e.nombre, e.campus_id, e.codigo, e.activo, c.nombre AS campus_nombre
             FROM public.edificio e
             JOIN public.campus c ON c.id = e.campus_id
             {"WHERE e.campus_id = :campus_id" if campus_id else ""}
@@ -103,7 +110,7 @@ class SqlAlchemyAdminLocationRepo:
 
     async def get_building(self, building_id: str) -> Dict[str, Any]:
         rs = await self.session.execute(text("""
-            SELECT e.id, e.nombre, e.campus_id, e.activo, c.nombre AS campus_nombre
+            SELECT e.id, e.nombre, e.campus_id, e.codigo, e.activo, c.nombre AS campus_nombre
             FROM public.edificio e
             JOIN public.campus c ON c.id = e.campus_id
             WHERE e.id = :id
@@ -112,30 +119,31 @@ class SqlAlchemyAdminLocationRepo:
         if not row: raise ValueError("Building not found")
         return row_to_building(row)
 
-    async def create_building(self, name: str, campus_id: str) -> Dict[str, Any]:
+    async def create_building(self, name: str, campus_id: str, code: Optional[str] = None) -> Dict[str, Any]:
         rs = await self.session.execute(text("""
             WITH ins AS (
-              INSERT INTO public.edificio (id, campus_id, nombre, activo)
-              VALUES (gen_random_uuid(), :campus_id, :name, true)
-              RETURNING id, campus_id, nombre, activo
+              INSERT INTO public.edificio (id, campus_id, nombre, activo, codigo)
+              VALUES (gen_random_uuid(), :campus_id, :name, true, :code)
+              RETURNING id, campus_id, nombre, activo, codigo
             )
-            SELECT i.id, i.nombre, i.campus_id, i.activo, c.nombre AS campus_nombre
+            SELECT i.id, i.nombre, i.campus_id, i.codigo, i.activo, c.nombre AS campus_nombre
             FROM ins i JOIN campus c ON c.id = i.campus_id
-        """), dict(name=name, campus_id=campus_id))
+        """), dict(name=name, campus_id=campus_id, code=code))
         row = rs.mappings().one()
         await self.session.commit()
         return row_to_building(row)
 
-    async def update_building(self, building_id: str, name: Optional[str], campus_id: Optional[str]) -> Dict[str, Any]:
+    async def update_building(self, building_id: str, name: Optional[str], campus_id: Optional[str], code: Optional[str]) -> Dict[str, Any]:
         rs = await self.session.execute(text("""
             WITH upd AS (
               UPDATE public.edificio
               SET nombre = COALESCE(:name, nombre),
-                  campus_id = COALESCE(:campus_id, campus_id)
+                  campus_id = COALESCE(:campus_id, campus_id),
+                  codigo = COALESCE(:code, codigo)
               WHERE id = :id
-              RETURNING id, campus_id, nombre, activo
+              RETURNING id, campus_id, nombre, codigo, activo
             )
-            SELECT u.id, u.nombre, u.campus_id, u.activo, c.nombre AS campus_nombre
+            SELECT u.id, u.nombre, u.campus_id, u.codigo, u.activo, c.nombre AS campus_nombre
             FROM upd u JOIN campus c ON c.id = u.campus_id
         """), dict(id=building_id, name=name, campus_id=campus_id))
         row = rs.mappings().first()
@@ -150,7 +158,7 @@ class SqlAlchemyAdminLocationRepo:
     async def reactivate_building(self, building_id: str) -> Dict[str, Any]:
         rs = await self.session.execute(text("""
             UPDATE public.edificio SET activo=true WHERE id=:id
-            RETURNING id, campus_id, nombre, activo
+            RETURNING id, campus_id, nombre,codigo ,  activo
         """), dict(id=building_id))
         base = rs.mappings().first()
         if not base:

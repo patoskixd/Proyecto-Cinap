@@ -2,6 +2,7 @@ export type Campus = {
   id: string;
   name: string;
   address: string;
+  code: string;
   active: boolean;
 };
 
@@ -10,10 +11,11 @@ export type Building = {
   name: string;
   campusId: string;
   campusName?: string;
+  code: string;
   active: boolean;
 };
 
-export type RoomType = "aula" | "laboratorio" | "auditorio" | "sala_reuniones" | "oficina";
+export type RoomType = "aula" | "laboratorio" | "auditorio" | "sala_reuniones" | "oficina"| "sala_virtual";
 
 export type Room = {
   id: string;

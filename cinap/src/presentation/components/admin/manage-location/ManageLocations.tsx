@@ -145,6 +145,7 @@ export default function ManageLocations() {
                     <thead>
                       <tr className="bg-gray-50 text-left text-sm">
                         <th className="px-4 py-3 font-medium text-gray-700">Nombre</th>
+                        <th className="px-4 py-3 font-medium text-gray-700">Código</th>
                         <th className="px-4 py-3 font-medium text-gray-700">Dirección</th>
                         <th className="px-4 py-3 font-medium text-gray-700">Estado</th>
                         <th className="px-4 py-3 text-right font-medium text-gray-700">Acciones</th>
@@ -154,6 +155,7 @@ export default function ManageLocations() {
                       {campusFiltered.map((c) => (
                         <tr key={c.id} className="border-t border-gray-100 hover:bg-blue-50/50 transition-colors duration-200">
                           <td className="px-4 py-4 font-medium text-gray-900">{c.name}</td>
+                          <td className="px-4 py-4 text-gray-600">{c.code || "—"}</td>
                           <td className="px-4 py-4 text-gray-600">{emptyCell(c.address)}</td>
                           <td className="px-4 py-4">
                             <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
@@ -285,6 +287,7 @@ export default function ManageLocations() {
                     <thead>
                       <tr className="bg-gray-50 text-left text-sm">
                         <th className="px-4 py-3 font-medium text-gray-700">Nombre</th>
+                        <th className="px-4 py-3 font-medium text-gray-700">Código</th>
                         <th className="px-4 py-3 font-medium text-gray-700">Campus</th>
                         <th className="px-4 py-3 font-medium text-gray-700">Estado</th>
                         <th className="px-4 py-3 text-right font-medium text-gray-700">Acciones</th>
@@ -293,7 +296,8 @@ export default function ManageLocations() {
                     <tbody>
                       {buildingsFiltered.map((b) => (
                         <tr key={b.id} className="border-t border-gray-100 hover:bg-blue-50/50 transition-colors duration-200">
-                          <td className="px-4 py-4 font-medium text-gray-900">{b.name}</td>
+                          <td className="px-4 py-4 font-medium text-gray-900">{b.name}</td>                          
+                          <td className="px-4 py-4 text-gray-600">{emptyCell(b.code)}</td>
                           <td className="px-4 py-4 text-gray-600">{emptyCell(b.campusName)}</td>
                           <td className="px-4 py-4">
                             <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${

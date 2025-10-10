@@ -12,11 +12,11 @@ def make_admin_location_router(
 ):
     router = APIRouter(prefix="/admin/locations", tags=["admin-locations"])
 
-    class CampusIn(BaseModel): name: str; address: str
-    class CampusPatch(BaseModel): name: Optional[str] = None; address: Optional[str] = None; active: Optional[bool] = None
+    class CampusIn(BaseModel): name: str; address: str; code: Optional[str] = None
+    class CampusPatch(BaseModel): name: Optional[str] = None; address: Optional[str] = None; code: Optional[str] = None; active: Optional[bool] = None
 
-    class BuildingIn(BaseModel): name: str; campusId: str
-    class BuildingPatch(BaseModel): name: Optional[str] = None; campusId: Optional[str] = None; active: Optional[bool] = None
+    class BuildingIn(BaseModel): name: str; campusId: str; code: Optional[str] = None
+    class BuildingPatch(BaseModel): name: Optional[str] = None; campusId: Optional[str] = None; code: Optional[str] = None; active: Optional[bool] = None
 
     class RoomIn(BaseModel):
         name: str; buildingId: str; number: str; type: str; capacity: int
@@ -34,7 +34,8 @@ def make_admin_location_router(
     async def create_campus(payload: CampusIn, session: AsyncSession = Depends(get_session_dep)):
         repo = SqlAlchemyAdminLocationRepo(session)
         try:
-            return await repo.create_campus(payload.name, payload.address)
+            code = payload.code.upper() if payload.code else None   
+            return await repo.create_campus(payload.name, payload.address, code)
         except IntegrityError:
             raise HTTPException(409, "Campus duplicado")
 
@@ -42,7 +43,7 @@ def make_admin_location_router(
     async def update_campus(campus_id: str, patch: CampusPatch, session: AsyncSession = Depends(get_session_dep)):
         repo = SqlAlchemyAdminLocationRepo(session)
         try:
-            return await repo.update_campus(campus_id, patch.name, patch.address)
+            return await repo.update_campus(campus_id, patch.name, patch.address, patch.code)
         except ValueError:
             raise HTTPException(404, "Campus no encontrado")
 
@@ -59,7 +60,7 @@ def make_admin_location_router(
                 raise HTTPException(404, "Campus no encontrado")
         # Si no, actualizar normalmente
         try:
-            return await repo.update_campus(campus_id, patch.name, patch.address)
+            return await repo.update_campus(campus_id, patch.name, patch.address, patch.code)
         except ValueError:
             raise HTTPException(404, "Campus no encontrado")
 
@@ -89,13 +90,14 @@ def make_admin_location_router(
     @router.post("/buildings")
     async def create_building(payload: BuildingIn, session: AsyncSession = Depends(get_session_dep)):
         repo = SqlAlchemyAdminLocationRepo(session)
-        return await repo.create_building(payload.name, payload.campusId)
+        code = payload.code.upper() if payload.code else None
+        return await repo.create_building(payload.name, payload.campusId, code)
 
     @router.put("/buildings/{building_id}")
     async def update_building(building_id: str, patch: BuildingPatch, session: AsyncSession = Depends(get_session_dep)):
         repo = SqlAlchemyAdminLocationRepo(session)
         try:
-            return await repo.update_building(building_id, patch.name, patch.campusId)
+            return await repo.update_building(building_id, patch.name, patch.campusId, patch.code)
         except ValueError:
             raise HTTPException(404, "Edificio no encontrado")
 
@@ -112,7 +114,7 @@ def make_admin_location_router(
                 raise HTTPException(404, "Edificio no encontrado")
         # Si no, actualizar normalmente
         try:
-            return await repo.update_building(building_id, patch.name, patch.campusId)
+            return await repo.update_building(building_id, patch.name, patch.campusId, patch.code)
         except ValueError:
             raise HTTPException(404, "Edificio no encontrado")
 

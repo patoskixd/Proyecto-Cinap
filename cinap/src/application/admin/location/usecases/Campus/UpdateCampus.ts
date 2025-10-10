@@ -3,7 +3,7 @@ import type AdminLocationRepo from "@application/admin/location/ports/AdminLocat
 
 export default class UpdateCampus {
   constructor(private repo: AdminLocationRepo) {}
-  exec(id: string, patch: { name?: string; address?: string }): Promise<Campus> {
+  exec(id: string, patch: { name?: string; address?: string; code?: string }): Promise<Campus> {
     return this.repo.updateCampus(id, patch);
   }
 }

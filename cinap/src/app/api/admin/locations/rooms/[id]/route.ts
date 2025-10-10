@@ -3,15 +3,17 @@ import UpdateRoom from "@/application/admin/location/usecases/Rooms/UpdateRooms"
 import DeleteRoom from "@/application/admin/location/usecases/Rooms/DeleteRooms";
 import { AdminLocationBackendRepo } from "@infrastructure/http/bff/admin/locations/AdminLocationBackendRepo";
 import { appendSetCookies } from "@/app/api/_utils/cookies";
-
-const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.BACKEND_URL ?? "http://localhost:8000";
 export const dynamic = "force-dynamic"; export const revalidate = 0;
+
+function getCookieString(req: NextRequest): string {
+  return req.headers.get("cookie") ?? "";
+}
 
 export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await ctx.params;
     const patch = await req.json().catch(() => ({}));
-    const repo = new AdminLocationBackendRepo(BACKEND, req.headers.get("cookie") ?? "");
+    const repo = new AdminLocationBackendRepo(getCookieString(req));
     const data = await new UpdateRoom(repo).exec(id, patch);
     const resp = NextResponse.json(data, { status: 200 });
     appendSetCookies(repo.getSetCookies?.() ?? [], resp);
@@ -26,7 +28,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await ctx.params;
-    const repo = new AdminLocationBackendRepo(BACKEND, req.headers.get("cookie") ?? "");
+    const repo = new AdminLocationBackendRepo(getCookieString(req));
     await new DeleteRoom(repo).exec(id);
     const resp = NextResponse.json({ ok: true }, { status: 200 });
     appendSetCookies(repo.getSetCookies?.() ?? [], resp);
