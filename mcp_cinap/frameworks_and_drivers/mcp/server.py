@@ -5,9 +5,10 @@ from mcp.server.fastmcp import FastMCP
 
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 from application.ports import Pagination, TimeRange
+from application.use_cases.list_user_asesorias import ListUserAsesorias, ListUserAsesoriasIn
 from frameworks_and_drivers.db.sa_repos import ServicioORM
 from interface_adapters.services.text_norm import norm_key
 from sqlalchemy import select, text
@@ -38,6 +39,15 @@ class CheckAvailabilityInput(BaseModel):
     start: datetime = Field(..., description="Inicio ISO8601 con TZ America/Santiago")
     end: datetime = Field(..., description="Término ISO8601 con TZ America/Santiago")
     advisor: Optional[str] = Field(None, description="Nombre o email del asesor (opcional)")
+    page: int = Field(1, ge=1)
+    per_page: int = Field(10, ge=1, le=100)
+
+class ListAsesoriasInput(BaseModel):
+    start: datetime = Field(..., description="Inicio ISO8601 con TZ America/Santiago")
+    end:   datetime = Field(..., description="Fin ISO8601 con TZ America/Santiago")
+    user_id: UUID   = Field(..., description="ID del usuario autenticado (JWT)")
+    role: Literal["auto","docente","asesor"] = Field("auto")
+    estado: Optional[str] = Field(None, description="PENDIENTE/CANCELADA/CONFIRMADA/REPROGRAMADA")
     page: int = Field(1, ge=1)
     per_page: int = Field(10, ge=1, le=100)
 
@@ -238,13 +248,109 @@ def build_mcp() -> FastMCP:
                 })
 
             return {"ok": True, "data": {"items": items}}
+        
+    @app.tool(
+        name="list_asesorias",
+        description=(
+            "Lista las asesorías asociadas al usuario (como docente o asesor) "
+            "en el rango [start,end). Requiere user_id."
+        )
+    )
+    async def list_asesorias(input: ListAsesoriasInput):
+        try:
+            start = input.start.astimezone(TZ_CL) if input.start.tzinfo else input.start.replace(tzinfo=TZ_CL)
+            end   = input.end.astimezone(TZ_CL)   if input.end.tzinfo   else input.end.replace(tzinfo=TZ_CL)
+            if start >= end:
+                return {"ok": False, "error": {"code": "VALIDATION", "message": "start debe ser anterior a end"}}
+        except Exception as e:
+            return {"ok": False, "error": {"code": "VALIDATION", "message": f"Fechas inválidas: {e}"}}
+
+        states = []
+        if input.estado:
+            from frameworks_and_drivers.db.orm_models import EstadoAsesoria
+            try:
+                states = [EstadoAsesoria[input.estado.upper()]]
+            except Exception:
+                return {"ok": False, "error": {"code": "VALIDATION", "message": f"estado inválido: {input.estado}"}}
+
+        async with SAUnitOfWork() as uow:
+            profs = await _profiles_from_user_id(uow.session, UUID(str(input.user_id)))
+            my_docente_id, my_asesor_id = profs.get("docente_id"), profs.get("asesor_id")
+
+            uc = ListUserAsesorias(uow)
+            rows = await uc.execute(ListUserAsesoriasIn(
+                user_docente_id=my_docente_id,
+                user_asesor_id=my_asesor_id,
+                tr=TimeRange(start=start, end=end),
+                role=input.role,
+                states=states,
+                page=input.page,
+                per_page=input.per_page,
+            ))
+
+            if not rows:
+                return {"ok": True, "say": "No hay asesorías en el rango indicado."}
+
+            servicio_ids = {r["servicio_id"] for r in rows if r.get("servicio_id")}
+            asesor_ids   = {r["asesor_id"] for r in rows if r.get("asesor_id")}
+            svc_map, adv_map = {}, {}
+
+            if servicio_ids:
+                svc_rows = (await uow.session.execute(
+                    select(ServicioORM.id, ServicioORM.nombre).where(ServicioORM.id.in_(list(servicio_ids)))
+                )).all()
+                svc_map = {r.id: r.nombre for r in svc_rows}
+
+            from frameworks_and_drivers.db.sa_repos import AsesorPerfilORM as APerf, UsuarioORM as U, DocentePerfilORM as DPerf
+            if asesor_ids:
+                adv_rows = (await uow.session.execute(
+                    select(APerf.id, U.nombre, U.email)
+                    .join(U, U.id == APerf.usuario_id)
+                    .where(APerf.id.in_(list(asesor_ids)))
+                )).all()
+                adv_map = {r.id: (r.nombre or r.email or "Asesor") for r in adv_rows}
+
+            docente_ids = {r["docente_id"] for r in rows if r.get("docente_id")}
+            doc_map = {}
+            if docente_ids:
+                doc_rows = (await uow.session.execute(
+                    select(DPerf.id, U.nombre, U.email)
+                    .join(U, U.id == DPerf.usuario_id)
+                    .where(DPerf.id.in_(list(docente_ids)))
+                )).all()
+                doc_map = {r.id: (r.nombre or r.email or "Docente") for r in doc_rows}
+
+            items = []
+            for r in rows:
+                svc = svc_map.get(r["servicio_id"], "Servicio")
+                adv = adv_map.get(r["asesor_id"], "Asesor")
+                doc = doc_map.get(r["docente_id"], "Docente")
+                estado = getattr(r.get("estado"), "name", str(r.get("estado")))
+                rol = r.get("rol")
+                contraparte = adv if rol == "docente" else doc
+                title = f"Asesoría — {svc}"
+                subtitle = f"{contraparte} — Estado: {estado}"
+
+                items.append({
+                    "id": str(r["asesoria_id"]),
+                    "title": title,
+                    "subtitle": subtitle,
+                    "start": _fmt_local(r["inicio"]),
+                    "end":   r["fin"].astimezone(TZ_CL).strftime("%H:%M"),
+                    "servicio_id": str(r["servicio_id"]) if r.get("servicio_id") else None,
+                    "asesor_id":   str(r["asesor_id"]) if r.get("asesor_id") else None,
+                    "estado": estado,
+                    "role": rol,
+                })
+
+            return {"ok": True, "data": {"items": items}}
     
     @app.tool(
         name="schedule_asesoria",
         description=(
-            "Compuesta: resuelve advisor/service por texto, verifica cupo exacto en [start,end) y reserva. "
+            "Reservar o agendar una asesoría. "
             "Usa confirm=false para preview y confirm=true para ejecutar. "
-            "Requiere user_id. Fechas en ISO con TZ America/Santiago."
+            "No insertes user_id, dado que lo hace el backend. Fechas en ISO con TZ America/Santiago."
         ),
     )
     async def schedule_asesoria(input: ScheduleAsesoriaInput):
@@ -373,8 +479,8 @@ def build_mcp() -> FastMCP:
         name="cancel_asesoria",
         description=(
             "Cancela una asesoría del usuario. Si el usuario es DOCENTE: indicar advisor (+service opcional) y el rango exacto "
-            "[start,end). Si el usuario es ASESOR: basta indicar el rango exacto; se usará su asesor_id. "
-            "Usa confirm=false para preview y confirm=true para ejecutar. Requiere user_id (del JWT). "
+            "[start,end). Si el usuario es ASESOR: basta indicar el rango exacto, se usará su asesor_id. "
+            "Usa confirm=false para preview y confirm=true para ejecutar. No insertes user_id, dado que lo hace el backend. "
             "La asesoría debe estar PENDIENTE. Al cancelar, el cupo queda ABIERTO."
         ),
     )
@@ -390,13 +496,14 @@ def build_mcp() -> FastMCP:
         async with SAUnitOfWork() as uow:
             if not input.user_id:
                 return {"ok": False, "error": {"code": "MISSING_USER_ID", "message": "user_id no suministrado"}}
+
             profs = await _profiles_from_user_id(uow.session, UUID(str(input.user_id)))
             my_docente_id, my_asesor_id = profs.get("docente_id"), profs.get("asesor_id")
             if not my_docente_id and not my_asesor_id:
                 return {"ok": False, "error": {"code": "NO_ROLE", "message": "El usuario no es docente ni asesor"}}
 
-            # Asesor
-            if my_asesor_id:
+            force_docente = bool(input.advisor)
+            if my_asesor_id and not force_docente:
                 cupo = (await uow.session.execute(
                     select(CupoORM).where(
                         CupoORM.asesor_id == my_asesor_id,
@@ -404,47 +511,45 @@ def build_mcp() -> FastMCP:
                         CupoORM.fin == end,
                     )
                 )).scalar_one_or_none()
+
                 if not cupo:
-                    if not my_docente_id:
-                        return {"ok": False, "error": {"code": "CUP_NOT_FOUND", "message": "No existe un cupo exacto tuyo en ese rango"}}
-                else:
-                    asesoria = (await uow.session.execute(
-                        select(AsesoriaORM).where(
-                            AsesoriaORM.cupo_id == cupo.id,
-                            AsesoriaORM.estado == EstadoAsesoria.PENDIENTE,
-                        )
-                    )).scalar_one_or_none()
-                    if not asesoria:
-                        if not my_docente_id:
-                            return {"ok": False, "error": {"code": "APPT_NOT_FOUND", "message": "No hay asesoría PENDIENTE en ese cupo"}}
-                    else:
-                        if not input.confirm:
-                            return {
-                                "ok": True,
-                                "say": "¿Confirmas cancelar la asesoría y reabrir el cupo?",
-                                "data": {
-                                    "asesoria_id": str(asesoria.id),
-                                    "cupo_id": str(cupo.id),
-                                    "inicio": start.isoformat(),
-                                    "fin": end.isoformat(),
-                                }
-                            }
+                    return {"ok": False, "error": {"code": "CUP_NOT_FOUND", "message": "No existe un cupo exacto tuyo en ese rango"}}
 
-                        asesoria.estado = EstadoAsesoria.CANCELADA
-                        cupo.estado = EstadoCupo.ABIERTO
-                        await uow.session.flush()
-                        return {
-                            "ok": True,
-                            "say": "Asesoría cancelada y cupo reabierto.",
-                            "data": {
-                                "asesoria_id": str(asesoria.id),
-                                "cupo_id": str(cupo.id),
-                                "estado_asesoria": "CANCELADA",
-                                "estado_cupo": "ABIERTO",
-                            }
+                asesoria = (await uow.session.execute(
+                    select(AsesoriaORM).where(
+                        AsesoriaORM.cupo_id == cupo.id,
+                        AsesoriaORM.estado == EstadoAsesoria.PENDIENTE,
+                    )
+                )).scalar_one_or_none()
+                if not asesoria:
+                    return {"ok": False, "error": {"code": "APPT_NOT_FOUND", "message": "No hay asesoría PENDIENTE en ese cupo"}}
+
+                if not input.confirm:
+                    return {
+                        "ok": True,
+                        "say": "¿Confirmas cancelar la asesoría y reabrir el cupo?",
+                        "data": {
+                            "asesoria_id": str(asesoria.id),
+                            "cupo_id": str(cupo.id),
+                            "inicio": start.isoformat(),
+                            "fin": end.isoformat(),
                         }
+                    }
 
-            # Docente
+                asesoria.estado = EstadoAsesoria.CANCELADA
+                cupo.estado = EstadoCupo.ABIERTO
+                await uow.session.flush()
+                return {
+                    "ok": True,
+                    "say": "Asesoría cancelada y cupo reabierto.",
+                    "data": {
+                        "asesoria_id": str(asesoria.id),
+                        "cupo_id": str(cupo.id),
+                        "estado_asesoria": "CANCELADA",
+                        "estado_cupo": "ABIERTO",
+                    }
+                }
+
             if my_docente_id:
                 if not input.advisor:
                     return {"ok": False, "error": {"code": "MISSING_ADVISOR", "message": "Debes indicar el asesor"}}
@@ -527,6 +632,6 @@ def build_mcp() -> FastMCP:
                     }
                 }
 
-            return {"ok": False, "error": {"code": "MISSING_PARAMS", "message": "Faltan datos para cancelar (revisa advisor/service o el rango)"}}
+            return {"ok": False, "error": {"code": "MISSING_PARAMS", "message": "Faltan datos para cancelar (revisa asesor, servicio o el rango)"}}
 
     return app

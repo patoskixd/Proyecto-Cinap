@@ -1,6 +1,7 @@
 from __future__ import annotations
 import base64
 from datetime import datetime
+import time
 from zoneinfo import ZoneInfo
 import json, sqlite3, asyncio, re
 from typing import Any, Dict, List
@@ -33,6 +34,8 @@ _TOOL_JSON_RE = re.compile(
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 CURRENT_THREAD_ID: ContextVar[str | None] = ContextVar("CURRENT_THREAD_ID", default=None)
+
+CONFIRM_TOOLS = {"schedule_asesoria", "cancel_asesoria"}
 
 def _normalize_event_update_args(kwargs: dict) -> dict:
     if not isinstance(kwargs, dict):
@@ -276,71 +279,79 @@ class LangGraphAgent:
             set_meta(route="inline_tool")
             client = self._client_for_tool(name)
 
-            async with astage("agent.mcp.total", extra={"tool": name}):
-                async with astage("agent.mcp.normalize"):
-                    if name == "event_delete_by_title":
-                        args = _normalize_event_delete_by_title_args(kwargs)
-                    elif name == "event_update":
-                        args = _normalize_event_update_args(kwargs)
-                    else:
-                        args = kwargs
+            try:
+                async with astage("agent.mcp.total", extra={"tool": name}):
+                    async with astage("agent.mcp.normalize"):
+                        if name == "event_delete_by_title":
+                            args = _normalize_event_delete_by_title_args(kwargs)
+                        elif name == "event_update":
+                            args = _normalize_event_update_args(kwargs)
+                        else:
+                            args = kwargs
 
-                thread_id = CURRENT_THREAD_ID.get()
-                args = dict(args)
+                    thread_id = CURRENT_THREAD_ID.get()
+                    args = dict(args)
 
-                if name in ("schedule_asesoria", "cancel_asesoria"):
-                    user = getattr(self, "_current_user", {}) or {}
-                    uid = user.get("sub") or user.get("user_id")
-                    if not uid:
-                        import re
-                        tid = CURRENT_THREAD_ID.get()
-                        if thread_id and re.fullmatch(r"[0-9a-fA-F-]{36}", thread_id):
-                            uid = thread_id
-                    if "input" in args and isinstance(args["input"], dict):
-                        if uid and not args["input"].get("user_id"):
-                            args["input"]["user_id"] = uid
-                    else:
-                        payload = dict(args.get("input") or {})
-                        if uid and not payload.get("user_id"):
-                            payload["user_id"] = uid
-                        args["input"] = payload
+                    if name in ("schedule_asesoria", "cancel_asesoria", "list_asesorias"):
+                        user = getattr(self, "_current_user", {}) or {}
+                        uid = user.get("sub") or user.get("user_id")
+                        if not uid:
+                            import re
+                            tid = CURRENT_THREAD_ID.get()
+                            if thread_id and re.fullmatch(r"[0-9a-fA-F-]{36}", thread_id):
+                                uid = thread_id
+                        if "input" in args and isinstance(args["input"], dict):
+                            if uid and not args["input"].get("user_id"):
+                                args["input"]["user_id"] = uid
+                        else:
+                            payload = dict(args.get("input") or {})
+                            if uid and not payload.get("user_id"):
+                                payload["user_id"] = uid
+                            args["input"] = payload
 
-                if getattr(self, "_confirm_store", None) and thread_id:
-                    pending_exists = await self._confirm_store.peek(thread_id)
+                    if getattr(self, "_confirm_store", None) and thread_id and name in CONFIRM_TOOLS:
+                        pending_exists = await self._confirm_store.peek(thread_id)
 
-                    if args.get("confirm") is True and not pending_exists:
-                        args["confirm"] = False
-                        set_meta(enforced_preview=True)
+                        if args.get("confirm") is True and not pending_exists:
+                            args["confirm"] = False
+                            set_meta(enforced_preview=True)
 
-                    if not bool(args.get("confirm")):
-                        async with astage("confirm.store.put", extra={"tool": name}):
-                            pending_id = await self._confirm_store.put(thread_id, name, args)
+                        if not bool(args.get("confirm")):
+                            async with astage("confirm.store.put", extra={"tool": name}):
+                                await self._confirm_store.put(thread_id, name, args)
 
-                        async with astage("mcp.rpc", extra={"tool": name, "phase": "preview"}):
-                            preview_res = await client.call_tool(name, {**args, "confirm": False})
+                            async with astage("mcp.rpc", extra={"tool": name, "phase": "preview"}):
+                                preview_res = await client.call_tool(name, {**args, "confirm": False})
 
-                        try:
-                            if isinstance(preview_res, dict):
-                                next_hint = None
-                                data = preview_res.get("data") or {}
-                                if isinstance(data, dict):
-                                    next_hint = data.get("next_hint")
-                                if not next_hint:
-                                    next_hint = preview_res.get("next_hint")
+                            try:
+                                if isinstance(preview_res, dict):
+                                    next_hint = None
+                                    data = preview_res.get("data") or {}
+                                    if isinstance(data, dict):
+                                        next_hint = data.get("next_hint")
+                                    if not next_hint:
+                                        next_hint = preview_res.get("next_hint")
 
-                                if next_hint:
-                                    post = [{"tool": next_hint.get("next_tool"), "args": next_hint.get("suggested_args")}]
-                                    await self._confirm_store.patch(thread_id, {
-                                        "post_confirm": post
-                                    })
-                        except Exception:
-                            pass
+                                    if next_hint:
+                                        post = [{
+                                            "tool": next_hint.get("next_tool"),
+                                            "args": next_hint.get("suggested_args")
+                                        }]
+                                        await self._confirm_store.patch(thread_id, {"post_confirm": post})
+                            except Exception:
+                                pass
 
-                        return _format_mcp_result(preview_res, name)
+                            return _format_mcp_result(preview_res, name)
 
-                    # Fallback
-                    set_meta(confirm_requested_inline=True)
-                    return "Necesito tu confirmación primero. Responde con “sí” para continuar."
+                        set_meta(confirm_requested_inline=True)
+                        return "Necesito tu confirmación primero. Responde con “sí” para continuar."
+
+                    async with astage("mcp.rpc", extra={"tool": name, "phase": "direct"}):
+                        res = await client.call_tool(name, args)
+                    return _format_mcp_result(res, name)
+
+            except Exception as e:
+                return f"Ocurrió un error ejecutando {name}: {e!s}"
 
         def caller_sync(**kwargs) -> str:
             fut = asyncio.run_coroutine_threadsafe(caller_async(**kwargs), self._main_loop)
@@ -421,10 +432,13 @@ class LangGraphAgent:
         TOOL HINTS (Cinap)
         - See advisers: use the tool `list_advisors`.
         - See services: use the tool `list_services`.
+        - For "schedule_asesoria" and "cancel_asesoria", arguments must be inside an input payload.
         - Two-step workflow for schedule:
           1) First produce a PREVIEW by calling the tool with confirm=false.
           2) Only if the user explicitly confirms in their next message, call the tool again with confirm=true to execute.
         - A confirmation applies only to the immediately preceding action and cannot be reused.
+        - Do not re-execute a completed action when the user repeats “sí” or similar.
+        - For tools that require user_id, don't insert it since it will be injected automatically
 
         TOOL CALL FORMAT
         - When you decide to use a tool, respond with a single JSON object only (no extra text, no code fences):
@@ -446,104 +460,119 @@ class LangGraphAgent:
         if getattr(self, "_confirm_store", None) and is_confirmation(message):
             async with astage("confirm.fastpath.pop"):
                 pending = await self._confirm_store.pop(thread_id)
+
+            if not pending:
+                return "No hay ninguna acción pendiente de confirmación."
+
             if pending:
-                tool = pending.get("tool")
+                tool = (pending.get("tool") or "").strip()
                 args = dict(pending.get("args") or {})
+                created_at = pending.get("created_at") or 0
+                if not isinstance(created_at, int) or (time.time() - created_at) > 120:
+                    return "La confirmación caducó. Vuelve a intentarlo, por favor"
 
-                def _fallback_user_id():
-                    user = getattr(self, "_current_user", {}) or {}
-                    uid = user.get("sub") or user.get("user_id")
-                    if not uid:
-                        import re
-                        tid = CURRENT_THREAD_ID.get()
-                        if tid and re.fullmatch(r"[0-9a-fA-F-]{8}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{12}", tid):
-                            uid = tid
-                    return uid
-
-                def _put_confirm_and_user_id_in_input(a: dict) -> dict:
-                    out = dict(a or {})
-                    if "input" not in out or not isinstance(out["input"], dict):
-                        out["input"] = {}
-                    out["input"] = {**out["input"], "confirm": True}
-                    uid = out["input"].get("user_id") or _fallback_user_id()
-                    if uid:
-                        out["input"]["user_id"] = uid
-                    return out
-
-                if tool in ("schedule_asesoria", "cancel_asesoria"):
-                    args = _put_confirm_and_user_id_in_input(args)
+                if tool not in CONFIRM_TOOLS:
+                    return "No hay ninguna acción pendiente de confirmación"
                 else:
-                    args["confirm"] = True
+                    def _fallback_user_id():
+                        user = getattr(self, "_current_user", {}) or {}
+                        uid = user.get("sub") or user.get("user_id")
+                        if not uid:
+                            import re
+                            tid = CURRENT_THREAD_ID.get()
+                            if tid and re.fullmatch(r"[0-9a-fA-F-]{8}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{12}", tid):
+                                uid = tid
+                        return uid
 
-                set_meta(route="confirm_fastpath", tool=tool)
-                client = self._client_for_tool(tool)
+                    def _put_confirm_and_user_id_in_input(a: dict) -> dict:
+                        out = dict(a or {})
+                        if "input" not in out or not isinstance(out["input"], dict):
+                            out["input"] = {}
+                        out["input"] = {**out["input"], "confirm": True}
+                        uid = out["input"].get("user_id") or _fallback_user_id()
+                        if uid:
+                            out["input"]["user_id"] = uid
+                        return out
 
-                async with astage("confirm.fastpath.mcp", extra={"tool": tool, "phase": "confirm"}):
-                    res = await client.call_tool(tool, args)
-
-                msgs: list[str] = []
-                msgs.append(_strip_think(_format_mcp_result(res, tool)))
-
-                post_ops = []
-                try:
-                    post_ops = (pending.get("post_confirm") or []) if isinstance(pending, dict) else []
-                except Exception:
-                    post_ops = []
-
-                confirm_hint = None
-                if isinstance(res, dict):
-                    data = res.get("data") or {}
-                    nh = data.get("next_hint") or res.get("next_hint")
-                    if isinstance(nh, dict) and nh.get("next_tool") and nh.get("suggested_args"):
-                        confirm_hint = {"tool": nh["next_tool"], "args": dict(nh["suggested_args"] or {})}
-
-                def _deep_merge(dst: dict, src: dict) -> dict:
-                    out = dict(dst or {})
-                    for k, v in (src or {}).items():
-                        if isinstance(v, dict) and isinstance(out.get(k), dict):
-                            out[k] = _deep_merge(out[k], v)
-                        else:
-                            out[k] = v
-                    return out
-
-                if confirm_hint:
-                    if post_ops:
-                        for op in post_ops:
-                            if op.get("tool") == confirm_hint["tool"]:
-                                op["args"] = _deep_merge(op.get("args") or {}, confirm_hint["args"])
-                                break
-                        else:
-                            post_ops.append(confirm_hint)
+                    if tool in ("schedule_asesoria", "cancel_asesoria"):
+                        args = _put_confirm_and_user_id_in_input(args)
                     else:
-                        post_ops = [confirm_hint]
+                        if "input" in args and isinstance(args["input"], dict):
+                            args["input"]["confirm"] = True
+                        else:
+                            args["confirm"] = True
 
-                for op in post_ops:
-                    tname = op.get("tool")
-                    targs = dict(op.get("args") or {})
-                    if not tname:
-                        continue
+                    set_meta(route="confirm_fastpath", tool=tool)
+                    client = self._client_for_tool(tool)
 
-                    if tname == "event_create":
-                        for k in ("start", "end"):
-                            if k in targs and isinstance(targs[k], str):
-                                pass
-                        if isinstance(targs.get("attendees"), list):
-                            seen=set(); atts=[]
-                            for a in targs["attendees"]:
-                                a = (a or "").strip().lower()
-                                if a and a not in seen:
-                                    seen.add(a); atts.append(a)
-                            targs["attendees"] = atts
+                    msgs: list[str] = []
+                    try:
+                        async with astage("confirm.fastpath.mcp", extra={"tool": tool, "phase": "confirm"}):
+                            res = await client.call_tool(tool, args)
+                        msgs.append(_strip_think(_format_mcp_result(res, tool)))
+                    except Exception as e:
+                        msgs.append(f"Ocurrió un error confirmando {tool}: {e!s}")
+
+                    post_ops = []
+                    try:
+                        post_ops = (pending.get("post_confirm") or []) if isinstance(pending, dict) else []
+                    except Exception:
+                        post_ops = []
 
                     try:
-                        c2 = self._client_for_tool(tname)
-                        async with astage("confirm.fastpath.mcp", extra={"tool": tname, "phase": "post"}):
-                            r2 = await c2.call_tool(tname, targs)
-                        msgs.append(_strip_think(_format_mcp_result(r2, tname)))
-                    except Exception as e:
-                        msgs.append(f"Ocurrió un error encadenando {tname}: {e}")
+                        confirm_hint = None
+                        if isinstance(res, dict):
+                            data = res.get("data") or {}
+                            nh = data.get("next_hint") or res.get("next_hint")
+                            if isinstance(nh, dict) and nh.get("next_tool") and nh.get("suggested_args"):
+                                confirm_hint = {"tool": nh["next_tool"], "args": dict(nh["suggested_args"] or {})}
 
-                return "\n".join([m for m in msgs if m]).strip()
+                        def _deep_merge(dst: dict, src: dict) -> dict:
+                            out = dict(dst or {})
+                            for k, v in (src or {}).items():
+                                if isinstance(v, dict) and isinstance(out.get(k), dict):
+                                    out[k] = _deep_merge(out[k], v)
+                                else:
+                                    out[k] = v
+                            return out
+
+                        if confirm_hint:
+                            if post_ops:
+                                for op in post_ops:
+                                    if op.get("tool") == confirm_hint["tool"]:
+                                        op["args"] = _deep_merge(op.get("args") or {}, confirm_hint["args"])
+                                        break
+                                else:
+                                    post_ops.append(confirm_hint)
+                            else:
+                                post_ops = [confirm_hint]
+                    except Exception:
+                        pass
+
+                    for op in post_ops:
+                        tname = (op.get("tool") or "").strip()
+                        targs = dict(op.get("args") or {})
+                        if not tname:
+                            continue
+
+                        if tname == "event_create":
+                            if isinstance(targs.get("attendees"), list):
+                                seen = set(); atts = []
+                                for a in targs["attendees"]:
+                                    a = (a or "").strip().lower()
+                                    if a and a not in seen:
+                                        seen.add(a); atts.append(a)
+                                targs["attendees"] = atts
+
+                        try:
+                            c2 = self._client_for_tool(tname)
+                            async with astage("confirm.fastpath.mcp", extra={"tool": tname, "phase": "post"}):
+                                r2 = await c2.call_tool(tname, targs)
+                            msgs.append(_strip_think(_format_mcp_result(r2, tname)))
+                        except Exception as e:
+                            msgs.append(f"Ocurrió un error encadenando {tname}: {e}")
+
+                    return "\n".join([m for m in msgs if m]).strip()
 
             set_meta(fastpath="miss_no_pending")
 
