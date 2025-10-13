@@ -3,13 +3,15 @@ import ReactivateCategory from "@/application/admin/catalog/usecases/Category/Re
 import { AdminCatalogBackendRepo } from "@infrastructure/http/bff/admin/catalog/AdminCatalogBackendRepo";
 import { appendSetCookies } from "@/app/api/_utils/cookies";
 
-const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.BACKEND_URL ?? "http://localhost:8000";
-export const dynamic = "force-dynamic"; export const revalidate = 0;
 
+export const dynamic = "force-dynamic"; export const revalidate = 0;
+function getCookieString(req: NextRequest): string {
+  return req.headers.get("cookie") ?? "";
+}
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await ctx.params;
-    const repo = new AdminCatalogBackendRepo(BACKEND, req.headers.get("cookie") ?? "");
+    const repo = new AdminCatalogBackendRepo(getCookieString(req));
     const data = await new ReactivateCategory(repo).exec(id);
     const resp = NextResponse.json(data, { status: 200 });
     appendSetCookies(repo.getSetCookies?.() ?? [], resp);

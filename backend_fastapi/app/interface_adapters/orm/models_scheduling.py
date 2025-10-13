@@ -69,6 +69,7 @@ class EstadoCupo(PyEnum):
     RESERVADO = "RESERVADO"
     CANCELADO = "CANCELADO"
     EXPIRADO  = "EXPIRADO"
+    REALIZADO = "REALIZADO"
 
 estado_cupo = sa.Enum(EstadoCupo,name="estado_cupo",native_enum=True,create_type=False)
 

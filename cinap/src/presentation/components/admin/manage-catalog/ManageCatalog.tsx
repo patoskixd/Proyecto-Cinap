@@ -4,7 +4,6 @@
 import React, { useMemo, useState } from "react";
 
 import { useCatalogState } from "./hooks/useCatalogState";
-import { useToast } from "./hooks/useToast";
 import { parseError } from "./utils/parseError";
 
 import CatalogStats from "./components/CatalogStats";
@@ -15,8 +14,7 @@ import CategoryForm from "./components/CategoryForm";
 import ServiceForm from "./components/ServiceForm";
 import ServicesModal from "./components/ServicesModal";
 import ConfirmModal from "./components/ConfirmModal";
-import Toast from "./components/Toast";
-
+import ToastProvider, { notify } from "../../shared/Toast/ToastProvider";
 export default function ManageCatalog() {
   const {
     // listas y stats
@@ -37,7 +35,7 @@ export default function ManageCatalog() {
     loading,
   } = useCatalogState();
 
-  const { toast, showToast } = useToast(2600);
+  //const { toast, showToast } = useToast(2600);
 
   // ===== Confirmaciones =====
   type PendingCatEdit = { id: string; name: string; description: string; original?: { name: string; description: string } };
@@ -140,12 +138,12 @@ export default function ManageCatalog() {
                   onEdit={() => setEditOpen({ open: true, category: cat })}
                   onDelete={() => setConfirmDeleteCat({ id: cat.id, name: cat.name, description: cat.description })}
                   onActivate={async () => {
-                    try { await updateCategory(cat.id, { active: true }); showToast("Categoría activada", "success"); }
-                    catch (e: any) { showToast(parseError(e), "error"); }
+                    try { await updateCategory(cat.id, { active: true }); notify("Categoría activada", "success"); }
+                    catch (e: any) { notify(parseError(e), "error"); }
                   }}
                   onDeactivate={async () => {
-                    try { await updateCategory(cat.id, { active: false }); showToast("Categoría desactivada", "success"); }
-                    catch (e: any) { showToast(parseError(e), "error"); }
+                    try { await updateCategory(cat.id, { active: false }); notify("Categoría desactivada", "success"); }
+                    catch (e: any) { notify(parseError(e), "error"); }
                   }}
                   onViewServices={() => setServicesModalFor(cat)}
                   onAddService={() => setCreateServiceFor(cat)}
@@ -195,12 +193,12 @@ export default function ManageCatalog() {
                   onEdit={() => setEditOpen({ open: true, category: cat })}
                   onDelete={() => setConfirmDeleteCat({ id: cat.id, name: cat.name, description: cat.description })}
                   onActivate={async () => {
-                    try { await reactivateCategory(cat.id); showToast("Categoría reactivada", "success"); }
-                    catch (e: any) { showToast(parseError(e), "error"); }
+                    try { await reactivateCategory(cat.id); notify("Categoría reactivada", "success"); }
+                    catch (e: any) { notify(parseError(e), "error"); }
                   }}
                   onDeactivate={async () => {
-                    try { await updateCategory(cat.id, { active: false }); showToast("Categoría desactivada", "success"); }
-                    catch (e: any) { showToast(parseError(e), "error"); }
+                    try { await updateCategory(cat.id, { active: false }); notify("Categoría desactivada", "success"); }
+                    catch (e: any) { notify(parseError(e), "error"); }
                   }}
                   onViewServices={() => setServicesModalFor(cat)}
                   onAddService={() => setCreateServiceFor(cat)}
@@ -220,9 +218,9 @@ export default function ManageCatalog() {
               try {
                 await createCategory(payload);
                 setCreateOpen(false);
-                showToast("Categoría creada", "success");
+                notify("Categoría creada", "success");
               } catch (e: any) {
-                showToast(parseError(e), "error");
+                notify(parseError(e), "error");
               }
             }}
           />
@@ -263,8 +261,8 @@ export default function ManageCatalog() {
             if (full) setServiceEditing(full);
           }}
           onToggleActive={async (svc, next) => {
-            try { await setServiceActive(svc.id, next); showToast("Estado del servicio actualizado", "success"); }
-            catch (e:any) { showToast(parseError(e), "error"); }
+            try { await setServiceActive(svc.id, next); notify("Estado del servicio actualizado", "success"); }
+            catch (e:any) { notify(parseError(e), "error"); }
           }}
           onDelete={(svc) => setConfirmDeleteSvc({ id: svc.id, name: svc.name, duration: svc.duration })}
         />
@@ -280,9 +278,9 @@ export default function ManageCatalog() {
               try {
                 await createService(createServiceFor.id, { ...payload, active: true });
                 setCreateServiceFor(null);
-                showToast("Servicio creado", "success");
+                notify("Servicio creado", "success");
               } catch (e:any) {
-                showToast(parseError(e), "error");
+                notify(parseError(e), "error");
               }
             }}
           />
@@ -325,9 +323,9 @@ export default function ManageCatalog() {
             try {
               await deleteCategory(confirmDeleteCat.id);
               setConfirmDeleteCat(null);
-              showToast("Categoría eliminada", "success");
+              notify("Categoría eliminada", "success");
             } catch (e:any) {
-              showToast(parseError(e), "error");
+              notify(parseError(e), "error");
             }
           }}
         />
@@ -351,9 +349,9 @@ export default function ManageCatalog() {
             try {
               await deleteService(confirmDeleteSvc.id);
               setConfirmDeleteSvc(null);
-              showToast("Servicio eliminado", "success");
+              notify("Servicio eliminado", "success");
             } catch (e:any) {
-              showToast(parseError(e), "error");
+              notify(parseError(e), "error");
             }
           }}
         />
@@ -375,9 +373,9 @@ export default function ManageCatalog() {
               });
               setPendingCatEdit(null);
               setEditOpen({ open: false, category: null });
-              showToast("Categoría actualizada", "success");
+              notify("Categoría actualizada", "success");
             } catch (e:any) {
-              showToast(parseError(e), "error");
+              notify(parseError(e), "error");
             }
           }}
         />
@@ -399,15 +397,15 @@ export default function ManageCatalog() {
               });
               setPendingSvcEdit(null);
               setServiceEditing(null);
-              showToast("Servicio actualizado", "success");
+              notify("Servicio actualizado", "success");
             } catch (e:any) {
-              showToast(parseError(e), "error");
+              notify(parseError(e), "error");
             }
           }}
         />
       )}
 
-      <Toast toast={toast} />
+      <ToastProvider>{null}</ToastProvider>
     </div>
   );
 }

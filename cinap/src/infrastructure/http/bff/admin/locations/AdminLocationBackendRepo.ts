@@ -1,6 +1,33 @@
 import type { Campus, Building, Room } from "@/domain/admin/location";
 import type AdminLocationRepo from "@/application/admin/location/ports/AdminLocationRepo";
 
+// ===== Tipos comunes =====
+export type Page<T, S = any> = {
+  items: T[];
+  page: number;
+  per_page: number;
+  total: number;
+  pages: number;
+  stats?: S;
+};
+
+// Si aún no tienes tipos de stats, deja any por ahora
+export type CampusStats = any;
+export type BuildingStats = any;
+export type RoomStats   = any;
+
+// ===== Error tipado para propagar status y detail =====
+export class HttpError extends Error {
+  status: number;
+  detail?: string;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+    this.detail = message;
+  }
+}
+
+// ===== Repo BFF =====
 export class AdminLocationBackendRepo implements AdminLocationRepo {
   private lastSetCookies: string[] = [];
   private readonly baseUrl: string;
@@ -11,9 +38,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
     this.cookie = cookie;
   }
 
-  getSetCookies(): string[] {
-    return this.lastSetCookies;
-  }
+  getSetCookies(): string[] { return this.lastSetCookies; }
 
   private collectSetCookies(res: Response) {
     this.lastSetCookies = [];
@@ -21,31 +46,75 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
     const rawList: string[] =
       typeof anyHeaders.getSetCookie === "function"
         ? anyHeaders.getSetCookie()
-        : (res.headers.get("set-cookie")
-            ? [res.headers.get("set-cookie") as string]
-            : []);
+        : (res.headers.get("set-cookie") ? [res.headers.get("set-cookie") as string] : []);
     this.lastSetCookies.push(...rawList);
   }
 
-  private async parse<T>(res: Response): Promise<T> {
-    const txt = await res.text();
-    try { return JSON.parse(txt) as T; } catch { throw new Error(txt || `HTTP ${res.status}`); }
+  // ---- Helpers de respuesta (nunca leen el body dos veces) ----
+  /** Parsea el body como JSON cuando res.ok.
+   * Si hay error, intenta leer JSON/text y lanza HttpError con status y detail. */
+  private async parseOrThrow<T>(res: Response, fallback: string): Promise<T> {
+    const text = await res.text();
+
+    if (res.ok) {
+      try {
+        return JSON.parse(text) as T;
+      } catch {
+        // Respuesta inválida del backend
+        throw new HttpError(502, "Respuesta inválida del servidor");
+      }
+    }
+
+    // No OK: intenta extraer detail del JSON; si no, usa texto crudo o fallback
+    try {
+      const j = JSON.parse(text);
+      const msg = j?.detail ?? j?.message ?? fallback;
+      throw new HttpError(res.status, msg);
+    } catch {
+      throw new HttpError(res.status, text || fallback);
+    }
   }
 
-  // ===== Campus =====
+  /** Para endpoints sin contenido (DELETE): valida status y lanza HttpError si corresponde. */
+  private async ensureOk(res: Response, fallback: string): Promise<void> {
+    const text = await res.text();
+    if (res.ok) return;
+
+    try {
+      const j = JSON.parse(text);
+      const msg = j?.detail ?? j?.message ?? fallback;
+      throw new HttpError(res.status, msg);
+    } catch {
+      throw new HttpError(res.status, text || fallback);
+    }
+  }
+
+  private toArray<T>(data: any): T[] {
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.items)) return data.items as T[];
+    return [];
+  }
+
+  // ============================================================
+  // ========================== CAMPUS ==========================
+  // ============================================================
   async listCampus(): Promise<Campus[]> {
-    const res = await fetch(`${this.baseUrl}/admin/locations/campus`, {
+    const url = new URL(`${this.baseUrl}/admin/locations/campus`);
+    url.searchParams.set("page", "1");
+    url.searchParams.set("limit", "10000");
+
+    const res = await fetch(url, {
       method: "GET",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    if (!res.ok) throw new Error(await res.text() || "No se pudieron cargar los campus");
-    return this.parse<Campus[]>(res);
+    const data = await this.parseOrThrow<any>(res, "No se pudieron cargar los campus");
+    return this.toArray<Campus>(data);
   }
 
-  async createCampus(payload: { name: string; address: string }): Promise<Campus> {
+  async createCampus(payload: { name: string; address: string; code?: string }): Promise<Campus> {
     const res = await fetch(`${this.baseUrl}/admin/locations/campus`, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
@@ -54,14 +123,15 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    const data = await this.parse<any>(res);
-    if (!res.ok) throw new Error(data?.detail || data?.message || "No se pudo crear el campus");
-    return data as Campus;
+    return this.parseOrThrow<Campus>(res, "No se pudo crear el campus");
   }
 
-  async updateCampus(id: string, patch: { name?: string; address?: string; active?: boolean }): Promise<Campus> {
+  async updateCampus(
+    id: string,
+    patch: { name?: string; address?: string; code?: string; active?: boolean }
+  ): Promise<Campus> {
     const method = patch.active !== undefined ? "PATCH" : "PUT";
-    const res = await fetch(`${this.baseUrl}/admin/locations/campus/${id}`, {
+    const res = await fetch(`${this.baseUrl}/admin/locations/campus/${encodeURIComponent(id)}`, {
       method,
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
       credentials: "include",
@@ -69,39 +139,40 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    const data = await this.parse<any>(res);
-    if (!res.ok) throw new Error(data?.detail || data?.message || "No se pudo actualizar el campus");
-    return data as Campus;
+    return this.parseOrThrow<Campus>(res, "No se pudo actualizar el campus");
   }
 
   async deleteCampus(id: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/admin/locations/campus/${id}`, {
+    const res = await fetch(`${this.baseUrl}/admin/locations/campus/${encodeURIComponent(id)}`, {
       method: "DELETE",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    if (!res.ok) throw new Error(await res.text() || "No se pudo eliminar el campus");
+    await this.ensureOk(res, "No se pudo eliminar el campus");
   }
 
   async reactivateCampus(id: string): Promise<Campus> {
-    const res = await fetch(`${this.baseUrl}/admin/locations/campus/${id}/reactivate`, {
+    const res = await fetch(`${this.baseUrl}/admin/locations/campus/${encodeURIComponent(id)}/reactivate`, {
       method: "POST",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    const data = await this.parse<any>(res);
-    if (!res.ok) throw new Error(data?.detail || data?.message || "No se pudo reactivar el campus");
-    return data as Campus;
+    return this.parseOrThrow<Campus>(res, "No se pudo reactivar el campus");
   }
 
-  // ===== Buildings =====
+  // ============================================================
+  // ========================= BUILDINGS ========================
+  // ============================================================
   async listBuildings(params?: { campusId?: string }): Promise<Building[]> {
     const url = new URL(`${this.baseUrl}/admin/locations/buildings`);
+    url.searchParams.set("page", "1");
+    url.searchParams.set("limit", "10000");
     if (params?.campusId) url.searchParams.set("campusId", params.campusId);
+
     const res = await fetch(url, {
       method: "GET",
       headers: { cookie: this.cookie, accept: "application/json" },
@@ -109,11 +180,11 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    if (!res.ok) throw new Error(await res.text() || "No se pudieron cargar los edificios");
-    return this.parse<Building[]>(res);
+    const data = await this.parseOrThrow<any>(res, "No se pudieron cargar los edificios");
+    return this.toArray<Building>(data);
   }
 
-  async createBuilding(payload: { name: string; campusId: string }): Promise<Building> {
+  async createBuilding(payload: { name: string; campusId: string; code?: string }): Promise<Building> {
     const res = await fetch(`${this.baseUrl}/admin/locations/buildings`, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
@@ -122,14 +193,15 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    const data = await this.parse<any>(res);
-    if (!res.ok) throw new Error(data?.detail || data?.message || "No se pudo crear el edificio");
-    return data as Building;
+    return this.parseOrThrow<Building>(res, "No se pudo crear el edificio");
   }
 
-  async updateBuilding(id: string, patch: { name?: string; campusId?: string; active?: boolean }): Promise<Building> {
+  async updateBuilding(
+    id: string,
+    patch: { name?: string; campusId?: string; code?: string; active?: boolean }
+  ): Promise<Building> {
     const method = patch.active !== undefined ? "PATCH" : "PUT";
-    const res = await fetch(`${this.baseUrl}/admin/locations/buildings/${id}`, {
+    const res = await fetch(`${this.baseUrl}/admin/locations/buildings/${encodeURIComponent(id)}`, {
       method,
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
       credentials: "include",
@@ -137,39 +209,40 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    const data = await this.parse<any>(res);
-    if (!res.ok) throw new Error(data?.detail || data?.message || "No se pudo actualizar el edificio");
-    return data as Building;
+    return this.parseOrThrow<Building>(res, "No se pudo actualizar el edificio");
   }
 
   async deleteBuilding(id: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/admin/locations/buildings/${id}`, {
+    const res = await fetch(`${this.baseUrl}/admin/locations/buildings/${encodeURIComponent(id)}`, {
       method: "DELETE",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    if (!res.ok) throw new Error(await res.text() || "No se pudo eliminar el edificio");
+    await this.ensureOk(res, "No se pudo eliminar el edificio");
   }
 
   async reactivateBuilding(id: string): Promise<Building> {
-    const res = await fetch(`${this.baseUrl}/admin/locations/buildings/${id}/reactivate`, {
+    const res = await fetch(`${this.baseUrl}/admin/locations/buildings/${encodeURIComponent(id)}/reactivate`, {
       method: "POST",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    const data = await this.parse<any>(res);
-    if (!res.ok) throw new Error(data?.detail || data?.message || "No se pudo reactivar el edificio");
-    return data as Building;
+    return this.parseOrThrow<Building>(res, "No se pudo reactivar el edificio");
   }
 
-  // ===== Rooms =====
+  // ============================================================
+  // =========================== ROOMS ==========================
+  // ============================================================
   async listRooms(params?: { buildingId?: string }): Promise<Room[]> {
     const url = new URL(`${this.baseUrl}/admin/locations/rooms`);
+    url.searchParams.set("page", "1");
+    url.searchParams.set("limit", "10000");
     if (params?.buildingId) url.searchParams.set("buildingId", params.buildingId);
+
     const res = await fetch(url, {
       method: "GET",
       headers: { cookie: this.cookie, accept: "application/json" },
@@ -177,16 +250,12 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    if (!res.ok) throw new Error(await res.text() || "No se pudieron cargar las salas");
-    return this.parse<Room[]>(res);
+    const data = await this.parseOrThrow<any>(res, "No se pudieron cargar las salas");
+    return this.toArray<Room>(data);
   }
 
   async createRoom(payload: {
-    name: string;
-    buildingId: string;
-    number: string;
-    type: string;
-    capacity: number;
+    name: string; buildingId: string; number: string; type: string; capacity: number;
   }): Promise<Room> {
     const res = await fetch(`${this.baseUrl}/admin/locations/rooms`, {
       method: "POST",
@@ -196,21 +265,15 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    const data = await this.parse<any>(res);
-    if (!res.ok) throw new Error(data?.detail || data?.message || "No se pudo crear la sala");
-    return data as Room;
+    return this.parseOrThrow<Room>(res, "No se pudo crear la sala");
   }
 
-  async updateRoom(id: string, patch: {
-    name?: string;
-    buildingId?: string;
-    number?: string;
-    type?: string;
-    capacity?: number;
-    active?: boolean;
-  }): Promise<Room> {
+  async updateRoom(
+    id: string,
+    patch: { name?: string; buildingId?: string; number?: string; type?: string; capacity?: number; active?: boolean; }
+  ): Promise<Room> {
     const method = patch.active !== undefined ? "PATCH" : "PUT";
-    const res = await fetch(`${this.baseUrl}/admin/locations/rooms/${id}`, {
+    const res = await fetch(`${this.baseUrl}/admin/locations/rooms/${encodeURIComponent(id)}`, {
       method,
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
       credentials: "include",
@@ -218,32 +281,90 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    const data = await this.parse<any>(res);
-    if (!res.ok) throw new Error(data?.detail || data?.message || "No se pudo actualizar la sala");
-    return data as Room;
+    return this.parseOrThrow<Room>(res, "No se pudo actualizar la sala");
   }
 
   async deleteRoom(id: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/admin/locations/rooms/${id}`, {
+    const res = await fetch(`${this.baseUrl}/admin/locations/rooms/${encodeURIComponent(id)}`, {
       method: "DELETE",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    if (!res.ok) throw new Error(await res.text() || "No se pudo eliminar la sala");
+    await this.ensureOk(res, "No se pudo eliminar la sala");
   }
 
   async reactivateRoom(id: string): Promise<Room> {
-    const res = await fetch(`${this.baseUrl}/admin/locations/rooms/${id}/reactivate`, {
+    const res = await fetch(`${this.baseUrl}/admin/locations/rooms/${encodeURIComponent(id)}/reactivate`, {
       method: "POST",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    const data = await this.parse<any>(res);
-    if (!res.ok) throw new Error(data?.detail || data?.message || "No se pudo reactivar la sala");
-    return data as Room;
+    return this.parseOrThrow<Room>(res, "No se pudo reactivar la sala");
+  }
+
+  // ============================================================
+  // ========================= PAGINADOS ========================
+  // ============================================================
+  async listCampusPage(params?: {
+    page?: number; limit?: number; q?: string; active?: boolean;
+  }): Promise<Page<Campus, CampusStats>> {
+    const url = new URL(`${this.baseUrl}/admin/locations/campus`);
+    if (params?.page)  url.searchParams.set("page", String(params.page));
+    if (params?.limit) url.searchParams.set("limit", String(params.limit));
+    if (params?.q)     url.searchParams.set("q", params.q);
+    if (params?.active !== undefined) url.searchParams.set("active", String(params.active));
+
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { cookie: this.cookie, accept: "application/json" },
+      credentials: "include",
+      cache: "no-store",
+    });
+    this.collectSetCookies(res);
+    return this.parseOrThrow<Page<Campus, CampusStats>>(res, "No se pudieron cargar los campus");
+  }
+
+  async listBuildingsPage(params?: {
+    campusId?: string; page?: number; limit?: number; q?: string; active?: boolean;
+  }): Promise<Page<Building, BuildingStats>> {
+    const url = new URL(`${this.baseUrl}/admin/locations/buildings`);
+    if (params?.campusId) url.searchParams.set("campusId", params.campusId);
+    if (params?.page)     url.searchParams.set("page", String(params.page));
+    if (params?.limit)    url.searchParams.set("limit", String(params.limit));
+    if (params?.q)        url.searchParams.set("q", params.q || "");
+    if (params?.active !== undefined) url.searchParams.set("active", String(params.active));
+
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { cookie: this.cookie, accept: "application/json" },
+      credentials: "include",
+      cache: "no-store",
+    });
+    this.collectSetCookies(res);
+    return this.parseOrThrow<Page<Building, BuildingStats>>(res, "No se pudieron cargar los edificios");
+  }
+
+  async listRoomsPage(params?: {
+    buildingId?: string; page?: number; limit?: number; q?: string; active?: boolean;
+  }): Promise<Page<Room, RoomStats>> {
+    const url = new URL(`${this.baseUrl}/admin/locations/rooms`);
+    if (params?.buildingId) url.searchParams.set("buildingId", params.buildingId);
+    if (params?.page)       url.searchParams.set("page", String(params.page));
+    if (params?.limit)      url.searchParams.set("limit", String(params.limit));
+    if (params?.q)          url.searchParams.set("q", params.q || "");
+    if (params?.active !== undefined) url.searchParams.set("active", String(params.active));
+
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { cookie: this.cookie, accept: "application/json" },
+      credentials: "include",
+      cache: "no-store",
+    });
+    this.collectSetCookies(res);
+    return this.parseOrThrow<Page<Room, RoomStats>>(res, "No se pudieron cargar las salas");
   }
 }

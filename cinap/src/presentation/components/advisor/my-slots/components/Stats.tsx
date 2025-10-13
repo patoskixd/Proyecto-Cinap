@@ -3,7 +3,7 @@
 type Props = {
   total: number;
   disponibles: number;
-  ocupadasHM: string;
+  ocupadasHM: string; 
 };
 
 export default function Stats({ total, disponibles, ocupadasHM }: Props) {
@@ -12,7 +12,6 @@ export default function Stats({ total, disponibles, ocupadasHM }: Props) {
     { label: "Disponibles", value: disponibles },
     { label: "Horas ocupadas", value: ocupadasHM },
   ];
-  
   return (
     <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
       {items.map((item, i) => (

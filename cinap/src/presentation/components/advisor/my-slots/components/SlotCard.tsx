@@ -100,6 +100,7 @@ export default function SlotCard({ slot: s, onEdit, onDelete, onReactivate, onDi
       {(s.status === "disponible" || s.status === "cancelado" || s.status === "expirado") && (
         <div className="border-t border-blue-200 bg-gradient-to-r from-blue-50 via-blue-50/80 to-yellow-50/80 p-4">
           <div className="flex gap-2">
+            {/* Disponible */}
             {s.status === "disponible" && (
               <>
                 <button
@@ -116,7 +117,7 @@ export default function SlotCard({ slot: s, onEdit, onDelete, onReactivate, onDi
                   onClick={async () => {
                     try {
                       await onDisable(s.id);
-                      notify("Cupo deshabilitado", "success");
+                      notify("Cupo Cancelado", "error");
                     } catch (e: any) {
                       notify(e?.message || "No se pudo deshabilitar", "error");
                     }
@@ -126,39 +127,61 @@ export default function SlotCard({ slot: s, onEdit, onDelete, onReactivate, onDi
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  Inactivo
+                  Cancelar
                 </button>
               </>
             )}
 
-            {(s.status === "cancelado" || s.status === "expirado") && (
+            {/* Cancelado  */}
+            {s.status === "cancelado" && (
+              <>
+                <button
+                  onClick={async () => {
+                    try {
+                      await onReactivate(s.id);
+                      notify("Cupo reactivado", "success");
+                    } catch (e: any) {
+                      notify(e?.message || "No se pudo reactivar", "error");
+                    }
+                  }}
+                  className="flex items-center justify-center gap-2 flex-1 rounded-full bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-2.5 text-sm font-bold text-white transition-all hover:from-emerald-700 hover:to-emerald-800 hover:shadow-lg shadow-emerald-200"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Reactivar
+                </button>
+
+                <button
+                  onClick={() => onDelete(s.id)}
+                  className="flex items-center justify-center gap-2 flex-1 rounded-full border-2 border-rose-300 bg-white/90 backdrop-blur-sm px-4 py-2.5 text-sm font-bold text-rose-700 transition-all hover:bg-rose-50 hover:border-rose-400 hover:shadow-md"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Eliminar
+                </button>
+              </>
+            )}
+
+            {/* Expirado */}
+            {s.status === "expirado" && (
               <button
                 onClick={async () => {
                   try {
-                    await onReactivate(s.id);
-                    notify("Cupo reactivado", "success");
+                    await onDelete(s.id);
                   } catch (e: any) {
-                    notify(e?.message || "No se pudo reactivar", "error");
+                    notify(e?.message || "No se pudo eliminar", "error");
                   }
                 }}
-                className="flex items-center justify-center gap-2 flex-1 rounded-full bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-2.5 text-sm font-bold text-white transition-all hover:from-emerald-700 hover:to-emerald-800 hover:shadow-lg shadow-emerald-200"
+                className="flex items-center justify-center gap-2 flex-1 rounded-full border-2 border-rose-300 bg-white/90 backdrop-blur-sm px-4 py-2.5 text-sm font-bold text-rose-700 transition-all hover:bg-rose-50 hover:border-rose-400 hover:shadow-md"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                 </svg>
-                Reactivar
+                Eliminar
               </button>
             )}
-
-            <button
-              onClick={() => onDelete(s.id)}
-              className="flex items-center justify-center gap-2 flex-1 rounded-full border-2 border-rose-300 bg-white/90 backdrop-blur-sm px-4 py-2.5 text-sm font-bold text-rose-700 transition-all hover:bg-rose-50 hover:border-rose-400 hover:shadow-md"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              Eliminar
-            </button>
           </div>
         </div>
       )}
