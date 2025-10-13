@@ -20,6 +20,12 @@ class AsesorPerfilORM(Base):
     usuario_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("usuario.id"))
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
 
+class DocentePerfilORM(Base):
+    __tablename__ = "docente_perfil"
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
+    usuario_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("usuario.id"))
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+
 class ServicioORM(Base):
     __tablename__ = "servicio"
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
@@ -190,21 +196,39 @@ class SASlotRepository(SlotRepository):
 class SAApptRepository(AppointmentRepository):
     def __init__(self, s: AsyncSession): self.s = s
 
-    async def list_overlaps_for_advisor(
-        self, asesor_id: UUID, tr: TimeRange, states
+    async def _base_select(self):
+        return select(
+            AsesoriaORM.id.label("asesoria_id"),
+            CupoORM.inicio.label("inicio"),
+            CupoORM.fin.label("fin"),
+            AsesoriaORM.estado.label("estado"),
+            CupoORM.servicio_id.label("servicio_id"),
+            CupoORM.asesor_id.label("asesor_id"),
+            AsesoriaORM.docente_id.label("docente_id"),
+        ).join(CupoORM, CupoORM.id == AsesoriaORM.cupo_id)
+
+    async def list_for_docente_range(
+        self, docente_id: UUID, tr: TimeRange, states, page: int, per_page: int
     ) -> Sequence[Dict[str, Any]]:
-        q = (
-            select(
-                AsesoriaORM.id.label("asesoria_id"),
-                CupoORM.inicio.label("inicio"),
-                CupoORM.fin.label("fin"),
-                AsesoriaORM.estado.label("estado"),
-            )
-            .join(CupoORM, CupoORM.id == AsesoriaORM.cupo_id)
-            .where(CupoORM.asesor_id == asesor_id)
-            .where(AsesoriaORM.estado.in_(list(states)))
-            .where(~((CupoORM.fin <= tr.start) | (tr.end <= CupoORM.inicio)))
-            .order_by(CupoORM.inicio)
+        q = (await self._base_select()).where(
+            AsesoriaORM.docente_id == docente_id,
+            ~((CupoORM.fin <= tr.start) | (tr.end <= CupoORM.inicio)),
         )
+        if states:
+            q = q.where(AsesoriaORM.estado.in_(list(states)))
+        q = q.order_by(CupoORM.inicio.desc()).offset((page-1)*per_page).limit(per_page)
+        rows = (await self.s.execute(q)).all()
+        return [dict(r._mapping) for r in rows]
+
+    async def list_for_asesor_range(
+        self, asesor_id: UUID, tr: TimeRange, states, page: int, per_page: int
+    ) -> Sequence[Dict[str, Any]]:
+        q = (await self._base_select()).where(
+            CupoORM.asesor_id == asesor_id,
+            ~((CupoORM.fin <= tr.start) | (tr.end <= CupoORM.inicio)),
+        )
+        if states:
+            q = q.where(AsesoriaORM.estado.in_(list(states)))
+        q = q.order_by(CupoORM.inicio.desc()).offset((page-1)*per_page).limit(per_page)
         rows = (await self.s.execute(q)).all()
         return [dict(r._mapping) for r in rows]

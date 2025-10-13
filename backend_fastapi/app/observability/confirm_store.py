@@ -1,6 +1,8 @@
 from __future__ import annotations
+import re
 import json, time, hashlib
 from typing import Any, Optional
+import unicodedata
 
 def _canon(obj: Any) -> str:
     return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -119,13 +121,22 @@ class ConfirmStore:
 
         return _decode(raw)
 
-CONFIRM_WORDS = {
-    "sí", "si", "dale", "confirma", "confirmo", "hazlo", "adelante",
-    "ok", "procede", "de acuerdo", "listo", "va", "vale"
-}
+_CONFIRM_RE = re.compile(
+    r'^\s*(?:'
+    r'(?:si|ok|dale|vale|listo|confirmo|hazlo|procede|adelante)'
+    r'|de acuerdo'
+    r')(?:\s*,?\s*(?:por favor|gracias))?\s*[.!]?\s*$',
+    re.IGNORECASE
+)
+
+def _strip_accents(s: str) -> str:
+    if not isinstance(s, str):
+        return ""
+    nfkd = unicodedata.normalize("NFKD", s)
+    return "".join(c for c in nfkd if not unicodedata.combining(c))
 
 def is_confirmation(msg: str | None) -> bool:
     if not msg:
         return False
-    m = msg.strip().lower()
-    return any(w in m for w in CONFIRM_WORDS)
+    s = _strip_accents(msg).strip()
+    return bool(_CONFIRM_RE.match(s))

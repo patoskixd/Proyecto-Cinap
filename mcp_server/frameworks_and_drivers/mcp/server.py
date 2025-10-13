@@ -115,6 +115,7 @@ def build_mcp() -> FastMCP:
         say = f"Evento creado: “{presented.title}” el {presented.start}–{presented.end}."
         return ok_msg(say, event=presented)
 
+    """
     @mcp.tool(description=EVENT_LIST_DESC)
     def event_list(
         input: Optional[ListEventsIn] = None,
@@ -384,5 +385,6 @@ def build_mcp() -> FastMCP:
             f"Eliminado(s): {len(deleted)} evento(s).",
             deleted=deleted, calendar_id=cal_id
         )
+    """
 
     return mcp
