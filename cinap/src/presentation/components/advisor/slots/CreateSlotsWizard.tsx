@@ -6,7 +6,7 @@ import type { Resource, SlotRule } from "@/domain/advisor/slots";
 import { normalizeSchedules, type UIRule } from "@/application/advisor/slots/usecases/NormalizeSchedules";
 import { GetCreateSlotsData } from "@/application/advisor/slots/usecases/GetCreateSlotsData";
 import { CreateSlots } from "@/application/advisor/slots/usecases/CreateSlots";
-import { SlotsHttpRepo } from "@/infrastructure/advisor/my-slots/SlotsHttpRepo";
+import { SlotsHttpRepo } from "@/infrastructure/advisor/slots/SlotsHttpRepo";
 
 import Header from "./components/Header";
 import Progress from "./components/Progress";

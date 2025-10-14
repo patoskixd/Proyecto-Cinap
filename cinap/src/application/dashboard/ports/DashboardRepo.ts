@@ -3,10 +3,11 @@ import type { Role } from "@domain/auth";
 
 export type AdminMetrics = {
   advisorsTotal: number;
-  advisorsAvailable: number;
   teachersTotal: number;
   appointmentsThisMonth: number;
-  approvalsPending: number;
+  pendingCount: number;
+  activeCategories: number;
+  activeServices: number;
 };
 
 export type DashboardData = {

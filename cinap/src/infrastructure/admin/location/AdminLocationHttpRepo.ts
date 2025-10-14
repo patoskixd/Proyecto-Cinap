@@ -11,22 +11,27 @@ async function parse<T>(res: Response): Promise<T> {
   try { return JSON.parse(txt) as T; } catch { throw new Error(txt || `HTTP ${res.status}`); }
 }
 
+
 const base = "/api/admin/locations";
 
 export class AdminLocationHttpRepo implements AdminLocationRepo {
   // Campus
   async listCampus(): Promise<Campus[]> {
-    const res = await fetch(`${base}/campus`, { method: "GET", credentials: "include", cache: "no-store", headers: { accept: "application/json" } });
+    const res = await fetch(`${base}/campus?page=1&limit=10000`, {
+      method: "GET", credentials: "include", cache: "no-store",
+      headers: { accept: "application/json" },
+    });
     if (!res.ok) throw new Error((await res.text()) || "No se pudieron cargar los campus");
-    return parse<Campus[]>(res);
+    const data = await parse<any>(res);
+    return Array.isArray(data) ? (data as Campus[]) : (data?.items ?? []);
   }
-  async createCampus(payload: { name: string; address: string }): Promise<Campus> {
+
+  async createCampus(payload: { name: string; address: string; code: string }): Promise<Campus> {
     const res = await fetch(`${base}/campus`, { method: "POST", credentials: "include", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(payload) });
     if (!res.ok) throw new Error((await res.text()) || "No se pudo crear el campus");
     return parse<Campus>(res);
   }
-  async updateCampus(id: string, patch: { name?: string; address?: string; active?: boolean }): Promise<Campus> {
-    // Si incluye active, usar PATCH (para desactivar), si no usar PUT (para actualizaciones completas)
+  async updateCampus(id: string, patch: { name?: string; address?: string; code?: string; active?: boolean }): Promise<Campus> {
     const method = patch.active !== undefined ? "PATCH" : "PUT";
     const res = await fetch(`${base}/campus/${id}`, { method, credentials: "include", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(patch) });
     if (!res.ok) throw new Error((await res.text()) || "No se pudo actualizar el campus");
@@ -34,7 +39,7 @@ export class AdminLocationHttpRepo implements AdminLocationRepo {
   }
   async deleteCampus(id: string): Promise<void> {
     const res = await fetch(`${base}/campus/${id}`, { method: "DELETE", credentials: "include", headers: { accept: "application/json" } });
-    if (!res.ok) throw new Error((await res.text()) || "No se pudo eliminar el campus");
+    if (!res.ok) throw new Error((await res.text()) || "No se pudo eliminar el campus, debido a que tiene cupos habilitados actualmente");
   }
   async reactivateCampus(id: string): Promise<Campus> {
     const res = await fetch(`${base}/campus/${id}/reactivate`, { method: "POST", credentials: "include", headers: { accept: "application/json" } });
@@ -44,18 +49,23 @@ export class AdminLocationHttpRepo implements AdminLocationRepo {
 
   // Buildings
   async listBuildings(params?: { campusId?: string }): Promise<Building[]> {
-    const qs = params?.campusId ? `?campusId=${encodeURIComponent(params.campusId)}` : "";
-    const res = await fetch(`${base}/buildings${qs}`, { method: "GET", credentials: "include", cache: "no-store", headers: { accept: "application/json" } });
+    const sp = new URLSearchParams({ page: "1", limit: "10000" });
+    if (params?.campusId) sp.set("campusId", params.campusId);
+
+    const res = await fetch(`${base}/buildings?${sp.toString()}`, {
+      method: "GET", credentials: "include", cache: "no-store",
+      headers: { accept: "application/json" },
+    });
     if (!res.ok) throw new Error((await res.text()) || "No se pudieron cargar los edificios");
-    return parse<Building[]>(res);
+    const data = await parse<any>(res);
+    return Array.isArray(data) ? (data as Building[]) : (data?.items ?? []);
   }
-  async createBuilding(payload: { name: string; campusId: string }): Promise<Building> {
+  async createBuilding(payload: { name: string; campusId: string; code?: string }): Promise<Building> {
     const res = await fetch(`${base}/buildings`, { method: "POST", credentials: "include", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(payload) });
     if (!res.ok) throw new Error((await res.text()) || "No se pudo crear el edificio");
     return parse<Building>(res);
   }
-  async updateBuilding(id: string, patch: { name?: string; campusId?: string; active?: boolean }): Promise<Building> {
-    // Si incluye active, usar PATCH (para desactivar), si no usar PUT (para actualizaciones completas)
+  async updateBuilding(id: string, patch: { name?: string; campusId?: string; code?: string; active?: boolean }): Promise<Building> {
     const method = patch.active !== undefined ? "PATCH" : "PUT";
     const res = await fetch(`${base}/buildings/${id}`, { method, credentials: "include", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(patch) });
     if (!res.ok) throw new Error((await res.text()) || "No se pudo actualizar el edificio");
@@ -63,7 +73,7 @@ export class AdminLocationHttpRepo implements AdminLocationRepo {
   }
   async deleteBuilding(id: string): Promise<void> {
     const res = await fetch(`${base}/buildings/${id}`, { method: "DELETE", credentials: "include", headers: { accept: "application/json" } });
-    if (!res.ok) throw new Error((await res.text()) || "No se pudo eliminar el edificio");
+    if (!res.ok) throw new Error((await res.text()) || "No se pudo eliminar el edificio,  debido a que tiene cupos habilitados actualmente");
   }
   async reactivateBuilding(id: string): Promise<Building> {
     const res = await fetch(`${base}/buildings/${id}/reactivate`, { method: "POST", credentials: "include", headers: { accept: "application/json" } });
@@ -73,30 +83,81 @@ export class AdminLocationHttpRepo implements AdminLocationRepo {
 
   // Rooms
   async listRooms(params?: { buildingId?: string }): Promise<Room[]> {
-    const qs = params?.buildingId ? `?buildingId=${encodeURIComponent(params.buildingId)}` : "";
-    const res = await fetch(`${base}/rooms${qs}`, { method: "GET", credentials: "include", cache: "no-store", headers: { accept: "application/json" } });
-    if (!res.ok) throw new Error((await res.text()) || "No se pudieron cargar las salas");
-    return parse<Room[]>(res);
-  }
+      const sp = new URLSearchParams({ page: "1", limit: "10000" });
+      if (params?.buildingId) sp.set("buildingId", params.buildingId);
+
+      const res = await fetch(`${base}/rooms?${sp.toString()}`, {
+        method: "GET", credentials: "include", cache: "no-store",
+        headers: { accept: "application/json" },
+      });
+      if (!res.ok) throw new Error((await res.text()) || "No se pudieron cargar las salas");
+      const data = await parse<any>(res);
+      return Array.isArray(data) ? (data as Room[]) : (data?.items ?? []);
+    }
   async createRoom(payload: { name: string; buildingId: string; number: string; type: Room["type"]; capacity: number }): Promise<Room> {
     const res = await fetch(`${base}/rooms`, { method: "POST", credentials: "include", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(payload) });
     if (!res.ok) throw new Error((await res.text()) || "No se pudo crear la sala");
     return parse<Room>(res);
   }
   async updateRoom(id: string, patch: { name?: string; buildingId?: string; number?: string; type?: Room["type"]; capacity?: number; active?: boolean }): Promise<Room> {
-    // Si incluye active, usar PATCH (para desactivar), si no usar PUT (para actualizaciones completas)
     const method = patch.active !== undefined ? "PATCH" : "PUT";
     const res = await fetch(`${base}/rooms/${id}`, { method, credentials: "include", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(patch) });
     if (!res.ok) throw new Error((await res.text()) || "No se pudo actualizar la sala");
     return parse<Room>(res);
   }
   async deleteRoom(id: string): Promise<void> {
-    const res = await fetch(`${base}/rooms/${id}`, { method: "DELETE", credentials: "include", headers: { accept: "application/json" } });
-    if (!res.ok) throw new Error((await res.text()) || "No se pudo eliminar la sala");
+    const res = await fetch(`${base}/rooms/${encodeURIComponent(id)}`, { method: "DELETE", credentials: "include", headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error((await res.text()) || "No se pudo eliminar la sala, debido a que tiene cupos habilitados actualmente");
   }
   async reactivateRoom(id: string): Promise<Room> {
     const res = await fetch(`${base}/rooms/${id}/reactivate`, { method: "POST", credentials: "include", headers: { accept: "application/json" } });
     if (!res.ok) throw new Error((await res.text()) || "No se pudo reactivar la sala");
     return parse<Room>(res);
   }
+    // paginación
+async listCampusPage(params?: { page?: number; limit?: number; q?: string; active?: boolean }) {
+    const sp = new URLSearchParams();
+    if (params?.page)  sp.set("page", String(params.page));
+    if (params?.limit) sp.set("limit", String(params.limit));
+    if (params?.q)     sp.set("q", params.q);
+    if (params?.active !== undefined) sp.set("active", String(params.active));
+    const res = await fetch(`${base}/campus?${sp.toString()}`, {
+      method: "GET", credentials: "include", cache: "no-store",
+      headers: { accept: "application/json" }
+    });
+    if (!res.ok) throw new Error((await res.text()) || "No se pudieron cargar los campus");
+    return parse<import("@/application/admin/location/ports/AdminLocationRepo").Page<Campus, any>>(res);
+  }
+
+  async listBuildingsPage(params?: { campusId?: string; page?: number; limit?: number; q?: string; active?: boolean }) {
+    const sp = new URLSearchParams();
+    if (params?.campusId) sp.set("campusId", params.campusId);
+    if (params?.page)     sp.set("page", String(params.page));
+    if (params?.limit)    sp.set("limit", String(params.limit));
+    if (params?.q)        sp.set("q", params.q);
+    if (params?.active !== undefined) sp.set("active", String(params.active));
+    // 👇 FIX de ruta
+    const res = await fetch(`${base}/buildings?${sp.toString()}`, {
+      method: "GET", credentials: "include", cache: "no-store",
+      headers: { accept: "application/json" }
+    });
+    if (!res.ok) throw new Error((await res.text()) || "No se pudieron cargar los edificios");
+    return parse<import("@/application/admin/location/ports/AdminLocationRepo").Page<Building, any>>(res);
+  }
+
+  async listRoomsPage(params?: { buildingId?: string; page?: number; limit?: number; q?: string; active?: boolean }) {
+    const sp = new URLSearchParams();
+    if (params?.buildingId) sp.set("buildingId", params.buildingId);
+    if (params?.page)       sp.set("page", String(params.page));
+    if (params?.limit)      sp.set("limit", String(params.limit));
+    if (params?.q)          sp.set("q", params.q);
+    if (params?.active !== undefined) sp.set("active", String(params.active));
+    const res = await fetch(`${base}/rooms?${sp.toString()}`, {
+      method: "GET", credentials: "include", cache: "no-store",
+      headers: { accept: "application/json" }
+    });
+    if (!res.ok) throw new Error((await res.text()) || "No se pudieron cargar las salas");
+    return parse<import("@/application/admin/location/ports/AdminLocationRepo").Page<Room, any>>(res);
+  }
 }
+

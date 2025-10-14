@@ -15,7 +15,7 @@ import uuid as uuidlib
 from app.use_cases.ports.slots_port import SlotsRepo
 from app.interface_adapters.orm.models_scheduling import (
     AsesorPerfilModel, ServicioModel, CategoriaModel, AsesorServicioModel,
-    CupoModel, RecursoModel, EdificioModel, CampusModel
+    CupoModel, RecursoModel, EdificioModel, CampusModel, EstadoCupo
 )
 
 
@@ -61,7 +61,9 @@ class SqlAlchemySlotsRepo(SlotsRepo):
             select(CupoModel.id, CupoModel.inicio, CupoModel.fin)
             .where(
                 CupoModel.recurso_id == uuid.UUID(recurso_id),
-                sa.or_(*conds)
+                # Solo chocan cupos activos (ABIERTO/RESERVADO); ignoramos CANCELADO/EXPIRADO
+                CupoModel.estado.in_([EstadoCupo.ABIERTO, EstadoCupo.RESERVADO]),
+                sa.or_(*conds),
             )
             .order_by(CupoModel.inicio.asc(), CupoModel.fin.asc())
         )
@@ -85,7 +87,8 @@ class SqlAlchemySlotsRepo(SlotsRepo):
             select(CupoModel.id, CupoModel.inicio, CupoModel.fin)
             .where(
                 CupoModel.asesor_id == uuid.UUID(asesor_id),
-                sa.or_(*conds)
+                CupoModel.estado.in_([EstadoCupo.ABIERTO, EstadoCupo.RESERVADO]),
+                sa.or_(*conds),
             )
             .order_by(CupoModel.inicio.asc(), CupoModel.fin.asc())
         )
@@ -176,6 +179,39 @@ class SqlAlchemySlotsRepo(SlotsRepo):
                     skipped += 1 
 
         return created, skipped
+    
+    async def complete_reserved_slots(self) -> int:
+        """
+        Marca como REALIZADO todos los cupos RESERVADO cuyo fin < now().
+        """
+        upd = (
+            sa.update(CupoModel)
+            .where(
+                CupoModel.estado == EstadoCupo.RESERVADO,
+                CupoModel.fin < sa.func.now(),
+            )
+            .values(estado=EstadoCupo.REALIZADO)
+        )
+        res = await self.s.execute(upd)
+        return int(res.rowcount or 0)
+    
+    #  expirar cupos cuya hora ya paso
+    async def expire_open_slots(self) -> int:
+        """
+        Marca como EXPIRADO todos los cupos ABIERTO con fin < now().
+        Retorna cuántas filas se actualizaron.
+        """
+        upd = (
+            sa.update(CupoModel)
+            .where(
+                CupoModel.estado == EstadoCupo.ABIERTO,
+                CupoModel.fin < sa.func.now(),
+            )
+            .values(estado=EstadoCupo.EXPIRADO)
+        )
+        res = await self.s.execute(upd)
+        # No hacemos commit aquí; lo hará el caller
+        return int(res.rowcount or 0)
     
     async def get_common_times_and_resources(self) -> dict:
         j = (

@@ -9,6 +9,9 @@ from app.use_cases.auth.ensure_docente_profile import EnsureDocenteProfileUseCas
 from app.interface_adapters.orm.models_auth import RolModel
 from app.interface_adapters.gateways.db.sqlalchemy_asesor_repo import SqlAlchemyAsesorRepo
 import sqlalchemy as sa
+import logging
+
+logger = logging.getLogger(__name__)
 @dataclass
 class GoogleCallbackResult:
     jwt: str
@@ -18,7 +21,8 @@ class GoogleCallbackUseCase:
     def __init__(self, *, user_repo:UserRepo, oauth:GoogleOAuthPort,
                  jwt:JwtPort, clock:ClockPort, redirect_uri:str, jwt_minutes:int,
                  ensure_docente_profile_uc: EnsureDocenteProfileUseCase | None = None,
-                 session = None):  
+                 session = None,
+                 auto_configure_webhook = None):  
         self.user_repo = user_repo
         self.oauth = oauth
         self.jwt = jwt
@@ -27,6 +31,7 @@ class GoogleCallbackUseCase:
         self.jwt_minutes = jwt_minutes
         self.ensure_docente_profile_uc = ensure_docente_profile_uc
         self.session = session
+        self.auto_configure_webhook = auto_configure_webhook
 
     async def execute(self, *, code:str) -> GoogleCallbackResult:
         tokens = await self.oauth.exchange_code(code, self.redirect_uri)
@@ -61,6 +66,15 @@ class GoogleCallbackUseCase:
         # Solo crear perfil docente si NO es un asesor pre-registrado
         if self.ensure_docente_profile_uc and not is_existing_asesor and role_name == "Profesor":
             await self.ensure_docente_profile_uc.execute(user_id=user.id)
+
+        # Auto-configurar webhook para asesores cuando inician sesión
+        if is_existing_asesor and self.auto_configure_webhook:
+            try:
+                await self.auto_configure_webhook.ensure_webhook_configured(user.id, access_token)
+                logger.info(f"Webhook auto-configurado para asesor {user.id}")
+            except Exception as e:
+                logger.warning(f"No se pudo auto-configurar webhook para asesor {user.id}: {e}")
+                # No fallar el login por esto
 
         token = self.jwt.issue(user_id=user.id, email=user.email, name=user.name, role_name=role_name)
         max_age = 60 * int(self.jwt_minutes)

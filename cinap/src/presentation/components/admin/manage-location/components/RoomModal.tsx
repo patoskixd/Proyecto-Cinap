@@ -122,6 +122,7 @@ export default function RoomModal({
               <option value="laboratorio">Laboratorio</option>
               <option value="auditorio">Auditorio</option>
               <option value="sala_reuniones">Sala de Reuniones</option>
+              <option value="sala_virtual">Sala Virtual</option>
             </select>
           </label>
 

@@ -21,6 +21,7 @@ import uuid
 from app.frameworks_drivers.config.settings import (
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, TEACHER_ROLE_ID
 )
+from app.interface_adapters.gateways.db.sqlalchemy_calendar_events_repo import SqlAlchemyCalendarEventsRepo
 
 
 class CreateAsesoriaBody(BaseModel):
@@ -59,7 +60,9 @@ def make_asesorias_router(*, get_session_dep: Callable[[], AsyncSession], jwt_po
             client_secret=GOOGLE_CLIENT_SECRET,
             get_refresh_token_by_usuario_id=user_repo.get_refresh_token_by_usuario_id,
         )
-        uc = CreateAsesoriaAndInvite(asesoria_repo, cal, slot_reader)
+        cal_repo = SqlAlchemyCalendarEventsRepo(db)
+
+        uc = CreateAsesoriaAndInvite(asesoria_repo, cal, slot_reader, cal_repo)
 
 
         out = await uc.exec(

@@ -13,8 +13,10 @@ from app.frameworks_drivers.config.settings import (
     API_DEBUG, CORS_ORIGINS,
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI,
     JWT_SECRET, JWT_ISSUER, JWT_MINUTES, FRONTEND_ORIGIN, TEACHER_ROLE_ID,
-    MCP_COMMAND, MCP_ARGS, MCP_CWD,
+    MCP_COMMAND, MCP_ARGS, MCP_CWD, WEBHOOK_PUBLIC_URL,
 )
+from sqlalchemy import delete
+from app.interface_adapters.orm.models_scheduling import CupoModel, EstadoCupo
 from app.frameworks_drivers.config.db import get_session
 from app.frameworks_drivers.di.container import Container
 from app.frameworks_drivers.web.rate_limit import make_simple_limiter
@@ -29,6 +31,13 @@ from app.interface_adapters.controllers.admin_catalog_router import make_admin_c
 from app.interface_adapters.controllers.admin_location_router import make_admin_location_router
 from app.interface_adapters.controllers.admin_advisors_router import make_admin_advisors_router
 from app.interface_adapters.controllers.admin_teachers_router import make_admin_teachers_router
+from app.interface_adapters.controllers.dashboard_controller import router as dashboard_router
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.interface_adapters.gateways.db.sqlalchemy_slots_repo import SqlAlchemySlotsRepo
+from app.frameworks_drivers.config.db import AsyncSessionLocal 
+from zoneinfo import ZoneInfo
+import sqlalchemy as sa
 
 from app.observability.middleware import JSONTimingMiddleware
 from app.observability.metrics import measure_stage, set_meta, stage, astage
@@ -53,12 +62,15 @@ async def lifespan(app):
     await container.startup()
     if getattr(container, "graph_agent", None) and hasattr(container.graph_agent, "set_confirm_store"):
             container.graph_agent.set_confirm_store(confirm_store)
+
+    scheduler.start()
     try:
         yield
     except asyncio.CancelledError:
         pass
     finally:
         try:
+            scheduler.shutdown(wait=False)
             await asyncio.shield(container.shutdown())
         except asyncio.CancelledError:
             pass
@@ -85,13 +97,60 @@ container = Container(
     jwt_issuer=JWT_ISSUER,
     jwt_minutes=JWT_MINUTES,
     teacher_role_id=TEACHER_ROLE_ID,
+    webhook_public_url=WEBHOOK_PUBLIC_URL,
     mcp_command=MCP_COMMAND,
     mcp_args=MCP_ARGS,
     mcp_cwd=MCP_CWD,
 )
 
-redis_client: Redis = container.cache
+redis_client: Redis = container.redis 
 confirm_store = ConfirmStore(redis_client, prefix="preview:", ttl_sec=600)
+
+
+scheduler = AsyncIOScheduler(timezone="America/Santiago")
+
+@scheduler.scheduled_job("cron", hour=18, minute=00, misfire_grace_time=600, max_instances=1)
+async def roll_slots_status():
+    got = await container.cache.acquire_lock("jobs:roll_slots_status", ttl_seconds=300)
+    if not got:
+        return
+    try:
+        async with AsyncSessionLocal() as session:
+            repo = SqlAlchemySlotsRepo(session)
+            exp = await repo.expire_open_slots()         # ABIERTO -> EXPIRADO
+            done = await repo.complete_reserved_slots()  # RESERVADO -> REALIZADO
+            if exp or done:
+                await session.commit()
+    except Exception:
+        logger.exception("Error en roll_slots_status")
+    finally:
+        await container.cache.release_lock("jobs:roll_slots_status")
+
+
+@scheduler.scheduled_job("cron", hour=1, minute=00, misfire_grace_time=600, max_instances=1)
+async def purge_only_unreferenced_expired_slots():
+    got = await container.cache.acquire_lock("jobs:purge_only_expired_slots", ttl_seconds=300)
+    if not got:
+        return
+    try:
+        async with AsyncSessionLocal() as session:
+            # Borra SOLO los EXPIRADO que no están referenciados por 'asesoria'
+            sql = sa.text("""
+                DELETE FROM cupo c
+                WHERE c.estado = CAST(:estado AS estado_cupo)
+                  AND c.fin < now()
+                  AND NOT EXISTS (
+                    SELECT 1 FROM asesoria a WHERE a.cupo_id = c.id
+                  )
+            """)
+            res = await session.execute(sql, {"estado": EstadoCupo.EXPIRADO.value})
+            await session.commit()
+            deleted = int(getattr(res, "rowcount", 0) or 0)
+            logger.info("purge_only_unreferenced_expired_slots -> eliminados=%s", deleted)
+    except Exception:
+        logger.exception("Error en purge_only_unreferenced_expired_slots")
+    finally:
+        await container.cache.release_lock("jobs:purge_only_expired_slots")
 
 slots_router = make_slots_router(get_session_dep=get_session, jwt_port=container.jwt)
 app.include_router(slots_router)
@@ -247,3 +306,36 @@ admin_teachers_router = make_admin_teachers_router(
     jwt_port=container.jwt
 )
 app.include_router(admin_teachers_router)
+
+app.include_router(dashboard_router, dependencies=[Depends(require_auth)])
+
+
+
+from app.interface_adapters.controllers.google_calendar_webhook import make_google_calendar_webhook_router
+from app.interface_adapters.controllers.calendar_router import make_calendar_router
+
+# ...
+calendar_router = make_calendar_router(
+    get_session_dep=get_session,
+    jwt_port=container.jwt,
+    cache=container.cache,
+    webhook_public_url=WEBHOOK_PUBLIC_URL
+)
+app.include_router(calendar_router)
+
+from app.interface_adapters.gateways.db.sqlalchemy_user_repo import SqlAlchemyUserRepo
+from app.interface_adapters.gateways.calendar.google_calendar_client import GoogleCalendarClient
+
+# fastapi_app.py
+google_webhook_router = make_google_calendar_webhook_router(
+    get_session_dep=get_session,
+    cache=container.cache,
+    cal_client_factory=lambda session: GoogleCalendarClient(
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        get_refresh_token_by_usuario_id=lambda usuario_id: 
+            SqlAlchemyUserRepo(session, default_role_id=None).get_refresh_token_by_usuario_id(usuario_id)
+    )
+)
+
+app.include_router(google_webhook_router)

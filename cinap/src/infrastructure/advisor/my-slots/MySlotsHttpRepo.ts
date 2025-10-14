@@ -11,6 +11,15 @@ type PatchDTO = {
   status?: MySlot["status"];
 };
 
+export type MySlotsPage = {
+  items: MySlot[];
+  page: number;
+  per_page: number;
+  total: number;
+  pages: number;
+  stats: { total: number; disponibles: number; ocupadas_min: number };
+};
+
 async function parse<T>(res: Response): Promise<T> {
   const txt = await res.text();
   try {
@@ -31,15 +40,40 @@ function toPatchDTO(patch: Partial<MySlot>): PatchDTO {
 }
 
 export class HttpMySlotsRepo implements MySlotsRepo {
-  async getMySlots(): Promise<MySlot[]> {
-    const res = await fetch("/api/advisor/my-slots", {
+  async getMySlotsPage(params: {
+    page?: number;
+    limit?: number;
+    status?: MySlot["status"] | "";
+    date?: string;
+    category?: string;
+    service?: string;
+    campus?: string;
+  } = {}): Promise<MySlotsPage> {
+    const { page = 1, limit = 36, status, date, category, service, campus } = params;
+
+    const qs = new URLSearchParams();
+    qs.set("page", String(page));
+    qs.set("limit", String(limit));
+    if (status) qs.set("status", status);
+    if (date) qs.set("date", date);
+    if (category) qs.set("category", category);
+    if (service) qs.set("service", service);
+    if (campus) qs.set("campus", campus);
+
+    const res = await fetch(`/api/advisor/my-slots?${qs.toString()}`, {
       method: "GET",
       cache: "no-store",
       credentials: "include",
       headers: { accept: "application/json" },
     });
-    if (!res.ok) throw new Error(await res.text() || "No se pudieron cargar los cupos");
-    return parse<MySlot[]>(res);
+    if (!res.ok) throw new Error((await res.text()) || "No se pudieron cargar los cupos");
+    const data = await parse<MySlotsPage>(res);
+    return data;
+  }
+
+  async getMySlots(): Promise<MySlot[]> {
+    const page = await this.getMySlotsPage({ page: 1, limit: 36 });
+    return page.items;
   }
 
   async updateMySlot(id: string, patch: Partial<MySlot>): Promise<MySlot> {
@@ -51,15 +85,21 @@ export class HttpMySlotsRepo implements MySlotsRepo {
     });
 
     const data = await (async () => {
-      try { return await parse<MySlot | any>(res); } catch (e: any) { throw new Error(e.message); }
+      try {
+        return await parse<MySlot | any>(res);
+      } catch (e: any) {
+        throw new Error(e.message);
+      }
     })();
 
     if (!res.ok) {
       const code = data?.detail?.code;
       const msg =
-        code === "ADVISOR_TIME_CLASH" ? "Ya tienes otro cupo en ese horario. Elige otra hora." :
-        code === "RESOURCE_BUSY"      ? "Conflicto con otro cupo del mismo recurso en ese horario." :
-        data?.detail?.message || data?.detail || data?.message || "No se pudo guardar";
+        code === "ADVISOR_TIME_CLASH"
+          ? "Ya tienes otro cupo en ese horario. Elige otra hora."
+          : code === "RESOURCE_BUSY"
+          ? "Conflicto con otro cupo del mismo recurso en ese horario."
+          : data?.detail?.message || data?.detail || data?.message || "No se pudo guardar";
       throw new Error(msg);
     }
     return data as MySlot;
@@ -71,7 +111,7 @@ export class HttpMySlotsRepo implements MySlotsRepo {
       credentials: "include",
       headers: { accept: "application/json" },
     });
-    if (!res.ok) throw new Error(await res.text() || "No se pudo eliminar el cupo");
+    if (!res.ok) throw new Error((await res.text()) || "No se pudo eliminar el cupo");
   }
 
   async reactivateMySlot(id: string): Promise<MySlot> {
@@ -84,9 +124,10 @@ export class HttpMySlotsRepo implements MySlotsRepo {
 
     const contentType = res.headers.get("content-type") || "";
     const isHtml = contentType.includes("text/html");
-
     if (isHtml && !res.ok) {
-      throw new Error("Ruta /api/advisor/my-slots/[id]/reactivate no encontrada (404). Revisa el route.ts y reinicia el dev server.");
+      throw new Error(
+        "Ruta /api/advisor/my-slots/[id]/reactivate no encontrada (404). Revisa el route.ts y reinicia el dev server."
+      );
     }
 
     const data = await parse<MySlot | any>(res);
