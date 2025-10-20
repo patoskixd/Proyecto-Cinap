@@ -22,6 +22,7 @@ class GoogleOAuthClient(GoogleOAuthPort):
             "state": state,
             "access_type": access_type,
             "prompt": prompt,
+            "include_granted_scopes": "true",
         }
         return f"{self.AUTH_URL}?{urlencode(params)}"
 

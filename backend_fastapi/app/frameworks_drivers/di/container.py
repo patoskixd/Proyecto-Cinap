@@ -71,7 +71,7 @@ class Container:
         self.oauth = GoogleOAuthClient(
             client_id=google_client_id,
             client_secret=google_client_secret,
-            scope="openid email profile https://www.googleapis.com/auth/calendar",
+            scope="openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events",
         )
         self.jwt = PyJWTService(secret=jwt_secret, issuer=jwt_issuer, minutes=int(jwt_minutes))
         

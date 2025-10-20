@@ -1,5 +1,7 @@
 from __future__ import annotations
 import base64
+from collections import deque
+import copy
 from datetime import datetime
 import time
 from zoneinfo import ZoneInfo
@@ -35,7 +37,7 @@ _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 CURRENT_THREAD_ID: ContextVar[str | None] = ContextVar("CURRENT_THREAD_ID", default=None)
 
-CONFIRM_TOOLS = {"schedule_asesoria", "cancel_asesoria"}
+CONFIRM_TOOLS = {"schedule_asesoria", "cancel_asesoria", "confirm_asesoria"}
 
 def _normalize_event_update_args(kwargs: dict) -> dict:
     if not isinstance(kwargs, dict):
@@ -235,6 +237,49 @@ def _parse_tool_json(s: str) -> tuple[str, dict] | None:
         pass
     return None
 
+class CappedCheckpointer:
+    def __init__(self, base, max_messages: int = 10, keys=("messages",)):
+        self._base = base
+        self._max = int(max_messages)
+        self._keys = tuple(keys)
+
+    def __getattr__(self, name):
+        return getattr(self._base, name)
+
+    def _cap_checkpoint(self, cp):
+        if not isinstance(cp, dict):
+            return cp
+        cp2 = copy.deepcopy(cp)
+        for k in self._keys:
+            try:
+                seq = cp2.get(k)
+                if isinstance(seq, list) and len(seq) > self._max:
+                    cp2[k] = seq[-self._max:]
+            except Exception:
+                pass
+        return cp2
+
+    def _cap_in_args(self, args, kwargs):
+        if "checkpoint" in kwargs:
+            kwargs = dict(kwargs)
+            kwargs["checkpoint"] = self._cap_checkpoint(kwargs["checkpoint"])
+            return args, kwargs
+        if len(args) >= 2:
+            args = list(args)
+            args[1] = self._cap_checkpoint(args[1])
+            return tuple(args), kwargs
+        return args, kwargs
+
+    def put(self, *args, **kwargs):
+        args, kwargs = self._cap_in_args(args, kwargs)
+        return self._base.put(*args, **kwargs)
+
+    async def aput(self, *args, **kwargs):
+        args, kwargs = self._cap_in_args(args, kwargs)
+        if hasattr(self._base, "aput"):
+            return await self._base.aput(*args, **kwargs)
+        return self._base.put(*args, **kwargs)
+
 class LangGraphRunner:
     def __init__(self, app, system_text: str | None = None):
         self._app = app
@@ -292,7 +337,7 @@ class LangGraphAgent:
                     thread_id = CURRENT_THREAD_ID.get()
                     args = dict(args)
 
-                    if name in ("schedule_asesoria", "cancel_asesoria", "list_asesorias"):
+                    if name in ("schedule_asesoria", "cancel_asesoria", "list_asesorias", "confirm_asesoria"):
                         user = getattr(self, "_current_user", {}) or {}
                         uid = user.get("sub") or user.get("user_id")
                         if not uid:
@@ -421,7 +466,8 @@ class LangGraphAgent:
 
         tools = await self._build_tools_from_mcp()
         conn = sqlite3.connect(self._db_path, check_same_thread=False)
-        checkpointer = SqliteSaver(conn)
+        base_cp = SqliteSaver(conn)
+        checkpointer = CappedCheckpointer(base_cp, max_messages=10)
         app_or_graph = create_react_agent(llm, tools, checkpointer=checkpointer)
         app = app_or_graph.compile(checkpointer=checkpointer) if hasattr(app_or_graph, "compile") else app_or_graph
 
@@ -430,9 +476,7 @@ class LangGraphAgent:
         Your answers must always be in Spanish. 
 
         TOOL HINTS (Cinap)
-        - See advisers: use the tool `list_advisors`.
-        - See services: use the tool `list_services`.
-        - For "schedule_asesoria" and "cancel_asesoria", arguments must be inside an input payload.
+        - For "schedule_asesoria", "cancel_asesoria" and "confirm_asesoria", arguments must be inside an input payload.
         - Two-step workflow for schedule:
           1) First produce a PREVIEW by calling the tool with confirm=false.
           2) Only if the user explicitly confirms in their next message, call the tool again with confirm=true to execute.
@@ -444,6 +488,10 @@ class LangGraphAgent:
         - When you decide to use a tool, respond with a single JSON object only (no extra text, no code fences):
           {"name":"<tool_name>","arguments":{...}}
         - Use snake_case parameter names exactly as defined by the tool. Omit null/unknown fields.
+
+        RAG HINTS
+        - If the question is informative about CINAP (what is it, services, politics, how it works, etc.), use the tool "semantic_search" with { "q": "<user question>" } to gain context before responding.
+        - If there's no results, say it clearly.
         """
         now_cl = datetime.now(ZoneInfo("America/Santiago"))
         offset = now_cl.utcoffset()
@@ -549,7 +597,19 @@ class LangGraphAgent:
                     except Exception:
                         pass
 
-                    for op in post_ops:
+                    def _deep_merge(dst: dict, src: dict) -> dict:
+                        out = dict(dst or {})
+                        for k, v in (src or {}).items():
+                            if isinstance(v, dict) and isinstance(out.get(k), dict):
+                                out[k] = _deep_merge(out[k], v)
+                            else:
+                                out[k] = v
+                        return out
+
+                    queue = deque(post_ops or [])
+
+                    while queue:
+                        op = queue.popleft()
                         tname = (op.get("tool") or "").strip()
                         targs = dict(op.get("args") or {})
                         if not tname:
@@ -571,6 +631,19 @@ class LangGraphAgent:
                             msgs.append(_strip_think(_format_mcp_result(r2, tname)))
                         except Exception as e:
                             msgs.append(f"Ocurrió un error encadenando {tname}: {e}")
+                            continue
+
+                        try:
+                            if isinstance(r2, dict):
+                                data2 = r2.get("data") or {}
+                                nh2 = data2.get("next_hint") or r2.get("next_hint")
+                                if isinstance(nh2, dict) and nh2.get("next_tool") and nh2.get("suggested_args"):
+                                    queue.append({
+                                        "tool": nh2["next_tool"],
+                                        "args": dict(nh2["suggested_args"] or {}),
+                                    })
+                        except Exception:
+                            pass
 
                     return "\n".join([m for m in msgs if m]).strip()
 
