@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Callable, Optional
 import sqlalchemy as sa
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +24,13 @@ class TeacherOut(BaseModel):
     name: str
     email: str
     activo: bool
+
+class TeachersPageOut(BaseModel):
+    items: list[TeacherOut]
+    page: int
+    per_page: int
+    total: int
+    pages: int
 
 class UpdateTeacherIn(BaseModel):
     name: str | None = None
@@ -55,14 +62,33 @@ def make_admin_teachers_router(*, get_session_dep: Callable[[], AsyncSession], j
         docente_repo = SqlAlchemyDocenteRepo(session, user_repo, docente_role.id)
         return docente_repo
 
-    @r.get("/", response_model=list[TeacherOut])
-    async def list_teachers(request: Request, session: AsyncSession = Depends(get_session_dep)):
+    @r.get("/", response_model=TeachersPageOut)
+    async def list_teachers(
+        request: Request,
+        page: int = Query(1, ge=1),
+        limit: int = Query(20, ge=1, le=200),
+        q: str | None = Query(None),
+        session: AsyncSession = Depends(get_session_dep),
+    ):
         docente_repo = await build_repos(session)
         use_case = ListTeachersUseCase(docente_repo=docente_repo)
-        teachers = await use_case.execute()
-        return [TeacherOut(
-            id=t.id, usuario_id=t.usuario_id, name=t.name, email=t.email, activo=t.activo
-        ) for t in teachers]
+        page_result = await use_case.execute(page=page, limit=limit, query=q)
+        return TeachersPageOut(
+            items=[
+                TeacherOut(
+                    id=t.id,
+                    usuario_id=t.usuario_id,
+                    name=t.name,
+                    email=t.email,
+                    activo=t.activo,
+                )
+                for t in page_result.items
+            ],
+            page=page_result.page,
+            per_page=page_result.per_page,
+            total=page_result.total,
+            pages=page_result.pages,
+        )
 
 
     @r.get("/{teacher_id}", response_model=TeacherOut)

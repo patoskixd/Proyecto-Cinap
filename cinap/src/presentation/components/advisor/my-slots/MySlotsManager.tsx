@@ -11,6 +11,7 @@ import EditModal from "./components/EditModal";
 import ConfirmModal from "./components/ConfirmModal";
 
 import ToastProvider, {notify} from "../../shared/Toast/ToastProvider";
+import LoadingStateCard from "@/presentation/components/shared/LoadingStateCard";
 
 export default function MySlotsManager() {
   const {
@@ -118,12 +119,10 @@ export default function MySlotsManager() {
 
       {/* grid de cards paginadas */}
       {loading ? (
-        <div className="rounded-2xl bg-white p-8 text-center border border-gray-200">
-          <div className="flex items-center justify-center gap-3">
-            <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-            <span className="text-blue-700 font-medium">Cargando cupos...</span>
-          </div>
-        </div>
+        <LoadingStateCard
+          title="Cargando cupos..."
+          subtitle="Obteniendo la información más reciente de tus cupos"
+        />
       ) : filtered.length === 0 ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
           <h3 className="mb-1 text-lg font-semibold text-neutral-900">No hay cupos</h3>
@@ -150,16 +149,16 @@ export default function MySlotsManager() {
 
           {/* paginación */}
           {showPagination && (
-            <div className="mt-6 flex flex-col items-center justify-between gap-3 sm:flex-row">
+            <div className="mt-4 flex flex-col items-center justify-between gap-3 sm:flex-row">
               <div className="text-sm text-neutral-600">
                 Página <span className="font-semibold">{page}</span> de <span className="font-semibold">{pages}</span>
                 <span className="ml-3 hidden sm:inline">Total: {stats.total}</span>
               </div>
-              <div className="inline-flex overflow-hidden rounded-full border border-slate-200 bg-white shadow-sm">
+              <div className="inline-flex overflow-hidden rounded-full border border-slate-200 bg-white shadow-sm text-black">
                 <button
                   onClick={prevPage}
                   disabled={!hasPrev}
-                  className="px-4 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+                  className="px-4 py-2 text-sm font-semibold text-black hover:bg-slate-50 disabled:opacity-50 disabled:text-black/40"
                 >
                   ← Anterior
                 </button>
@@ -167,7 +166,7 @@ export default function MySlotsManager() {
                 <button
                   onClick={nextPage}
                   disabled={!hasNext}
-                  className="px-4 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+                  className="px-4 py-2 text-sm font-semibold text-black hover:bg-slate-50 disabled:opacity-50 disabled:text-black/40"
                 >
                   Siguiente →
                 </button>

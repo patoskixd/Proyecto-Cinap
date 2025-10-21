@@ -14,12 +14,10 @@ export default function AdminStatusCards(props: {
     title,
     value,
     iconType,
-    tone = "blue",
   }: {
     title: string;
     value: string | number;
     iconType: string;
-    tone?: "blue" | "emerald" | "violet" | "amber" | "rose";
   }) => {
     const getIcon = (type: string) => {
       switch (type) {
@@ -67,16 +65,9 @@ export default function AdminStatusCards(props: {
           );
       }
     };
-    const tones: Record<string, string> = {
-      blue: "bg-gradient-to-r from-blue-600 to-blue-700 text-white",
-      emerald: "bg-gradient-to-r from-emerald-600 to-emerald-700 text-white",
-      violet: "bg-gradient-to-r from-violet-600 to-violet-700 text-white",
-      amber: "bg-gradient-to-r from-amber-600 to-amber-700 text-white",
-      rose: "bg-gradient-to-r from-rose-600 to-rose-700 text-white",
-    };
     return (
       <div className="flex items-center gap-4 rounded-2xl border border-blue-100 bg-white p-5 ring-1 ring-blue-100 shadow-lg">
-        <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${tones[tone]} shadow-sm`}>
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 via-blue-600 to-blue-700 text-white shadow-sm">
           {getIcon(iconType)}
         </div>
         <div>
@@ -90,11 +81,11 @@ export default function AdminStatusCards(props: {
   return (
     <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
       <Card title="Asesores" value={advisorsCount} iconType="advisors" />
-      <Card title="Docentes" value={teachersCount} iconType="teachers" tone="violet" />
-      <Card title="Asesorías del mes" value={monthCount} iconType="appointments" tone="amber" />
-      <Card title="Por confirmar" value={pendingCount} iconType="pending" tone="rose" />
-      <Card title="Categorías activas" value={activeCategories} iconType="categories" tone="emerald" />
-      <Card title="Servicios activos" value={activeServices} iconType="services" tone="violet" />
+      <Card title="Docentes" value={teachersCount} iconType="teachers" />
+      <Card title="Asesorías del mes" value={monthCount} iconType="appointments" />
+      <Card title="Por confirmar" value={pendingCount} iconType="pending" />
+      <Card title="Categorías activas" value={activeCategories} iconType="categories" />
+      <Card title="Servicios activos" value={activeServices} iconType="services" />
     </section>
   );
 }

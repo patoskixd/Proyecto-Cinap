@@ -1,200 +1,241 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Advisor } from "@/domain/admin/advisors";
+
+import { AdminAdvisorsHttpRepo } from "@/infrastructure/admin/advisors/AdminAdvisorsHttpRepo";
+import { ListAdvisors } from "@/application/admin/advisors/usecases/ListAdvisors";
+import { UpdateAdvisor } from "@/application/admin/advisors/usecases/UpdateAdvisors";
+import { DeleteAdvisor } from "@/application/admin/advisors/usecases/DeleteAdvisor";
+
 import ManageAdvisorsHeader from "./ManageAdvisorsHeader";
 import AdvisorCard from "./AdvisorCard";
 import EditAdvisorModal from "./EditAdvisorModal";
 import ConfirmDialog from "./ConfirmDialog";
 
-import { ListAdvisors } from "@/application/admin/advisors/usecases/ListAdvisors";
-import { UpdateAdvisor } from "@/application/admin/advisors/usecases/UpdateAdvisors";
-import { DeleteAdvisor } from "@/application/admin/advisors/usecases/DeleteAdvisor";
-import { AdminAdvisorsHttpRepo } from "@/infrastructure/admin/advisors/AdminAdvisorsHttpRepo";
+import type { AdvisorId } from "@/domain/admin/advisors";
 
-
-import type { Advisor } from "@/domain/admin/advisors";
-
-
-const FRONTEND_URL = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
-
-
-function createRepos() {
-  const advisorsRepo = new AdminAdvisorsHttpRepo();
-  return { advisorsRepo };
-}
-
+const PAGE_SIZE = 20;
 
 async function loadCatalog(): Promise<any[]> {
-  const res = await fetch(`${FRONTEND_URL}/api/admin/catalog/categories`, {
+  const res = await fetch("/api/admin/catalog/categories", {
     method: "GET",
     credentials: "include",
     cache: "no-store",
   });
-  
+
   if (!res.ok) {
     throw new Error("No se pudieron cargar las categorías");
   }
-  
+
   return res.json();
 }
 
 export default function ManageAdvisorsView() {
-  const [loading, setLoading] = useState(true);
-  const [items, setItems] = useState<Advisor[]>([]);
-  const [query, setQuery] = useState("");
-  const [catalog, setCatalog] = useState<any>(null);
+  const advisorsRepo = useMemo(() => new AdminAdvisorsHttpRepo(), []);
+  const listUC = useMemo(() => new ListAdvisors(advisorsRepo), [advisorsRepo]);
+  const updateUC = useMemo(() => new UpdateAdvisor(advisorsRepo), [advisorsRepo]);
+  const deleteUC = useMemo(() => new DeleteAdvisor(advisorsRepo), [advisorsRepo]);
 
+  const [loading, setLoading] = useState(true);
+  const [advisors, setAdvisors] = useState<Advisor[]>([]);
   const [editing, setEditing] = useState<Advisor | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; advisor?: Advisor }>({ open: false });
-  const [updating, setUpdating] = useState(false);
-  const [lastUpdate, setLastUpdate] = useState(Date.now());
 
+  const [query, setQuery] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [serviceId, setServiceId] = useState("");
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [reloadToken, setReloadToken] = useState(0);
+
+  const [catalog, setCatalog] = useState<any[]>([]);
 
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const { advisorsRepo } = createRepos();
-        const listUC = new ListAdvisors(advisorsRepo);
-        
-        const [advs, categories] = await Promise.all([
-          listUC.exec(),
-          loadCatalog()
-        ]);
-        
-        setItems(advs);
-        setCatalog(categories);
-      } catch (error) {
-        console.error("Error cargando datos:", error);
-      } finally {
-        setLoading(false);
-      }
-    })();
+    let alive = true;
+    loadCatalog()
+      .then((data) => {
+        if (alive) setCatalog(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => console.error("Error cargando catálogo:", err))
+      .finally(() => {
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const categories = useMemo(() => {
-    if (!catalog || !Array.isArray(catalog)) return [];
-    return catalog.filter((c: any) => c.active);
+    return catalog.filter((c: any) => c?.active).map((c: any) => ({ id: c.id, name: c.name }));
   }, [catalog]);
 
   const categoriesById = useMemo(
-    () => new Map(categories.map((c: any) => [c.id, { id: c.id, name: c.name }])),
+    () => new Map(categories.map((c) => [c.id, c])),
     [categories],
   );
 
   const servicesByCategory = useMemo(() => {
-    const m = new Map<string, { id: string; name: string }[]>();
-    if (!catalog || !Array.isArray(catalog)) return m;
-    
+    const map = new Map<string, { id: string; name: string }[]>();
     catalog.forEach((category: any) => {
-      if (category.active && category.services) {
-        m.set(
-          category.id,
-          category.services
-            .filter((s: any) => s.active)
-            .map((s: any) => ({ id: s.id, name: s.name }))
-        );
-      }
+      if (!category?.services) return;
+      map.set(
+        category.id,
+        category.services
+          .filter((svc: any) => svc?.active)
+          .map((svc: any) => ({ id: svc.id, name: svc.name })),
+      );
     });
-    return m;
+    return map;
   }, [catalog]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter(
-      (a) => a.basic.name.toLowerCase().includes(q) || a.basic.email.toLowerCase().includes(q),
-    );
-  }, [items, query]);
+  const serviceOptions = useMemo(() => {
+    if (!categoryId) return [];
+    return servicesByCategory.get(categoryId) ?? [];
+  }, [categoryId, servicesByCategory]);
 
-  const handleSave = async (changes: { id: string; basic: any; categories: any[]; services: any[] }) => {
-    setUpdating(true);
+  const loadAdvisors = useCallback(
+    async (pageValue: number, searchValue: string, categoryValue: string, serviceValue: string) => {
+      setLoading(true);
+      try {
+        const data = await listUC.exec({
+          page: pageValue,
+          limit: PAGE_SIZE,
+          query: searchValue.trim() || undefined,
+          categoryId: categoryValue || undefined,
+          serviceId: serviceValue || undefined,
+        });
+        setAdvisors(data.items);
+        setPage(data.page);
+        setPages(data.pages);
+        setTotal(data.total);
+      } catch (error) {
+        console.error("Error cargando asesores:", error);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [listUC],
+  );
+
+  useEffect(() => {
+    loadAdvisors(page, query, categoryId, serviceId);
+  }, [page, query, categoryId, serviceId, reloadToken, loadAdvisors]);
+
+  const handleQueryChange = (value: string) => {
+    setPage(1);
+    setQuery(value);
+  };
+
+  const handleCategoryChange = (id: string) => {
+    setCategoryId(id);
+    setServiceId("");
+    setPage(1);
+  };
+
+  const handleServiceChange = (id: string) => {
+    setServiceId(id);
+    setPage(1);
+  };
+
+  const handleSave = async (changes: { id: AdvisorId; basic: any; categories: any[]; services: any[] }) => {
+    setLoading(true);
     try {
-      const { advisorsRepo } = createRepos();
-      const updateUC = new UpdateAdvisor(advisorsRepo);
-      
-
-      const serviceIds = changes.services.map(service => {
-        const id = typeof service === 'string' ? service : service.id;
-        return id;
-      });
-      
-      const updateRequest = {
+      const serviceIds = changes.services.map((service) => (typeof service === "string" ? service : service.id));
+      await updateUC.exec(changes.id, {
         basic: changes.basic,
         categories: changes.categories,
-        services: serviceIds, 
-        active: true 
-      };
-      
-
-      const updatedAdvisor = await updateUC.exec(changes.id, updateRequest);
-      
-
-      setItems((prev) => prev.map((x) => (x.id === updatedAdvisor.id ? updatedAdvisor : x)));
-      
-
-      setLastUpdate(Date.now());
-      
-
-      setTimeout(async () => {
-        try {
-          const { advisorsRepo } = createRepos();
-          const listUC = new ListAdvisors(advisorsRepo);
-          const freshList = await listUC.exec();
-          setItems(freshList);
-        } catch (error) {
-        }
-      }, 100);
-      
-
+        services: serviceIds,
+        active: true,
+      });
+      setReloadToken((r) => r + 1);
       setEditing(null);
     } catch (error) {
       console.error("Error actualizando asesor:", error);
       alert("Error al actualizar el asesor. Intenta de nuevo.");
     } finally {
-      setUpdating(false);
+      setLoading(false);
     }
-  };
-
-
-
-  const handleDelete = (advisor: Advisor) => {
-    setConfirmDelete({ open: true, advisor });
   };
 
   const handleConfirmDelete = async () => {
     if (!confirmDelete.advisor) return;
-    
     try {
-      const { advisorsRepo } = createRepos();
-      const deleteAdvisor = new DeleteAdvisor(advisorsRepo);
-      
-      await deleteAdvisor.exec(confirmDelete.advisor.id);
-      
-      setItems((prev) => prev.filter(x => x.id !== confirmDelete.advisor!.id));
+      await deleteUC.exec(confirmDelete.advisor.id);
+      const targetPage = advisors.length === 1 && page > 1 ? page - 1 : page;
+      if (targetPage !== page) {
+        setPage(targetPage);
+      } else {
+        setReloadToken((r) => r + 1);
+      }
       setConfirmDelete({ open: false });
     } catch (error) {
-      console.error("Error eliminando asesor permanentemente:", error);
-      alert("Error al eliminar el asesor permanentemente. Intenta de nuevo.");
+      console.error("Error eliminando asesor:", error);
+      alert("Error al eliminar el asesor. Intenta de nuevo.");
     }
   };
 
+  const filteredAdvisors = useMemo(() => {
+    return advisors.filter((advisor) => {
+      if (categoryId) {
+        const categories = Array.isArray(advisor.categories) ? advisor.categories : [];
+        const matchesCategory = categories.some((cid) => String(cid) === String(categoryId));
+        if (!matchesCategory) {
+          return false;
+        }
+      }
+      if (serviceId) {
+        const services = Array.isArray(advisor.services) ? advisor.services : [];
+        const matchesService = services.some((service) => String(service.id) === String(serviceId));
+        if (!matchesService) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [advisors, categoryId, serviceId]);
+
+  const filteredTotal = filteredAdvisors.length;
+  const displayedTotal = useMemo(() => {
+    if (query.trim() || categoryId || serviceId) {
+      return filteredTotal;
+    }
+    return total;
+  }, [filteredTotal, total, query, categoryId, serviceId]);
+
+  const hasPrev = page > 1;
+  const hasNext = page < pages;
+  const isEmpty = !loading && filteredTotal === 0;
+
   return (
     <div className="space-y-6">
-      <ManageAdvisorsHeader query={query} onQueryChange={setQuery} />
-      
-      {/* list / empty */}
+      <ManageAdvisorsHeader
+        query={query}
+        onQueryChange={handleQueryChange}
+        categoryId={categoryId}
+        onCategoryChange={handleCategoryChange}
+        serviceId={serviceId}
+        onServiceChange={handleServiceChange}
+        categories={categories}
+        services={serviceOptions}
+        total={displayedTotal}
+        onReset={() => {
+          setPage(1);
+          setReloadToken((r) => r + 1);
+        }}
+      />
+
       {loading ? (
         <div className="rounded-2xl bg-white p-12 shadow-lg border">
           <div className="flex flex-col items-center justify-center gap-4">
             <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
             <div className="text-center">
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Cargando asesores...</h3>
-              <p className="text-gray-600">Obteniendo catálogo y información de asesores</p>
+              <p className="text-gray-600">Obteniendo catálogo y datos más recientes</p>
             </div>
           </div>
         </div>
-      ) : filtered.length === 0 ? (
+      ) : isEmpty ? (
         <div className="rounded-2xl bg-white p-12 shadow-lg border text-center">
           <div className="flex flex-col items-center gap-4">
             <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-r from-gray-100 to-blue-100 flex items-center justify-center">
@@ -205,50 +246,74 @@ export default function ManageAdvisorsView() {
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">No se encontraron asesores</h3>
               <p className="text-gray-600">
-                {query.trim() ? "Ajusta tu búsqueda para encontrar asesores." : "Aún no hay asesores registrados en el sistema."}
+                {query.trim() || categoryId || serviceId
+                  ? "Ajusta los filtros de búsqueda para encontrar resultados."
+                  : "Aún no hay asesores registrados en el sistema."}
               </p>
             </div>
           </div>
         </div>
       ) : (
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-2" key={lastUpdate}>
-          {filtered.map((a, index) => (
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {filteredAdvisors.map((advisor) => (
             <AdvisorCard
-              key={`advisor-${a.id || index}-${lastUpdate}`}
-              advisor={a}
+              key={advisor.id}
+              advisor={advisor}
               categoriesById={categoriesById}
               servicesByCat={servicesByCategory}
               onEdit={(adv) => {
-                const validCats = (adv.categories || []).filter((cid) => categoriesById.has(cid as string));
-                const validSvcs = (adv.services || []).filter((s) => {
-                  if (!validCats.includes(s.categoryId)) return false;
-                  const svcs = servicesByCategory.get(s.categoryId) ?? [];
-                  return svcs.some((x) => x.id === s.id);
-                });
+                const validCategories = (adv.categories || []).filter((cid) => categoriesById.has(cid));
+                const validServices = (adv.services || []).filter((svc) =>
+                  validCategories.includes(svc.categoryId),
+                );
                 setEditing({
                   ...adv,
-                  basic: adv.basic || { name: "", email: "" },
-                  categories: validCats,
-                  services: validSvcs,
+                  categories: validCategories,
+                  services: validServices,
                 });
               }}
-
-              onDelete={handleDelete}
+              onDelete={(adv) => setConfirmDelete({ open: true, advisor: adv })}
             />
           ))}
         </section>
       )}
-      {/* modal de edición */}
-      <EditAdvisorModal
-        open={!!editing}
-        advisor={editing}
-        catalog={{ categories, servicesByCategory }}
-        onClose={() => !updating && setEditing(null)}
-        onSave={handleSave}
-      />
 
-      {/* confirmación eliminar */}
-      
+      {!loading && pages > 1 && (
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-blue-900">
+                Página <span className="font-semibold">{page}</span> de <span className="font-semibold">{pages}</span> · Total:{" "}
+                <span className="font-semibold">{total}</span>
+              </div>
+              <div className="inline-flex overflow-hidden rounded-full border border-slate-200 bg-white shadow-sm text-black">
+                <button
+                  onClick={() => hasPrev && setPage((p) => Math.max(1, p - 1))}
+                  disabled={!hasPrev}
+                  className="px-4 py-2 text-sm font-semibold text-black hover:bg-slate-50 disabled:opacity-50 disabled:text-black/40"
+                  >
+                  ← Anterior
+                </button>
+                <div className="px-4 py-2 text-sm font-semibold bg-slate-50 border-x border-slate-200">{page}</div>
+                <button
+                  onClick={() => hasNext && setPage((p) => Math.min(pages, p + 1))}
+                  disabled={!hasNext}
+                  className="px-4 py-2 text-sm font-semibold text-black hover:bg-slate-50 disabled:opacity-50 disabled:text-black/40"
+                >
+                  Siguiente →
+                </button>
+              </div>
+        </div>
+      )}
+
+      {editing && (
+        <EditAdvisorModal
+          open={!!editing}
+          advisor={editing}
+          catalog={{ categories, servicesByCategory }}
+          onClose={() => setEditing(null)}
+          onSave={handleSave}
+        />
+      )}
+
       {confirmDelete.open && (
         <ConfirmDialog
           open={confirmDelete.open}
@@ -262,3 +327,4 @@ export default function ManageAdvisorsView() {
     </div>
   );
 }
+

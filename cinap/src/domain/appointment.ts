@@ -1,20 +1,12 @@
-
 export type AppointmentStatus = "confirmada" | "pendiente";
-// Define las interfaces para Appointment y Draft usadas en la aplicación
+
 export interface Appointment {
   id: string;
-  time: string;        // "10:00 AM"
-  dateLabel: string;   // "Hoy" | "Mañana" | "Viernes"
-  title: string;       // "nombre de la asesoría"
-  student: string;     // "Ana Rodriguez"
+  time: string;        // "09:30"
+  dateLabel: string;   // "Hoy" | "Mañana" | "Lun 15"
+  title: string;       // "nombre del servicio"
+  advisorName?: string; // nombre del asesor
+  teacherName?: string; // nombre del docente
   status: AppointmentStatus;
-  location?: string;   // "Aula 205" | "Virtual" | "Laboratorio"
-}
-
-export interface Draft {
-  id: string;
-  icon: string;        // emoji / ícono
-  title: string;
-  status: string;      // "Borrador - Sin confirmar"
-  dateLabel: string;   // "Creado hace 2 horas"
+  location?: string;   // "Aula 205" | "Virtual"
 }

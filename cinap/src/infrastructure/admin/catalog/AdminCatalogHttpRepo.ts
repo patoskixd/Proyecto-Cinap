@@ -4,19 +4,25 @@ import type { AdminCatalogRepo } from "@/application/admin/catalog/ports/AdminCa
 import type { AdminCategory, AdminService } from "@/domain/admin/catalog";
 
 async function parse<T>(res: Response): Promise<T> {
-  const txt = await res.text();
-  const ct = res.headers.get("content-type") || "";
-  const isHtml = ct.includes("text/html");
-  if (isHtml)
-    throw new Error(
-      "Ruta /api/admin/catalog no encontrada (404). Revisa los route.ts y reinicia el dev server."
-    );
-  try {
-    return JSON.parse(txt) as T;
-  } catch {
-    throw new Error(txt || `HTTP ${res.status}`);
+  const raw = await res.text();
+  let data: any = null;
+  try { data = raw ? JSON.parse(raw) : null; } catch { data = raw; }
+
+  if (!res.ok) {
+    let msg: string = `HTTP ${res.status}`;
+    if (data) {
+      const d = (data.detail ?? data.message ?? data);
+      if (typeof d === "string") {
+        msg = d;
+      } else if (d && typeof d === "object") {
+        msg = d.message ?? JSON.stringify(d);
+      }
+    }
+    throw new Error(msg);
   }
+  return data as T;
 }
+
 
 export class AdminCatalogHttpRepo implements AdminCatalogRepo {
   // -------- Categorías
@@ -27,10 +33,7 @@ export class AdminCatalogHttpRepo implements AdminCatalogRepo {
       cache: "no-store",
       headers: { accept: "application/json" },
     });
-    if (!res.ok)
-      throw new Error(
-        (await res.text()) || "No se pudieron cargar las categorías"
-      );
+
     return parse<AdminCategory[]>(res);
   }
 
@@ -44,8 +47,7 @@ export class AdminCatalogHttpRepo implements AdminCatalogRepo {
       headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify(payload),
     });
-    if (!res.ok)
-      throw new Error((await res.text()) || "No se pudo crear la categoría");
+
     return parse<AdminCategory>(res);
   }
 
@@ -59,10 +61,7 @@ export class AdminCatalogHttpRepo implements AdminCatalogRepo {
       headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify(patch),
     });
-    if (!res.ok)
-      throw new Error(
-        (await res.text()) || "No se pudo actualizar la categoría"
-      );
+
     return parse<AdminCategory>(res);
   }
 
@@ -72,8 +71,7 @@ export class AdminCatalogHttpRepo implements AdminCatalogRepo {
       credentials: "include",
       headers: { accept: "application/json" },
     });
-    if (!res.ok)
-      throw new Error((await res.text()) || "No se pudo eliminar la categoría");
+    return parse<void>(res);
   }
 
   async reactivateCategory(id: string): Promise<AdminCategory> {
@@ -82,10 +80,7 @@ export class AdminCatalogHttpRepo implements AdminCatalogRepo {
       credentials: "include",
       headers: { accept: "application/json" },
     });
-    if (!res.ok)
-      throw new Error(
-        (await res.text()) || "No se pudo reactivar la categoría"
-      );
+
     return parse<AdminCategory>(res);
   }
 
@@ -106,8 +101,6 @@ export class AdminCatalogHttpRepo implements AdminCatalogRepo {
         body: JSON.stringify(payload),
       }
     );
-    if (!res.ok)
-      throw new Error((await res.text()) || "No se pudo crear el servicio");
     return parse<AdminService>(res);
   }
 
@@ -121,10 +114,7 @@ export class AdminCatalogHttpRepo implements AdminCatalogRepo {
       headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify(patch),
     });
-    if (!res.ok)
-      throw new Error(
-        (await res.text()) || "No se pudo actualizar el servicio"
-      );
+
     return parse<AdminService>(res);
   }
 
@@ -134,8 +124,7 @@ export class AdminCatalogHttpRepo implements AdminCatalogRepo {
       credentials: "include",
       headers: { accept: "application/json" },
     });
-    if (!res.ok)
-      throw new Error((await res.text()) || "No se pudo eliminar el servicio");
+    return parse<void>(res);
   }
 
   async reactivateService(id: string): Promise<AdminService> {
@@ -144,10 +133,6 @@ export class AdminCatalogHttpRepo implements AdminCatalogRepo {
       credentials: "include",
       headers: { accept: "application/json" },
     });
-    if (!res.ok)
-      throw new Error(
-        (await res.text()) || "No se pudo reactivar el servicio"
-      );
     return parse<AdminService>(res);
   }
 }

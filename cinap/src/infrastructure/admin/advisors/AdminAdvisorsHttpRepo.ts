@@ -1,11 +1,12 @@
 ﻿"use client";
 
 import type { AdminAdvisorRepo } from "@/application/admin/advisors/ports/AdminAdvisorRepo";
-import type { 
-  Advisor, 
-  AdvisorId, 
-  RegisterAdvisorRequest, 
-  UpdateAdvisorRequest
+import type {
+  Advisor,
+  AdvisorId,
+  RegisterAdvisorRequest,
+  UpdateAdvisorRequest,
+  AdvisorsPage,
 } from "@/domain/admin/advisors";
 
 async function parse<T>(res: Response): Promise<T> {
@@ -30,8 +31,16 @@ export class AdminAdvisorsHttpRepo implements AdminAdvisorRepo {
     this.baseUrl = baseUrl;
   }
 
-  async list(): Promise<Advisor[]> {
-    const response = await fetch(this.baseUrl, {
+  async list(params: { page?: number; limit?: number; query?: string; categoryId?: string; serviceId?: string } = {}): Promise<AdvisorsPage> {
+    const { page = 1, limit = 20, query, categoryId, serviceId } = params;
+    const qs = new URLSearchParams();
+    qs.set("page", String(page));
+    qs.set("limit", String(limit));
+    if (query) qs.set("q", query);
+    if (categoryId) qs.set("category_id", categoryId);
+    if (serviceId) qs.set("service_id", serviceId);
+
+    const response = await fetch(`${this.baseUrl}?${qs.toString()}`, {
       method: "GET",
       headers: {
         "Accept": "application/json",
@@ -44,7 +53,15 @@ export class AdminAdvisorsHttpRepo implements AdminAdvisorRepo {
       throw new Error((await response.text()) || "No se pudieron cargar los asesores");
     }
 
-    return parse<Advisor[]>(response);
+    const data = await parse<any>(response);
+    const items = Array.isArray(data?.items) ? (data.items as Advisor[]) : [];
+    return {
+      items,
+      page: data?.page ?? page,
+      perPage: data?.per_page ?? limit,
+      total: data?.total ?? items.length,
+      pages: data?.pages ?? 1,
+    };
   }
 
   async add(request: RegisterAdvisorRequest): Promise<Advisor> {

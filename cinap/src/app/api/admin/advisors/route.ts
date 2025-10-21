@@ -20,8 +20,30 @@ function createRepos(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     const { advisorsRepo } = createRepos(req);
-    const advisors = await new ListAdvisors(advisorsRepo).exec();
-    const resp = NextResponse.json(advisors, { status: 200 });
+    const params = req.nextUrl.searchParams;
+    const page = Number(params.get("page") ?? "1") || 1;
+    const limit = Number(params.get("limit") ?? "20") || 20;
+    const query = params.get("q") || undefined;
+    const categoryId = params.get("category_id") || undefined;
+    const serviceId = params.get("service_id") || undefined;
+
+    const advisors = await new ListAdvisors(advisorsRepo).exec({
+      page,
+      limit,
+      query,
+      categoryId,
+      serviceId,
+    });
+    const resp = NextResponse.json(
+      {
+        items: advisors.items,
+        page: advisors.page,
+        per_page: advisors.perPage,
+        total: advisors.total,
+        pages: advisors.pages,
+      },
+      { status: 200 },
+    );
     appendSetCookies(advisorsRepo.getSetCookies?.() ?? [], resp);
     return resp;
   } catch (e: any) {

@@ -1,36 +1,58 @@
-from typing import Dict, Any, Optional
+from __future__ import annotations
+
+from typing import Any, Dict, Optional
 from uuid import UUID
 
 from app.use_cases.ports.dashboard_stats_repository import DashboardStatsRepository
+from app.use_cases.ports.dashboard_upcoming_appointments_repository import DashboardUpcomingAppointmentRepo
 
 
-class GetDashboardStatsUseCase:
-    """Caso de uso para obtener estadísticas del dashboard por rol."""
-    
-    def __init__(self, dashboard_stats_repo: DashboardStatsRepository):
-        self.dashboard_stats_repo = dashboard_stats_repo
-    
-    async def execute(
-        self, 
-        role: str, 
-        user_id: Optional[UUID] = None,
-        profile_id: Optional[UUID] = None
-    ) -> Dict[str, Any]:
-        """
-        Obtiene estadísticas según el rol del usuario.
-        """
+class GetDashboardDataUseCase:
+
+    def __init__(
+        self,
+        stats_repo: DashboardStatsRepository,
+        upcoming_repo: DashboardUpcomingAppointmentRepo,
+    ) -> None:
+        self.stats_repo = stats_repo
+        self.upcoming_repo = upcoming_repo
+
+    async def execute(self, role: str, profile_id: Optional[UUID]) -> Dict[str, Any]:
+        role = (role or "").strip()
+
         if role == "Admin":
-            return await self.dashboard_stats_repo.get_admin_stats()
-        
-        elif role == "Asesor":
-            if not profile_id:
-                raise ValueError("Se requiere profile_id para rol Asesor")
-            return await self.dashboard_stats_repo.get_advisor_stats(profile_id)
-        
-        elif role == "Profesor":
-            if not profile_id:
-                raise ValueError("Se requiere profile_id para rol Profesor")
-            return await self.dashboard_stats_repo.get_teacher_stats(profile_id)
-        
-        else:
-            raise ValueError(f"Rol no válido: {role}. Roles válidos: Admin, Asesor, Profesor")
+            admin_metrics = await self.stats_repo.admin_stats()
+            next_appointments = await self.upcoming_repo.fetch_next(role="Admin", profile_id=None, limit=4)
+            upcoming_total = await self.upcoming_repo.count_upcoming(role="Admin", profile_id=None)
+
+            return {
+                "advisorsTotal":        admin_metrics.get("advisorsTotal", 0),
+                "teachersTotal":        admin_metrics.get("teachersTotal", 0),
+                "appointmentsThisMonth":admin_metrics.get("appointmentsThisMonth", 0),
+                "pendingCount":         admin_metrics.get("pendingCount", 0),
+                "activeCategories":     admin_metrics.get("activeCategories", 0),
+                "activeServices":       admin_metrics.get("activeServices", 0),
+
+                "monthCount":           admin_metrics.get("appointmentsThisMonth", 0),
+                "nextAppointments":     next_appointments,
+                "upcomingTotal":        upcoming_total,
+                "adminMetrics":         admin_metrics,
+            }
+
+        elif role in ("Asesor", "Profesor"):
+            personal = await self.stats_repo.personal_stats(role=role, profile_id=profile_id)
+            next_appointments = await self.upcoming_repo.fetch_next(role=role, profile_id=profile_id, limit=4)
+            upcoming_total = await self.upcoming_repo.count_upcoming(role=role, profile_id=profile_id)
+            return {
+                "monthCount": personal.get("monthCount", 0),
+                "pendingCount": personal.get("pendingCount", 0),
+                "nextAppointments": next_appointments,
+                "upcomingTotal": upcoming_total,
+            }
+
+        return {
+            "monthCount": 0,
+            "pendingCount": 0,
+            "nextAppointments": [],
+            "upcomingTotal": 0,
+        }

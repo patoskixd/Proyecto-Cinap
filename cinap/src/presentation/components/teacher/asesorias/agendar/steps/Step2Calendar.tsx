@@ -4,6 +4,7 @@ import type { FoundSlot } from "@/domain/teacher/scheduling";
 import type { WizardState } from "../types";
 import { WEEKDAYS, buildMonthGrid, isPastDate, isSameDay, monthLabelES, weekIndexMon0 } from "../utils/date";
 import { cx } from "../utils/cx";
+import LoadingStateCard from "@/presentation/components/shared/LoadingStateCard";
 
 export function Step2Calendar({
   currentMonth,
@@ -119,10 +120,14 @@ export function Step2Calendar({
               No hay disponibilidad los fines de semana.
             </p>
           ) : loading ? (
-            <div className="flex flex-col items-center gap-2">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
-              <p className="text-center text-sm text-blue-600">Cargando cupos disponibles…</p>
-            </div>
+            <LoadingStateCard
+              title="Cargando cupos..."
+              subtitle="Consultando la disponibilidad para este día"
+              className="border-0 bg-transparent p-6 shadow-none"
+              spinnerClassName="h-6 w-6 border-2 border-blue-600"
+              titleClassName="mb-1 text-base text-blue-900"
+              subtitleClassName="text-sm text-blue-700"
+            />
           ) : error ? (
             <p className="text-center text-sm text-rose-600">{error}</p>
           ) : openSlots.length === 0 ? (

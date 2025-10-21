@@ -34,12 +34,21 @@ export function notify(message: string, variant?: Variant, ttlMs = 3500) {
     // rojo: eliminar / cancelación
     if (
       /\belimin(a|ado|ada|ar|ó|aste|amos|aron)\b/.test(m) ||
-      /\bcancel(a|ado|ada|ar|ó|aste|amos|aron)\b/.test(m)
+      /\bcancel(a|ado|ada|ar|ó|aste|amos|aron)\b/.test(m) ||
+      /\b(eliminar|cancelar)\b/.test(m) ||
+      /\b(error|erróneo|errónea|falló|fallido|fallar|fallas|fallamos|fallaron)\b/.test(m) ||
+      /\b(bloqueado|bloquear|bloqueo)\b/.test(m) ||
+      /\b(desactivada|duplicado|duplicar|error|duplicado|duplicada|desact|inac|inactivo)\b/.test(m) ||
+      /\b(fall(ó|o|ar|ido|ida|aste|amos|aron)|rechaz(a|asesoria cancelado|cancelado|Canceladas|Cance|cancelada|Asesoria cancelada|asesoria cancelada))\b/.test(m)
     ) {
       variant = "error";
     }
     // verde: crear/editar/actualizar/activar/reactivar/guardar
-    else if (/\b(crea|guard|edit|actualiz|activ|reactiv)\b/.test(m)) {
+    else if (/\b(crea|guard|edit|actualiz|activ|reactiv)\b/.test(m)||
+       /\b(agreg|añad|nuev|exitos[oa]|éxito|correctamente)\b/.test(m) ||
+        /\b(crear|guardar|editar|actualizar|activar|reactivar|creada|creado)\b/.test(m)
+    
+  ) {
       variant = "success";
     } else {
       variant = "info";

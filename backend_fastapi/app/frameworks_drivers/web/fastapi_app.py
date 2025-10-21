@@ -32,6 +32,12 @@ from app.interface_adapters.controllers.admin_location_router import make_admin_
 from app.interface_adapters.controllers.admin_advisors_router import make_admin_advisors_router
 from app.interface_adapters.controllers.admin_teachers_router import make_admin_teachers_router
 from app.interface_adapters.controllers.dashboard_controller import router as dashboard_router
+from app.interface_adapters.controllers.google_calendar_webhook import make_google_calendar_webhook_router
+from app.interface_adapters.controllers.calendar_router import make_calendar_router
+from app.interface_adapters.gateways.db.sqlalchemy_user_repo import SqlAlchemyUserRepo
+from app.interface_adapters.gateways.calendar.google_calendar_client import GoogleCalendarClient
+from app.interface_adapters.controllers.teacher_confirmations_router import make_teacher_confirmations_router
+from app.interface_adapters.controllers.profile_router import make_profile_router
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.interface_adapters.gateways.db.sqlalchemy_slots_repo import SqlAlchemySlotsRepo
@@ -127,7 +133,7 @@ async def roll_slots_status():
         await container.cache.release_lock("jobs:roll_slots_status")
 
 
-@scheduler.scheduled_job("cron", hour=1, minute=00, misfire_grace_time=600, max_instances=1)
+@scheduler.scheduled_job("cron", hour=1, minute=5, misfire_grace_time=600, max_instances=1)
 async def purge_only_unreferenced_expired_slots():
     got = await container.cache.acquire_lock("jobs:purge_only_expired_slots", ttl_seconds=300)
     if not got:
@@ -275,6 +281,7 @@ app.include_router(asesorias_router)
 telegram_router = make_telegram_router(
     cache=container.cache,
     agent_getter=lambda: container.graph_agent,
+    mcp_client_getter=lambda: container.db_mcp
 )
 app.telegram_router = telegram_router
 app.include_router(telegram_router)
@@ -307,14 +314,16 @@ admin_teachers_router = make_admin_teachers_router(
 )
 app.include_router(admin_teachers_router)
 
+profile_router = make_profile_router(
+    get_session_dep=get_session,
+    jwt_port=container.jwt,
+)
+app.include_router(profile_router, dependencies=[Depends(require_auth)])
+
 app.include_router(dashboard_router, dependencies=[Depends(require_auth)])
 
 
 
-from app.interface_adapters.controllers.google_calendar_webhook import make_google_calendar_webhook_router
-from app.interface_adapters.controllers.calendar_router import make_calendar_router
-
-# ...
 calendar_router = make_calendar_router(
     get_session_dep=get_session,
     jwt_port=container.jwt,
@@ -323,10 +332,7 @@ calendar_router = make_calendar_router(
 )
 app.include_router(calendar_router)
 
-from app.interface_adapters.gateways.db.sqlalchemy_user_repo import SqlAlchemyUserRepo
-from app.interface_adapters.gateways.calendar.google_calendar_client import GoogleCalendarClient
 
-# fastapi_app.py
 google_webhook_router = make_google_calendar_webhook_router(
     get_session_dep=get_session,
     cache=container.cache,
@@ -339,3 +345,16 @@ google_webhook_router = make_google_calendar_webhook_router(
 )
 
 app.include_router(google_webhook_router)
+
+teacher_confirmations_router = make_teacher_confirmations_router(
+    get_session_dep=get_session,
+    jwt_port=container.jwt,
+)
+app.include_router(teacher_confirmations_router)
+
+@scheduler.scheduled_job("cron", hour=16, minute=32)
+async def cron_sweep_due_slots_and_close_asesorias_daily():
+    async with AsyncSessionLocal() as session:
+        repo = SqlAlchemySlotsRepo(session)
+        res = await repo.sweep_cupos_vencidos(batch=5000)
+        await session.commit()

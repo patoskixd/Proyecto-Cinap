@@ -14,5 +14,5 @@ export type MySlot = {
   status: SlotStatus;
   student: Student | null;
   notes?: string | null;
+  locked: boolean;
 };
-

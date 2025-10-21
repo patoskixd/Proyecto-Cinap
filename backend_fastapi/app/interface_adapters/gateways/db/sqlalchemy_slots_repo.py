@@ -4,24 +4,17 @@ from typing import Optional, Iterable, Tuple
 from datetime import datetime
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from fastapi import Query
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import uuid as uuidlib
-
-
 from app.use_cases.ports.slots_port import SlotsRepo
 from app.interface_adapters.orm.models_scheduling import (
     AsesorPerfilModel, ServicioModel, CategoriaModel, AsesorServicioModel,
     CupoModel, RecursoModel, EdificioModel, CampusModel, EstadoCupo
 )
-
-
-
-
-
 
 class SqlAlchemySlotsRepo(SlotsRepo):
     def __init__(self, session: AsyncSession):
@@ -210,7 +203,6 @@ class SqlAlchemySlotsRepo(SlotsRepo):
             .values(estado=EstadoCupo.EXPIRADO)
         )
         res = await self.s.execute(upd)
-        # No hacemos commit aquí; lo hará el caller
         return int(res.rowcount or 0)
     
     async def get_common_times_and_resources(self) -> dict:
@@ -305,5 +297,22 @@ class SqlAlchemySlotsRepo(SlotsRepo):
             "resources": base["resources"],
         }
     
-
+    async def sweep_cupos_vencidos(self, batch: int = 1000) -> dict:
+        """
+        Ejecuta el barrido en BD:
+        - ABIERTO -> EXPIRADO si ya pasó la hora de inicio
+        - RESERVADO -> REALIZADO si ya pasó la hora de fin
+        - Asesorías vinculadas a esos cupos -> COMPLETADA
+        """
+        q = text("SELECT * FROM sweep_cupos_vencidos(:batch)")
+        row = (await self.s.execute(q, {"batch": batch})).first()
+        # La función retorna: (expirados, realizados, asesorias_completadas)
+        expirados = row[0] if row else 0
+        realizados = row[1] if row else 0
+        asesorias = row[2] if row else 0
+        return {
+            "expirados": expirados,
+            "realizados": realizados,
+            "asesorias_completadas": asesorias,
+        }
     

@@ -1,15 +1,16 @@
 from __future__ import annotations
 import uuid
 from typing import Optional, List
-from sqlalchemy import select, delete, func
+import sqlalchemy as sa
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.use_cases.ports.docente_repos import DocentePerfilRepo
 from app.use_cases.ports.auth_repos import UserRepo
-from app.domain.auth.docente_perfil import DocentePerfil, TeacherInfo
+from app.domain.auth.docente_perfil import DocentePerfil, TeacherInfo, TeacherPage
 from app.interface_adapters.orm.models_docente import DocentePerfilModel
-from app.interface_adapters.orm.models_auth import UsuarioModel, RolModel
+from app.interface_adapters.orm.models_auth import UsuarioModel
 
 class SqlAlchemyDocenteRepo(DocentePerfilRepo):
     def __init__(self, session: AsyncSession, user_repo: UserRepo, docente_role_id: uuid.UUID):
@@ -59,19 +60,67 @@ class SqlAlchemyDocenteRepo(DocentePerfilRepo):
             await self.session.flush()
 
     async def list_teachers(self) -> List[TeacherInfo]:
-        q = select(DocentePerfilModel).options(selectinload(DocentePerfilModel.usuario))
-        res = await self.session.execute(q)
-        items = res.scalars().all()
-        out: List[TeacherInfo] = []
-        for m in items:
-            out.append(TeacherInfo(
+        page = await self.list_teachers_page(page=1, limit=1_000_000, query=None)
+        return page.items
+
+    async def list_teachers_page(self, *, page: int, limit: int, query: str | None = None) -> TeacherPage:
+        page = max(page, 1)
+        limit = max(min(limit, 200), 1)
+        offset = (page - 1) * limit
+
+        filters = []
+        if query:
+            pattern = f"%{query.strip().lower()}%"
+            filters.append(
+                sa.or_(
+                    sa.func.lower(UsuarioModel.nombre).like(pattern),
+                    sa.func.lower(UsuarioModel.email).like(pattern),
+                )
+            )
+
+        count_stmt = (
+            select(sa.func.count())
+            .select_from(DocentePerfilModel)
+            .join(UsuarioModel, UsuarioModel.id == DocentePerfilModel.usuario_id, isouter=True)
+        )
+        if filters:
+            count_stmt = count_stmt.where(sa.and_(*filters))
+
+        total = (await self.session.execute(count_stmt)).scalar_one()
+
+        items_stmt = (
+            select(DocentePerfilModel)
+            .join(UsuarioModel, UsuarioModel.id == DocentePerfilModel.usuario_id, isouter=True)
+            .options(selectinload(DocentePerfilModel.usuario))
+            .order_by(sa.func.lower(UsuarioModel.nombre))
+            .offset(offset)
+            .limit(limit)
+        )
+        if filters:
+            items_stmt = items_stmt.where(sa.and_(*filters))
+
+        res = await self.session.execute(items_stmt)
+        items = res.scalars().unique().all()
+
+        data: List[TeacherInfo] = [
+            TeacherInfo(
                 id=str(m.id),
                 usuario_id=str(m.usuario_id),
                 name=m.usuario.nombre if m.usuario else "",
                 email=m.usuario.email if m.usuario else "",
-                activo=m.activo
-            ))
-        return out
+                activo=m.activo,
+            )
+            for m in items
+        ]
+
+        pages = max((total + limit - 1) // limit, 1) if total else 1
+        return TeacherPage(
+            items=data,
+            page=page,
+            per_page=limit,
+            total=total,
+            pages=pages,
+        )
 
     async def register_teacher(self, *, name: str, email: str) -> TeacherInfo:
         user = await self.user_repo.upsert_user_with_identity(

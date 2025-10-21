@@ -35,13 +35,15 @@ export default function BaseModal({
     >
       <div className={`w-full bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden transform animate-in zoom-in-95 duration-200 ${WIDTH[size]}`}>
         {/* Header con gradiente */}
-        <div className="h-16 bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 relative">
+        <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 relative">
           <div className="absolute inset-0 bg-black/10"></div>
-          <div className="flex items-center justify-between px-6 py-4 relative z-10">
-            <h3 className="text-lg font-semibold text-white">{title}</h3>
+          <div className="flex items-start gap-4 px-6 py-4 relative z-10">
+            <h3 className="flex-1 text-lg font-semibold leading-snug text-white break-words">
+              {title}
+            </h3>
             <button
               onClick={onClose}
-              className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white transition-all duration-200"
+              className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white transition-all duration-200 shrink-0 self-start"
               aria-label="Cerrar"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

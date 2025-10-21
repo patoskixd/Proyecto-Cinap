@@ -5,3 +5,11 @@ export type Teacher = {
   name: string;
   email: string;
 };
+
+export type TeacherPage = {
+  items: Teacher[];
+  page: number;
+  perPage: number;
+  total: number;
+  pages: number;
+};

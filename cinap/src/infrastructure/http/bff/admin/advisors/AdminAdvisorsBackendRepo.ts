@@ -1,10 +1,11 @@
 import type { AdminAdvisorRepo } from "@/application/admin/advisors/ports/AdminAdvisorRepo";
-import type { 
-  Advisor, 
-  AdvisorId, 
-  RegisterAdvisorRequest, 
+import type {
+  Advisor,
+  AdvisorId,
+  RegisterAdvisorRequest,
   UpdateAdvisorRequest,
-  AdvisorServiceInfo
+  AdvisorServiceInfo,
+  AdvisorsPage,
 } from "@/domain/admin/advisors";
 
 export class AdminAdvisorsBackendRepo implements AdminAdvisorRepo {
@@ -22,10 +23,15 @@ export class AdminAdvisorsBackendRepo implements AdminAdvisorRepo {
   }
 
   collectSetCookies(res: Response): void {
-    const setCookie = res.headers.get("set-cookie");
-    if (setCookie) {
-      this.setCookies.push(setCookie);
-    }
+    this.setCookies = [];
+    const anyHeaders = res.headers as any;
+    const rawList: string[] =
+      typeof anyHeaders.getSetCookie === "function"
+        ? anyHeaders.getSetCookie()
+        : res.headers.get("set-cookie")
+        ? [res.headers.get("set-cookie") as string]
+        : [];
+    this.setCookies.push(...rawList);
   }
 
   private async parse<T>(res: Response): Promise<T> {
@@ -57,8 +63,16 @@ export class AdminAdvisorsBackendRepo implements AdminAdvisorRepo {
     };
   }
 
-  async list(): Promise<Advisor[]> {
-    const res = await fetch(`${this.baseUrl}/admin/advisors/`, {
+  async list(params: { page?: number; limit?: number; query?: string; categoryId?: string; serviceId?: string } = {}): Promise<AdvisorsPage> {
+    const { page = 1, limit = 20, query, categoryId, serviceId } = params;
+    const qs = new URLSearchParams();
+    qs.set("page", String(page));
+    qs.set("limit", String(limit));
+    if (query) qs.set("q", query);
+    if (categoryId) qs.set("category_id", categoryId);
+    if (serviceId) qs.set("service_id", serviceId);
+
+    const res = await fetch(`${this.baseUrl}/admin/advisors/?${qs.toString()}`, {
       method: "GET",
       headers: { 
         cookie: this.cookie, 
@@ -71,9 +85,15 @@ export class AdminAdvisorsBackendRepo implements AdminAdvisorRepo {
     if (!res.ok) {
       throw new Error(await res.text() || "No se pudieron cargar los asesores");
     }
-    
-    const backendData = await this.parse<any[]>(res);
-    return backendData.map(data => this.mapBackendToAdvisor(data));
+    const backendData = await this.parse<any>(res);
+    const items = Array.isArray(backendData?.items) ? backendData.items : [];
+    return {
+      items: items.map((data: any) => this.mapBackendToAdvisor(data)),
+      page: backendData?.page ?? page,
+      perPage: backendData?.per_page ?? limit,
+      total: backendData?.total ?? items.length,
+      pages: backendData?.pages ?? 1,
+    };
   }
 
   async add(request: RegisterAdvisorRequest): Promise<Advisor> {

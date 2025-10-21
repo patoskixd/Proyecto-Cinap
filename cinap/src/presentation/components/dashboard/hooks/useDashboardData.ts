@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Role } from "@/domain/auth";
 import type { DashboardData } from "@/application/dashboard/ports/DashboardRepo";
 import { GetDashboard } from "@/application/dashboard/usecases/GetDashboard";
@@ -11,42 +11,60 @@ const EMPTY_DATA: DashboardData = {
   monthCount: 0,
   pendingCount: 0,
   upcoming: [],
-  drafts: [],
+  upcomingTotal: 0,
 };
 
 export function useDashboardData(role: Role | null, userId?: string) {
   const [data, setData] = useState<DashboardData>(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const lastArgs = useRef<{ role: Role | null; userId?: string }>({ role: null });
 
-  useEffect(() => {
-    async function fetchData() {
+  const fetchData = useCallback(
+    async (signal?: AbortSignal) => {
       if (!role) {
         setLoading(false);
+        setData(EMPTY_DATA);
         return;
       }
-      
+
       try {
         setLoading(true);
         setError(null);
-        
-        // Instanciar dependencias - usar DashboardHttpRepo que conecta con el backend real
-        const dashboardRepo = new DashboardHttpRepo();
-        const getDashboard = new GetDashboard(dashboardRepo);
-        
-        const result = await getDashboard.exec({ role, userId });
-        setData(result);
-      } catch (err) {
-        console.error("Error fetching dashboard data:", err);
-        setError("Error al cargar los datos del dashboard");
-        setData(EMPTY_DATA);
+
+        const repo = new DashboardHttpRepo();
+        const uc = new GetDashboard(repo);
+        const result = await uc.exec({ role, userId });
+
+        if (!signal?.aborted) setData(result);
+      } catch (e) {
+        if (!signal?.aborted) {
+          console.error("Error fetching dashboard data:", e);
+          setError("Error al cargar los datos del dashboard");
+          setData(EMPTY_DATA);
+        }
       } finally {
-        setLoading(false);
+        if (!signal?.aborted) setLoading(false);
       }
+    },
+    [role, userId]
+  );
+
+  useEffect(() => {
+    if (
+      lastArgs.current.role === role &&
+      lastArgs.current.userId === userId
+    ) {
+      return;
     }
+    lastArgs.current = { role, userId };
 
-    fetchData();
-  }, [role, userId]);
+    const ctrl = new AbortController();
+    fetchData(ctrl.signal);
+    return () => ctrl.abort();
+  }, [fetchData, role, userId]);
 
-  return { data, loading, error };
+  const refresh = useCallback(() => fetchData(), [fetchData]);
+
+  return { data, loading, error, refresh };
 }

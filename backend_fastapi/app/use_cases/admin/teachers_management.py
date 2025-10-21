@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Optional
 from app.use_cases.ports.docente_repos import DocentePerfilRepo
-from app.domain.auth.docente_perfil import TeacherInfo
+from app.domain.auth.docente_perfil import TeacherInfo, TeacherPage
 
 @dataclass
 class RegisterTeacherUseCase:
@@ -12,8 +12,8 @@ class RegisterTeacherUseCase:
 @dataclass
 class ListTeachersUseCase:
     docente_repo: DocentePerfilRepo
-    async def execute(self) -> List[TeacherInfo]:
-        return await self.docente_repo.list_teachers()
+    async def execute(self, *, page: int = 1, limit: int = 20, query: str | None = None) -> TeacherPage:
+        return await self.docente_repo.list_teachers_page(page=page, limit=limit, query=query)
 
 @dataclass
 class GetTeacherUseCase:

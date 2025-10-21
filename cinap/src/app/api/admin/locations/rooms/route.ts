@@ -4,7 +4,8 @@ import CreateRoom from "@/application/admin/location/usecases/Rooms/CreateRooms"
 import { AdminLocationBackendRepo } from "@infrastructure/http/bff/admin/locations/AdminLocationBackendRepo";
 import { appendSetCookies } from "@/app/api/_utils/cookies";
 
-export const dynamic = "force-dynamic"; export const revalidate = 0;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 const getCookieString = (req: NextRequest) => req.headers.get("cookie") ?? "";
 
 export async function GET(req: NextRequest) {
@@ -22,7 +23,10 @@ export async function GET(req: NextRequest) {
     const resp = NextResponse.json(data, { status: 200 });
     appendSetCookies(repo.getSetCookies?.() ?? [], resp);
     return resp;
-  } catch (e: any) { return NextResponse.json({ detail: e.message }, { status: 500 }); }
+  } catch (e: any) {
+    const status = e?.status ?? 500;
+    return NextResponse.json({ detail: e?.detail ?? e?.message ?? "Error" }, { status });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -39,5 +43,8 @@ export async function POST(req: NextRequest) {
     const resp = NextResponse.json(data, { status: 201 });
     appendSetCookies(repo.getSetCookies?.() ?? [], resp);
     return resp;
-  } catch (e: any) { return NextResponse.json({ detail: e.message }, { status: 400 }); }
+  } catch (e: any) {
+    const status = e?.status ?? 400;
+    return NextResponse.json({ detail: e?.detail ?? e?.message ?? "Error" }, { status });
+  }
 }
