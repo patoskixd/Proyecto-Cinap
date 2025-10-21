@@ -52,10 +52,10 @@ const ROLE_POLICIES: Array<{ pattern: RegExp; allow: Role[] }> = [
   { pattern: /^\/admin(?:\/|$)/i, allow: ["admin"] },
   { pattern: /^\/api\/admin(?:\/|$)/i, allow: ["admin"] },
   { pattern: /^\/asesor(?:\/|$)/i, allow: ["advisor"] },
-  { pattern: /^\/api\/advisor(?:\/|$)/i, allow: ["advisor"] },
+  { pattern: /^\/api\/advisor(?:\/|$)/i, allow: ["advisor", "teacher", "admin"] },
   { pattern: /^\/profesor(?:\/|$)/i, allow: ["teacher"] },
   { pattern: /^\/api\/teacher(?:\/|$)/i, allow: ["teacher"] },
-  { pattern: /^\/api\/asesorias(?:\/|$)/i, allow: ["teacher", "advisor"] },
+  { pattern: /^\/api\/asesorias(?:\/|$)/i, allow: ["teacher", "advisor", "admin"] },
 ];
 
 const DEFAULT_HOME_BY_ROLE: Record<Role, string> = {
