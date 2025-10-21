@@ -12,3 +12,4 @@ class Event:
     description: Optional[str] = None
     location: Optional[str] = None
     attendees: List[str] = field(default_factory=list)
+    html_link: Optional[str] = None

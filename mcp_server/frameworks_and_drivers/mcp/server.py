@@ -11,7 +11,7 @@ from interface_adapters.presenters.event_presenter import EventOut, present_even
 from interface_adapters.controllers.mcp_tools import (
     EventCreateIn, ListEventsIn, EventKeyIn,
     EventUpdateFlexibleIn, FindEventIn, DeleteIn,
-    UpdatePatch, UpdateSelectorById, UpdateSelectorByTitle
+    UpdateSelectorByTitle
 )
 
 from usecases.interactors import CreateEvent, ListEvents, GetEvent, DeleteEvent, UpdateEvent
@@ -72,6 +72,8 @@ def build_mcp() -> FastMCP:
         calendar_id: Optional[str] = None,
         send_updates: Optional[str] = "all",
         refresh_token: Optional[str] = None,
+        asesoria_id: Optional[str] = None,
+        organizer_usuario_id: Optional[str] = None,
     ) -> EventOut | Dict[str, Any]:
         try:
             if isinstance(start, str):
@@ -111,9 +113,109 @@ def build_mcp() -> FastMCP:
             send_updates=(send_updates or "all"),
         )
         resp = create_uc.execute(req)
+
         presented = present_event(resp)
         say = f"Evento creado: “{presented.title}” el {presented.start}–{presented.end}."
-        return ok_msg(say, event=presented)
+
+        provider_event_id = presented.id
+        html_link = presented.html_link
+
+        data = {"event": presented, "calendar_event_id": provider_event_id, "html_link": html_link}
+
+        if asesoria_id and organizer_usuario_id and provider_event_id:
+            data["next_hint"] = {
+                "next_tool": "calendar_event_upsert",
+                "suggested_args": {
+                    "input": {
+                        "asesoria_id": asesoria_id,
+                        "organizer_usuario_id": organizer_usuario_id,
+                        "calendar_event_id": provider_event_id,
+                        "html_link": html_link,
+                    }
+                }
+            }
+
+        return ok_msg(say, **data)
+    
+    @mcp.tool(description="Elimina un evento en Google Calendar por su event_id (Google) usando OAuth del asesor.")
+    def event_delete_by_id(
+        calendar_id: Optional[str] = None,
+        event_id: Optional[str] = None,
+        refresh_token: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        if not event_id:
+            return err_msg("VALIDATION", "Debes indicar event_id (Google).")
+        if not refresh_token:
+            return err_msg("OAUTH_REQUIRED", "Debe enviarse el refresh_token del asesor.")
+
+        try:
+            access_token = oauth_adapter.exchange_refresh(refresh_token)
+        except Exception as e:
+            return err_msg("OAUTH_EXCHANGE", f"No pude refrescar el token del asesor: {e}")
+
+        cal_id = with_default_calendar_id(calendar_id)
+
+        try:
+            delete_uc.execute(calendar_id=cal_id, event_id=event_id, oauth_access_token=access_token)
+            return ok_msg(
+                "Evento eliminado en Google Calendar.",
+                deleted_event_id=event_id,
+                calendar_id=cal_id,
+            )
+        except Exception as e:
+            return err_msg("GOOGLE_DELETE_FAILED", f"No se pudo eliminar en Google: {e}")
+        
+    @mcp.tool(description="Parchea asistentes de un evento por event_id (marca asistencia del docente).")
+    def event_patch_attendees(
+        event_id: str,
+        attendees_patch: List[Dict[str, Any]],
+        calendar_id: Optional[str] = None,
+        send_updates: Optional[str] = "all",
+        refresh_token: Optional[str] = None,
+    ) -> EventOut | Dict[str, Any]:
+        if not event_id:
+            return err_msg("VALIDATION", "Debes indicar event_id (Google).")
+        if not isinstance(attendees_patch, list) or not attendees_patch:
+            return err_msg("VALIDATION", "attendees_patch debe ser una lista no vacía.")
+        if not refresh_token:
+            return err_msg("OAUTH_REQUIRED", "Debe enviarse el refresh_token del usuario que marca asistencia (docente).")
+        
+        norm_atts: List[Dict[str, Any]] = []
+        seen = set()
+        for a in attendees_patch:
+            if not isinstance(a, dict):
+                continue
+            email = (a.get("email") or "").strip().lower()
+            if not email or email in seen:
+                continue
+            seen.add(email)
+            rs = (a.get("responseStatus") or "").strip() or "accepted"
+            norm_atts.append({"email": email, "responseStatus": rs})
+
+        if not norm_atts:
+            return err_msg("VALIDATION", "attendees_patch no contiene emails válidos.")
+
+        try:
+            access_token = oauth_adapter.exchange_refresh(refresh_token)
+        except Exception as e:
+            return err_msg("OAUTH_EXCHANGE", f"No pude refrescar el token del usuario: {e}")
+
+        cal_id = with_default_calendar_id(calendar_id)
+
+        try:
+            req = UpdateEventRequest(
+                calendar_id=cal_id,
+                event_id=event_id,
+                oauth_access_token=access_token,
+                send_updates=(send_updates or "all"),
+                absolute_patch={"attendees": norm_atts},
+            )
+            updated = update_uc.execute(req)
+            presented = present_event(updated)
+            say = f"Asistencia actualizada en tu calendario"
+            return ok_msg(say, event=presented)
+        except Exception as e:
+            return err_msg("GOOGLE_UPDATE_FAILED", f"No se pudo actualizar el evento: {e}")
 
     """
     @mcp.tool(description=EVENT_LIST_DESC)

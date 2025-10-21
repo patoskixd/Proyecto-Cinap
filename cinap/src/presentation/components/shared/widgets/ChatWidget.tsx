@@ -353,51 +353,55 @@ function Avatar({ role }: { role: Role }) {
 
 function PaginatedList({
   items,
-  pageSize = 3,
-  boxHeight = 220,
-}: { items: Array<any>, pageSize?: number, boxHeight?: number }) {
+  pageSize = 2,
+  cardMinH = 90,
+}: { items: any[]; pageSize?: number; cardMinH?: number }) {
   const [page, setPage] = useState(0);
   const total = items.length;
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const start = page * pageSize;
   const slice = items.slice(start, start + pageSize);
+  const missing = Math.max(0, pageSize - slice.length);
 
   return (
-    <div className="mt-2 text-left">
-      <div
-        className="flex flex-col items-center justify-center w-full"
-        style={{ height: boxHeight }}
-      >
-        <ul className="flex flex-col justify-center items-stretch w-full max-w-[300px] gap-2">
-          {slice.map((it, idx) => (
-            <li
-              key={`it-${start + idx}`}
-              className="rounded-lg border border-blue-100 bg-white/70 p-2
-                         flex flex-col justify-center text-center shadow-sm"
-            >
-              <div className="font-medium text-blue-900">
-                {it.title || "(sin título)"}
+    <div className={classNames("mt-2 text-left mx-auto", "w-[min(220px,80vw)]")}>
+      <ul className={classNames("flex flex-col gap-2", "w-full")}>
+        {slice.map((it, idx) => (
+          <li
+            key={`it-${start + idx}`}
+            className="w-full rounded-xl border border-blue-100 bg-white/80 p-3
+                       flex flex-col justify-center text-center shadow-sm
+                       transition-all duration-200"
+            style={{ minHeight: cardMinH }}
+          >
+            <div className="font-medium text-blue-900 leading-snug text-balance break-words">
+              {it.title || "(sin título)"}
+            </div>
+            {it.subtitle && <div className="text-xs text-blue-500 mt-0.5">{it.subtitle}</div>}
+            {(it.start || it.end) && (
+              <div className="text-xs text-blue-500 mt-0.5">
+                {it.start || ""}{(it.start || it.end) ? " — " : ""}{it.end || ""}
               </div>
+            )}
+          </li>
+        ))}
 
-              {it.subtitle ? (
-                <div className="text-xs text-blue-500 mt-0.5">{it.subtitle}</div>
-              ) : null}
-
-              {(it.start || it.end) ? (
-                <div className="text-xs text-blue-500 mt-0.5">
-                  {(it.start || "")}{(it.start || it.end) ? " — " : ""}{(it.end || "")}
-                </div>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      </div>
+        {/* Placeholders */}
+        {Array.from({ length: missing }).map((_, i) => (
+          <li
+            key={`ph-${i}`}
+            aria-hidden
+            className="w-full rounded-xl border border-transparent p-3 opacity-0 pointer-events-none"
+            style={{ minHeight: cardMinH }}
+          />
+        ))}
+      </ul>
 
       {/* Paginador */}
       {pages > 1 && (
-        <div className="mt-3 flex items-center justify-center gap-3">
+        <div className={classNames("mt-3 flex items-center justify-center gap-3", "w-full")}>
           <button
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            onClick={() => setPage(p => Math.max(0, p - 1))}
             disabled={page === 0}
             className="rounded-full border border-blue-200 bg-white px-3 py-1.5 
                        text-sm text-blue-700 disabled:opacity-40"
@@ -408,7 +412,7 @@ function PaginatedList({
             Página {page + 1} de {pages}
           </span>
           <button
-            onClick={() => setPage((p) => Math.min(pages - 1, p + 1))}
+            onClick={() => setPage(p => Math.min(pages - 1, p + 1))}
             disabled={page >= pages - 1}
             className="rounded-full border border-blue-200 bg-white px-3 py-1.5 
                        text-sm text-blue-700 disabled:opacity-40"

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union, Dict, Any
 from entities.event import Event
 from usecases.ports import EventRepository
 from usecases.models import (
@@ -24,6 +24,7 @@ def _to_response(e: Event) -> EventResponse:
         description=e.description,
         location=e.location,
         attendees=list(e.attendees),
+        html_link=e.html_link,
     )
 
 class CreateEvent:
@@ -54,6 +55,7 @@ class ListEvents:
         items = [
             _to_response(e) for e in self.repo.list(
                 calendar_id=req.calendar_id,
+                oauth_access_token=req.oauth_access_token,
                 time_min=req.time_min,
                 time_max=req.time_max,
                 q=req.q,
@@ -66,45 +68,56 @@ class GetEvent:
     def __init__(self, repo: EventRepository) -> None:
         self.repo = repo
 
-    def execute(self, *, calendar_id: str, event_id: str):
-        e = self.repo.get(calendar_id=calendar_id, event_id=event_id)
+    def execute(self, *, calendar_id: str, event_id: str, oauth_access_token: str):
+        e = self.repo.get(calendar_id=calendar_id, event_id=event_id, oauth_access_token=oauth_access_token)
         return _to_response(e) if e else None
 
 class DeleteEvent:
-    def __init__(self, repo: EventRepository) -> None:
-        self.repo = repo
-
-    def execute(self, *, calendar_id: str, event_id: str) -> None:
-        self.repo.delete(calendar_id=calendar_id, event_id=event_id)
+    def __init__(self, repo: EventRepository) -> None: self.repo = repo
+    
+    def execute(self, *, calendar_id: str, event_id: str, oauth_access_token: str) -> None:
+        self.repo.delete(calendar_id=calendar_id, event_id=event_id, oauth_access_token=oauth_access_token)
 
 class UpdateEvent:
     def __init__(self, repo: EventRepository) -> None:
         self.repo = repo
 
     def execute(self, req: UpdateEventRequest) -> Optional[EventResponse]:
-        current = self.repo.get(calendar_id=req.calendar_id, event_id=req.event_id)
+        if req.absolute_patch is not None:
+            updated = self.repo.update(
+                calendar_id=req.calendar_id,
+                event_id=req.event_id,
+                oauth_access_token=req.oauth_access_token,
+                absolute_patch=req.absolute_patch,
+                send_updates=req.send_updates,
+            )
+            return _to_response(updated)
+
+        current = self.repo.get(
+            calendar_id=req.calendar_id,
+            event_id=req.event_id,
+            oauth_access_token=req.oauth_access_token,
+        )
         if not current:
             return None
 
         new_title = req.title if req.title is not None else current.title
         new_start = req.start if req.start is not None else current.start
         new_end   = req.end   if req.end   is not None else current.end
-        new_desc  = req.description if req.description is not None else current.description
-        new_loc   = req.location    if req.location    is not None else current.location
-        new_atts  = req.attendees   if req.attendees   is not None else current.attendees
 
         _validate_title(new_title)
-        if new_start >= new_end:
-            raise ValueError("start debe ser anterior a end")
+        _validate_times(new_start, new_end)
 
         updated = self.repo.update(
             calendar_id=req.calendar_id,
             event_id=req.event_id,
+            oauth_access_token=req.oauth_access_token,
             title=req.title,
             start=req.start,
             end=req.end,
             description=req.description,
             location=req.location,
             attendees=req.attendees,
+            send_updates=req.send_updates,
         )
         return _to_response(updated)

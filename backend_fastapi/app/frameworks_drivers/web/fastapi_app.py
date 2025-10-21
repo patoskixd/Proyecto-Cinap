@@ -31,6 +31,7 @@ from app.interface_adapters.controllers.admin_catalog_router import make_admin_c
 from app.interface_adapters.controllers.admin_location_router import make_admin_location_router
 from app.interface_adapters.controllers.admin_advisors_router import make_admin_advisors_router
 from app.interface_adapters.controllers.admin_teachers_router import make_admin_teachers_router
+from app.frameworks_drivers.web.semantic import router as semantic_router
 from app.interface_adapters.controllers.dashboard_controller import router as dashboard_router
 from app.interface_adapters.controllers.google_calendar_webhook import make_google_calendar_webhook_router
 from app.interface_adapters.controllers.calendar_router import make_calendar_router
@@ -322,7 +323,7 @@ app.include_router(profile_router, dependencies=[Depends(require_auth)])
 
 app.include_router(dashboard_router, dependencies=[Depends(require_auth)])
 
-
+app.include_router(semantic_router, tags=["semantic"])
 
 calendar_router = make_calendar_router(
     get_session_dep=get_session,

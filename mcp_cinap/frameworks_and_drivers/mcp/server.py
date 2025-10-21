@@ -1,17 +1,21 @@
 from __future__ import annotations
+import os
 from zoneinfo import ZoneInfo
 
+import httpx
 from mcp.server.fastmcp import FastMCP
 
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 from application.ports import Pagination, TimeRange
 from application.use_cases.list_user_asesorias import ListUserAsesorias, ListUserAsesoriasIn
+from application.use_cases.upsert_calendar_event import UpsertCalendarEvent, UpsertCalendarEventIn
+from frameworks_and_drivers.db.sa_calendar_events_repo import SqlAlchemyCalendarEventsRepo
 from frameworks_and_drivers.db.sa_repos import ServicioORM
 from interface_adapters.services.text_norm import norm_key
-from sqlalchemy import select, text
+from sqlalchemy import delete, select, text
 
 from application.dto import AvailabilityIn, OverlapIn
 from application.use_cases.resolve_advisor import ResolveAdvisor, ResolveAdvisorIn
@@ -19,10 +23,18 @@ from application.use_cases.resolve_service import ResolveService, ResolveService
 from application.use_cases.check_availability import CheckAvailability
 from application.use_cases.detect_overlaps import DetectOverlaps
 from frameworks_and_drivers.db.config import SAUnitOfWork
-from frameworks_and_drivers.db.orm_models import AsesoriaORM, CupoORM, EstadoAsesoria, EstadoCupo
+from frameworks_and_drivers.db.orm_models import AsesoriaORM, CalendarEventORM, CupoORM, EstadoAsesoria, EstadoCupo
 from frameworks_and_drivers.db.sa_repos import UsuarioORM as UsuarioModel, AsesorPerfilORM as AsesorPerfilModel
 from frameworks_and_drivers.db.orm_models import UserIdentityORM as UserIdentityModel
 from interface_adapters.gateways.calendar_gateway import NullCalendarGateway
+
+SEMANTIC_URL = os.getenv("SEMANTIC_URL", "http://localhost:8000/search/semantic")
+_client: httpx.AsyncClient | None = None
+async def _get_client() -> httpx.AsyncClient:
+    global _client
+    if _client is None:
+        _client = httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=2.0), http2=True)
+    return _client
 
 class OverlapInput(BaseModel):
     asesor_id: int
@@ -61,6 +73,12 @@ class ScheduleAsesoriaInput(BaseModel):
     confirm: bool = Field(False, description="False=preview, True=ejecuta")
     user_id: Optional[UUID] = Field(None, description="ID de usuario autenticado, la tool resuelve docente_id")
 
+class UpsertCalendarEventInput(BaseModel):
+    asesoria_id: str = Field(..., description="UUID de la asesoría (asesoria.id)")
+    organizer_usuario_id: str = Field(..., description="UUID del usuario organizador (asesor.usuario_id)")
+    calendar_event_id: str = Field(..., description="ID del evento creado en Google Calendar")
+    html_link: Optional[str] = Field(None, description="Link HTML del evento en Google")
+
 class CancelAsesoriaInput(BaseModel):
     advisor: Optional[str] = Field(None, description="(Docente) Nombre o email del asesor")
     service: Optional[str] = Field(None, description="(Docente, opcional) Nombre del servicio")
@@ -68,6 +86,13 @@ class CancelAsesoriaInput(BaseModel):
     end:   datetime = Field(..., description="Fin ISO con TZ America/Santiago")
     confirm: bool = Field(False, description="False=preview, True=ejecuta")
     user_id: Optional[UUID] = Field(None, description="ID de usuario autenticado (JWT)")
+
+class ConfirmAsesoriaInput(BaseModel):
+    start: datetime = Field(..., description="Inicio ISO con TZ America/Santiago")
+    end:   datetime = Field(..., description="Fin ISO con TZ America/Santiago")
+    advisor: str = Field(..., description="Nombre o email del asesor")
+    confirm: bool = Field(False, description="False=preview, True=ejecuta")
+    user_id: Optional[UUID] = Field(None, description="ID del usuario autenticado (JWT)")
 
 async def _docente_id_from_user_id(session, user_id: UUID) -> UUID | None:
     row = (await session.execute(
@@ -110,6 +135,12 @@ async def _google_refresh_token(session, usuario_id: UUID) -> str | None:
         .limit(1)
     )
     return (await session.execute(q)).scalar_one_or_none()
+
+def _fmt_item(it: Dict[str, Any]) -> Dict[str, Any]:
+    title = it.get("title") or it.get("kind") or "Resultado"
+    dist = it.get("dist")
+    sub = f"sim={1.0 - float(dist):.3f}" if isinstance(dist, (int, float)) else ""
+    return {"title": title, "subtitle": sub, "start": None, "end": None}
 
 TZ_CL = ZoneInfo("America/Santiago")
 
@@ -164,7 +195,7 @@ def build_mcp() -> FastMCP:
         name="check_availability",
         description=(
             "Verifica y busca cupos abiertos entre start y end para un servicio (obligatorio) "
-            "y opcionalmente un asesor. "
+            "y opcionalmente un asesor."
         )
     )
     async def check_availability(input: CheckAvailabilityInput):
@@ -178,6 +209,11 @@ def build_mcp() -> FastMCP:
 
         q_service = norm_key(input.service)
         q_advisor = norm_key(input.advisor) if input.advisor else None
+
+        def _get(obj, name, default=None):
+            if isinstance(obj, dict):
+                return obj.get(name, default)
+            return getattr(obj, name, default)
 
         async with SAUnitOfWork() as uow:
             svc_win, svc_cands = await ResolveService(uow.services).execute(
@@ -225,26 +261,72 @@ def build_mcp() -> FastMCP:
                 end=end,
                 page=input.page,
                 per_page=input.per_page,
-            ))
-            out = out or []
+            )) or []
 
             if not out:
                 msg = (
                     f"No se encontraron cupos disponibles para el servicio '{svc_name}' "
-                    f"{f"con {adv_name} " if adv_name else ''}en el rango indicado."
+                    f"{f'con {adv_name} ' if adv_name else ''}en el rango indicado."
                 )
                 return {"ok": True, "say": msg}
 
+            def _get(obj, name, default=None):
+                if isinstance(obj, dict): return obj.get(name, default)
+                return getattr(obj, name, default)
+
+            slot_ids_needing_aid = []
+            asesor_ids = set()
+
+            for s in out:
+                aid = _get(s, "asesor_id")
+                if aid:
+                    asesor_ids.add(aid)
+                else:
+                    slot_ids_needing_aid.append(_get(s, "id"))
+
+            if slot_ids_needing_aid:
+                rows = (await uow.session.execute(
+                    select(CupoORM.id, CupoORM.asesor_id).where(CupoORM.id.in_(slot_ids_needing_aid))
+                )).all()
+                cupo_to_asesor = {r.id: r.asesor_id for r in rows}
+            else:
+                cupo_to_asesor = {}
+
+            for s in out:
+                if not _get(s, "asesor_id"):
+                    cupo_id = _get(s, "id")
+                    aid = cupo_to_asesor.get(cupo_id)
+                    if aid:
+                        asesor_ids.add(aid)
+
+            asesor_name_by_id: dict[str, str] = {}
+            if not adv_name and asesor_ids:
+                rows = await uow.advisors.get_by_ids(list(asesor_ids))
+                asesor_name_by_id = { str(r["id"]): r["nombre"] for r in rows }
+
             items = []
             for slot in out:
-                title = f"Cupo — {adv_name}" if adv_name else f"Cupo — {svc_name}"
+                s_id  = _get(slot, "id")
+                s_ini = _get(slot, "inicio")
+                s_fin = _get(slot, "fin")
+                sid   = _get(slot, "servicio_id")
+
+                aid = _get(slot, "asesor_id") or cupo_to_asesor.get(s_id)
+
+                slot_adv_name = (
+                    adv_name or
+                    (asesor_name_by_id.get(str(aid)) if aid else None) or
+                    "Asesor"
+                )
+
                 items.append({
-                    "id": str(slot.id),
-                    "title": title,
-                    "subtitle": svc_name,
-                    "start": _fmt_local(slot.inicio),
-                    "end":   slot.fin.astimezone(TZ_CL).strftime("%H:%M"),
-                    "servicio_id": str(slot.servicio_id),
+                    "id": str(s_id),
+                    "title": f"Cupo — {svc_name}",
+                    "subtitle": slot_adv_name,
+                    "start": _fmt_local(s_ini),
+                    "end":   s_fin.astimezone(TZ_CL).strftime("%H:%M"),
+                    "servicio_id": str(sid),
+                    "asesor_id": str(aid) if aid else None,
                 })
 
             return {"ok": True, "data": {"items": items}}
@@ -253,7 +335,7 @@ def build_mcp() -> FastMCP:
         name="list_asesorias",
         description=(
             "Lista las asesorías asociadas al usuario (como docente o asesor) "
-            "en el rango [start,end). Requiere user_id."
+            "en el rango [start,end) en formato datetime. Requiere user_id."
         )
     )
     async def list_asesorias(input: ListAsesoriasInput):
@@ -459,6 +541,8 @@ def build_mcp() -> FastMCP:
                     "description": input.notas or "",
                     "calendar_id": "primary",
                     **({"refresh_token": asesor_refresh_token} if asesor_refresh_token else {}),
+                    "asesoria_id": str(nueva.id),
+                    "organizer_usuario_id": str(asesor_usuario_id),
                 }
             }
             return {
@@ -476,12 +560,32 @@ def build_mcp() -> FastMCP:
             }
         
     @app.tool(
+        name="calendar_event_upsert",
+        description="Guarda el evento de Google Calendar asociado a una asesoría en la tabla calendar_event."
+    )
+    async def calendar_event_upsert(input: UpsertCalendarEventInput):
+        async with SAUnitOfWork() as uow:
+            repo = SqlAlchemyCalendarEventsRepo(uow.session)
+            uc = UpsertCalendarEvent(repo)
+            try:
+                out = await uc.exec(UpsertCalendarEventIn(
+                    asesoria_id=input.asesoria_id,
+                    organizer_usuario_id=input.organizer_usuario_id,
+                    calendar_event_id=input.calendar_event_id,
+                    html_link=input.html_link
+                ))
+                return {"ok": True, "say": "Evento guardado en historial.", "data": out}
+            except Exception as e:
+                return {"ok": False, "error": {"code": "UPSERT_FAILED", "message": str(e)}}
+
+    @app.tool(
         name="cancel_asesoria",
         description=(
             "Cancela una asesoría del usuario. Si el usuario es DOCENTE: indicar advisor (+service opcional) y el rango exacto "
             "[start,end). Si el usuario es ASESOR: basta indicar el rango exacto, se usará su asesor_id. "
             "Usa confirm=false para preview y confirm=true para ejecutar. No insertes user_id, dado que lo hace el backend. "
-            "La asesoría debe estar PENDIENTE. Al cancelar, el cupo queda ABIERTO."
+            "La asesoría debe estar PENDIENTE. Al cancelar, el cupo queda CANCELADO. "
+            "Además, elimina vínculos locales de calendar_event y sugiere (next_hint) eliminar el evento en Google por id."
         ),
     )
     async def cancel_asesoria(input: CancelAsesoriaInput):
@@ -503,6 +607,8 @@ def build_mcp() -> FastMCP:
                 return {"ok": False, "error": {"code": "NO_ROLE", "message": "El usuario no es docente ni asesor"}}
 
             force_docente = bool(input.advisor)
+
+            # Asesor
             if my_asesor_id and not force_docente:
                 cupo = (await uow.session.execute(
                     select(CupoORM).where(
@@ -511,45 +617,85 @@ def build_mcp() -> FastMCP:
                         CupoORM.fin == end,
                     )
                 )).scalar_one_or_none()
-
                 if not cupo:
                     return {"ok": False, "error": {"code": "CUP_NOT_FOUND", "message": "No existe un cupo exacto tuyo en ese rango"}}
 
                 asesoria = (await uow.session.execute(
                     select(AsesoriaORM).where(
                         AsesoriaORM.cupo_id == cupo.id,
-                        AsesoriaORM.estado == EstadoAsesoria.PENDIENTE,
+                        AsesoriaORM.estado.in_([EstadoAsesoria.PENDIENTE, EstadoAsesoria.CONFIRMADA]),
                     )
                 )).scalar_one_or_none()
                 if not asesoria:
-                    return {"ok": False, "error": {"code": "APPT_NOT_FOUND", "message": "No hay asesoría PENDIENTE en ese cupo"}}
+                    return {"ok": False, "error": {"code": "APPT_NOT_FOUND", "message": "No hay asesoría pendiente o confirmada en ese cupo"}}
+                
+                asesor_usuario_id, _asesor_email = await _asesor_usuario_y_email(uow.session, cupo.asesor_id)
+                asesor_refresh_token = await _google_refresh_token(uow.session, asesor_usuario_id)
 
-                if not input.confirm:
-                    return {
-                        "ok": True,
-                        "say": "¿Confirmas cancelar la asesoría y reabrir el cupo?",
-                        "data": {
-                            "asesoria_id": str(asesoria.id),
-                            "cupo_id": str(cupo.id),
-                            "inicio": start.isoformat(),
-                            "fin": end.isoformat(),
+                cal_rows = (await uow.session.execute(
+                    select(CalendarEventORM).where(CalendarEventORM.asesoria_id == asesoria.id)
+                )).scalars().all()
+
+                next_hints = [
+                    {
+                        "next_tool": "event_delete_by_id",
+                        "suggested_args": {
+                            "calendar_id": "primary",
+                            "event_id": r.calendar_event_id,
+                            **({"refresh_token": asesor_refresh_token} if asesor_refresh_token else {}),
                         }
                     }
+                    for r in cal_rows if r.calendar_event_id
+                ]
+
+                preview = {
+                    "asesor_id": str(my_asesor_id),
+                    "asesoria_id": str(asesoria.id),
+                    "cupo_id": str(cupo.id),
+                    "inicio": start.isoformat(),
+                    "fin": end.isoformat(),
+                    "calendar_event_matches": [
+                        {
+                            "row_id": str(r.id),
+                            "provider": r.provider,
+                            "calendar_event_id": r.calendar_event_id,
+                            "calendar_html_link": r.calendar_html_link,
+                        } for r in cal_rows
+                    ],
+                }
+
+                if not input.confirm:
+                    say = "¿Confirmas cancelar la asesoría y marcar el cupo como cancelado?"
+                    next_hint = (next_hints[0] if len(next_hints) == 1 else next_hints) or None
+                    return {"ok": True, "say": say, "data": {"preview": preview, "next_hint": next_hint}}
 
                 asesoria.estado = EstadoAsesoria.CANCELADA
-                cupo.estado = EstadoCupo.ABIERTO
+                cupo.estado = EstadoCupo.CANCELADO
+
+                if cal_rows:
+                    await uow.session.execute(
+                        delete(CalendarEventORM).where(CalendarEventORM.id.in_([r.id for r in cal_rows]))
+                    )
+
                 await uow.session.flush()
+                await uow.session.commit()
+
+                say = "Asesoría cancelada y cupo cancelado"
+                next_hint = (next_hints[0] if len(next_hints) == 1 else next_hints) or None
                 return {
                     "ok": True,
-                    "say": "Asesoría cancelada y cupo reabierto.",
+                    "say": say,
                     "data": {
                         "asesoria_id": str(asesoria.id),
                         "cupo_id": str(cupo.id),
                         "estado_asesoria": "CANCELADA",
-                        "estado_cupo": "ABIERTO",
-                    }
+                        "estado_cupo": "CANCELADO",
+                        "deleted_calendar_event_rows": len(cal_rows),
+                        "next_hint": next_hint,
+                    },
                 }
 
+            # Docente
             if my_docente_id:
                 if not input.advisor:
                     return {"ok": False, "error": {"code": "MISSING_ADVISOR", "message": "Debes indicar el asesor"}}
@@ -558,7 +704,8 @@ def build_mcp() -> FastMCP:
                     ResolveAdvisorIn(query=input.advisor, limit=10)
                 )
                 if not adv_win:
-                    return {"ok": False, "error": {"code": "AmbiguousAdvisor"}, "candidates": [c.__dict__ for c in (adv_cands or [])]}
+                    return {"ok": False, "error": {"code": "AmbiguousAdvisor", "message": "No se pudo resolver el asesor"},
+                            "candidates": [c.__dict__ for c in (adv_cands or [])]}
                 asesor_id = UUID(adv_win.id)
 
                 servicio_id = None
@@ -567,7 +714,8 @@ def build_mcp() -> FastMCP:
                         ResolveServiceIn(query=input.service, limit=10)
                     )
                     if not svc_win:
-                        return {"ok": False, "error": {"code": "AmbiguousService"}, "candidates": [c.__dict__ for c in (svc_cands or [])]}
+                        return {"ok": False, "error": {"code": "AmbiguousService", "message": "No se pudo resolver el servicio"},
+                                "candidates": [c.__dict__ for c in (svc_cands or [])]}
                     servicio_id = UUID(svc_win.id)
 
                 q = select(CupoORM).where(
@@ -577,11 +725,9 @@ def build_mcp() -> FastMCP:
                 )
                 if servicio_id:
                     q = q.where(CupoORM.servicio_id == servicio_id)
-
                 cupos = (await uow.session.execute(q)).scalars().all()
                 if not cupos:
                     return {"ok": False, "error": {"code": "CUP_NOT_FOUND", "message": "No existe un cupo exacto para ese rango"}}
-
                 if len(cupos) > 1 and not servicio_id:
                     svc_rows = (await uow.session.execute(
                         select(ServicioORM.id, ServicioORM.nombre).where(
@@ -595,43 +741,266 @@ def build_mcp() -> FastMCP:
                     }
 
                 cupo = cupos[0]
-
                 asesoria = (await uow.session.execute(
                     select(AsesoriaORM).where(
                         AsesoriaORM.cupo_id == cupo.id,
                         AsesoriaORM.docente_id == my_docente_id,
-                        AsesoriaORM.estado == EstadoAsesoria.PENDIENTE,
+                        AsesoriaORM.estado.in_([EstadoAsesoria.PENDIENTE, EstadoAsesoria.CONFIRMADA]),
                     )
                 )).scalar_one_or_none()
                 if not asesoria:
-                    return {"ok": False, "error": {"code": "APPT_NOT_FOUND", "message": "No hay una asesoría PENDIENTE tuya en ese cupo"}}
+                    return {"ok": False, "error": {"code": "APPT_NOT_FOUND", "message": "No hay una asesoría pendiente o confirmada tuya en ese cupo"}}
+                
+                asesor_usuario_id, _asesor_email = await _asesor_usuario_y_email(uow.session, cupo.asesor_id)
+                asesor_refresh_token = await _google_refresh_token(uow.session, asesor_usuario_id)
 
-                if not input.confirm:
-                    return {
-                        "ok": True,
-                        "say": "¿Confirmas cancelar tu asesoría y reabrir el cupo?",
-                        "data": {
-                            "asesoria_id": str(asesoria.id),
-                            "cupo_id": str(cupo.id),
-                            "inicio": start.isoformat(),
-                            "fin": end.isoformat(),
+                cal_rows = (await uow.session.execute(
+                    select(CalendarEventORM).where(CalendarEventORM.asesoria_id == asesoria.id)
+                )).scalars().all()
+                next_hints = [
+                    {
+                        "next_tool": "event_delete_by_id",
+                        "suggested_args": {
+                            "calendar_id": "primary",
+                            "event_id": r.calendar_event_id,
+                            **({"refresh_token": asesor_refresh_token} if asesor_refresh_token else {})
                         }
                     }
+                    for r in cal_rows if r.calendar_event_id
+                ]
+
+                preview = {
+                    "advisor_id": str(asesor_id),
+                    "asesoria_id": str(asesoria.id),
+                    "cupo_id": str(cupo.id),
+                    "inicio": start.isoformat(),
+                    "fin": end.isoformat(),
+                    "calendar_event_matches": [
+                        {
+                            "row_id": str(r.id),
+                            "provider": r.provider,
+                            "calendar_event_id": r.calendar_event_id,
+                            "calendar_html_link": r.calendar_html_link,
+                        } for r in cal_rows
+                    ],
+                }
+
+                if not input.confirm:
+                    say = "¿Confirmas cancelar tu asesoría y marcar el cupo como cancelado?"
+                    next_hint = (next_hints[0] if len(next_hints) == 1 else next_hints) or None
+                    return {"ok": True, "say": say, "data": {"preview": preview, "next_hint": next_hint}}
 
                 asesoria.estado = EstadoAsesoria.CANCELADA
-                cupo.estado = EstadoCupo.ABIERTO
+                cupo.estado = EstadoCupo.CANCELADO
+
+                if cal_rows:
+                    await uow.session.execute(
+                        delete(CalendarEventORM).where(CalendarEventORM.id.in_([r.id for r in cal_rows]))
+                    )
+
                 await uow.session.flush()
+                await uow.session.commit()
+
+                say = "Asesoría cancelada y cupo cancelado"
+                next_hint = (next_hints[0] if len(next_hints) == 1 else next_hints) or None
                 return {
                     "ok": True,
-                    "say": "Asesoría cancelada y cupo reabierto.",
+                    "say": say,
                     "data": {
                         "asesoria_id": str(asesoria.id),
                         "cupo_id": str(cupo.id),
                         "estado_asesoria": "CANCELADA",
-                        "estado_cupo": "ABIERTO",
-                    }
+                        "estado_cupo": "CANCELADO",
+                        "deleted_calendar_event_rows": len(cal_rows),
+                        "next_hint": next_hint,
+                    },
                 }
 
             return {"ok": False, "error": {"code": "MISSING_PARAMS", "message": "Faltan datos para cancelar (revisa asesor, servicio o el rango)"}}
+        
+    @app.tool(
+        name="confirm_asesoria",
+        description=(
+            "Confirma la asistencia del docente a su asesoría (rango exacto [start,end) + advisor), "
+            "cambiando estado a CONFIRMADA. Devuelve hints para marcar asistencia (responseStatus=accepted) "
+            "en Google Calendar del docente autenticado."
+        ),
+    )
+    async def confirm_asesoria(input: ConfirmAsesoriaInput):
+        try:
+            start = input.start.astimezone(TZ_CL) if input.start.tzinfo else input.start.replace(tzinfo=TZ_CL)
+            end   = input.end.astimezone(TZ_CL)   if input.end.tzinfo   else input.end.replace(tzinfo=TZ_CL)
+            if start >= end:
+                return {"ok": False, "error": {"code": "VALIDATION", "message": "start debe ser anterior a end"}}
+        except Exception as e:
+            return {"ok": False, "error": {"code": "VALIDATION", "message": f"Fechas inválidas: {e}"}}
+
+        async with SAUnitOfWork() as uow:
+            if not input.user_id:
+                return {"ok": False, "error": {"code": "MISSING_USER_ID", "message": "user_id no suministrado"}}
+
+            profs = await _profiles_from_user_id(uow.session, UUID(str(input.user_id)))
+            my_docente_id, my_asesor_id = profs.get("docente_id"), profs.get("asesor_id")
+
+            if my_asesor_id and not my_docente_id:
+                return {
+                    "ok": False,
+                    "error": {"code": "FORBIDDEN_ROLE", "message": "La asistencia debe ser confirmada por el DOCENTE."}
+                }
+            if not my_docente_id:
+                return {"ok": False, "error": {"code": "NO_ROLE", "message": "El usuario no tiene perfil docente activo"}}
+
+            docente_usuario_id = UUID(str(input.user_id))
+            docente_email = await _get_usuario_email(uow.session, docente_usuario_id)
+            docente_refresh_token = await _google_refresh_token(uow.session, docente_usuario_id)
+
+            adv_win, adv_cands = await ResolveAdvisor(uow.advisors).execute(
+                ResolveAdvisorIn(query=input.advisor, limit=10)
+            )
+            if not adv_win:
+                return {"ok": False, "error": {"code": "AmbiguousAdvisor", "message": "No se pudo resolver el asesor"},
+                        "candidates": [c.__dict__ for c in (adv_cands or [])]}
+            asesor_id = UUID(adv_win.id)
+
+            cupos = (await uow.session.execute(
+                select(CupoORM).where(
+                    CupoORM.asesor_id == asesor_id,
+                    CupoORM.inicio == start,
+                    CupoORM.fin == end,
+                )
+            )).scalars().all()
+            if not cupos:
+                return {"ok": False, "error": {"code": "CUP_NOT_FOUND", "message": "No existe un cupo exacto para ese rango"}}
+            if len(cupos) > 1:
+                svc_rows = (await uow.session.execute(
+                    select(ServicioORM.id, ServicioORM.nombre).where(
+                        ServicioORM.id.in_([c.servicio_id for c in cupos])
+                    )
+                )).all()
+                return {
+                    "ok": False,
+                    "error": {"code": "AmbiguousServiceAtTime", "message": "Hay varios servicios en ese horario para el asesor"},
+                    "candidates": [{"id": str(r.id), "nombre": r.nombre} for r in svc_rows],
+                }
+
+            cupo = cupos[0]
+
+            asesoria = (await uow.session.execute(
+                select(AsesoriaORM).where(
+                    AsesoriaORM.cupo_id == cupo.id,
+                    AsesoriaORM.docente_id == my_docente_id,
+                )
+            )).scalar_one_or_none()
+            if not asesoria:
+                return {"ok": False, "error": {"code": "APPT_NOT_FOUND", "message": "No hay una asesoría tuya en ese cupo"}}
+
+            cal_rows = (await uow.session.execute(
+                select(CalendarEventORM).where(CalendarEventORM.asesoria_id == asesoria.id)
+            )).scalars().all()
+
+            next_hints = [
+                {
+                    "next_tool": "event_patch_attendees",
+                    "suggested_args": {
+                        "calendar_id": "primary",
+                        "event_id": r.calendar_event_id,
+                        "attendees_patch": [{"email": docente_email, "responseStatus": "accepted"}],
+                        **({"refresh_token": docente_refresh_token} if docente_refresh_token else {}),
+                    }
+                }
+                for r in cal_rows if r.calendar_event_id and docente_email
+            ] or None
+
+            if asesoria.estado == EstadoAsesoria.CONFIRMADA:
+                say = "La asesoría ya estaba CONFIRMADA."
+                return {
+                    "ok": True,
+                    "say": say,
+                    "data": {
+                        "asesoria_id": str(asesoria.id),
+                        "cupo_id": str(cupo.id),
+                        "estado_asesoria": "CONFIRMADA",
+                        "next_hint": (next_hints[0] if next_hints and len(next_hints) == 1 else next_hints)
+                    },
+                }
+
+            if asesoria.estado not in [EstadoAsesoria.PENDIENTE, EstadoAsesoria.REPROGRAMADA]:
+                return {"ok": False, "error": {"code": "BAD_STATE", "message": f"No se puede confirmar desde estado {asesoria.estado.name}"}}
+
+            preview = {
+                "asesoria_id": str(asesoria.id),
+                "cupo_id": str(cupo.id),
+                "estado_actual": getattr(asesoria.estado, "name", str(asesoria.estado)),
+                "inicio": start.isoformat(),
+                "fin": end.isoformat(),
+                "calendar_event_matches": [
+                    {
+                        "row_id": str(r.id),
+                        "provider": r.provider,
+                        "calendar_event_id": r.calendar_event_id,
+                        "calendar_html_link": r.calendar_html_link,
+                    } for r in cal_rows
+                ],
+            }
+            if not input.confirm:
+                say = "¿Confirmas tu asistencia a la asesoría?"
+                return {
+                    "ok": True,
+                    "say": say,
+                    "data": {"preview": preview, "next_hint": (next_hints[0] if next_hints and len(next_hints) == 1 else next_hints)}
+                }
+
+            asesoria.estado = EstadoAsesoria.CONFIRMADA
+            await uow.session.flush()
+            await uow.session.commit()
+
+            say = "Asistencia confirmada"
+            return {
+                "ok": True,
+                "say": say,
+                "data": {
+                    "asesoria_id": str(asesoria.id),
+                    "cupo_id": str(cupo.id),
+                    "estado_asesoria": "CONFIRMADA",
+                    "next_hint": (next_hints[0] if next_hints and len(next_hints) == 1 else next_hints),
+                },
+            }
+
+    @app.tool(description="Busca conocimiento institucional/FAQ por similitud semántica (RAG CINAP). Devuelve solo el texto más relevante.")
+    async def semantic_search(
+        q: str,
+        kinds: Optional[List[str]] = None,
+        probes: int = 10
+    ) -> Dict[str, Any]:
+        payload = {
+            "q": q,
+            "top_k": 5,
+            "probes": probes,
+            "kinds": kinds or ["general.page","doc.chunk"],
+        }
+
+        try:
+            client = await _get_client()
+            r = await client.post(SEMANTIC_URL, json=payload)
+            r.raise_for_status()
+            data = r.json() or {}
+        except Exception as e:
+            return {"error": {"code": "HTTP_ERROR", "message": f"{e!s}"}}
+
+        best = data.get("best")
+        if best and (best.get("text") or "").strip():
+            snippet = (best.get("text") or "").strip()
+            return {"ok": True, "say": snippet}
+
+        items = data.get("items") or []
+        if not items:
+            return {"ok": True, "say": "No encontré resultados para esa consulta."}
+
+        it = items[0]
+        body  = (it.get("text") or "").strip()
+        max_len = 700
+        if len(body) > max_len:
+            body = body[:max_len].rsplit(" ", 1)[0] + "…"
+        return {"ok": True, "say": body}
 
     return app

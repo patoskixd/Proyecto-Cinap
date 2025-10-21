@@ -89,6 +89,18 @@ class SAAdvisorRepository(AdvisorRepository):
         base = {"id": str(rows[0].id), "nombre": rows[0].nombre, "email": rows[0].email}
         base["servicios"] = [{"id": str(r.servicio_id), "nombre": r.servicio_nombre} for r in rows]
         return base
+    
+    async def get_by_ids(self, ids: Sequence[UUID]) -> Sequence[Dict[str, Any]]:
+        if not ids:
+            return []
+        q = (
+            select(AsesorPerfilORM.id.label("id"), UsuarioORM.nombre, UsuarioORM.email)
+            .join(UsuarioORM, UsuarioORM.id == AsesorPerfilORM.usuario_id)
+            .where(AsesorPerfilORM.id.in_(list(ids)))
+            .where(AsesorPerfilORM.activo == True)
+        )
+        rows = (await self.s.execute(q)).all()
+        return [dict(r._mapping) for r in rows]
 
 class SAServiceRepository(ServiceRepository):
     def __init__(self, s: AsyncSession): self.s = s
@@ -141,6 +153,7 @@ class SASlotRepository(SlotRepository):
                 CupoORM.inicio.label("inicio"),
                 CupoORM.fin.label("fin"),
                 CupoORM.servicio_id.label("servicio_id"),
+                CupoORM.asesor_id.label("asesor_id"),
             )
             .where(CupoORM.asesor_id == asesor_id)
             .where(CupoORM.servicio_id == servicio_id)
@@ -162,6 +175,7 @@ class SASlotRepository(SlotRepository):
                 CupoORM.inicio.label("inicio"),
                 CupoORM.fin.label("fin"),
                 CupoORM.servicio_id.label("servicio_id"),
+                CupoORM.asesor_id.label("asesor_id"),
             )
             .where(CupoORM.asesor_id == asesor_id)
             .where(CupoORM.estado == EstadoCupo.ABIERTO)
@@ -173,13 +187,16 @@ class SASlotRepository(SlotRepository):
         rows = (await self.s.execute(q)).all()
         return [dict(r._mapping) for r in rows]
     
-    async def list_open_by_service_range(self, servicio_id: UUID, tr: TimeRange, pag: Pagination) -> Sequence[Dict[str, Any]]:
+    async def list_open_by_service_range(
+        self, servicio_id: UUID, tr: TimeRange, pag: Pagination
+    ) -> Sequence[Dict[str, Any]]:
         q = (
             select(
                 CupoORM.id.label("id"),
                 CupoORM.inicio.label("inicio"),
                 CupoORM.fin.label("fin"),
                 CupoORM.servicio_id.label("servicio_id"),
+                CupoORM.asesor_id.label("asesor_id"),
             )
             .where(CupoORM.servicio_id == servicio_id)
             .where(CupoORM.inicio >= tr.start)
