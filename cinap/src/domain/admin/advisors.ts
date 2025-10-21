@@ -28,6 +28,14 @@ export type Advisor = {
   createdAt: string; // ISO
 };
 
+export type AdvisorsPage = {
+  items: Advisor[];
+  page: number;
+  perPage: number;
+  total: number;
+  pages: number;
+};
+
 export type RegisterAdvisorRequest = {
   basic: AdvisorBasicInfo;
   categories: CategoryId[];

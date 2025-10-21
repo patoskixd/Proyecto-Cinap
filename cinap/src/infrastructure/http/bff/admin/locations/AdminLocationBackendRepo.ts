@@ -1,7 +1,6 @@
 import type { Campus, Building, Room } from "@/domain/admin/location";
 import type AdminLocationRepo from "@/application/admin/location/ports/AdminLocationRepo";
 
-// ===== Tipos comunes =====
 export type Page<T, S = any> = {
   items: T[];
   page: number;
@@ -11,12 +10,12 @@ export type Page<T, S = any> = {
   stats?: S;
 };
 
-// Si aún no tienes tipos de stats, deja any por ahora
+
 export type CampusStats = any;
 export type BuildingStats = any;
 export type RoomStats   = any;
 
-// ===== Error tipado para propagar status y detail =====
+
 export class HttpError extends Error {
   status: number;
   detail?: string;
@@ -27,7 +26,7 @@ export class HttpError extends Error {
   }
 }
 
-// ===== Repo BFF =====
+
 export class AdminLocationBackendRepo implements AdminLocationRepo {
   private lastSetCookies: string[] = [];
   private readonly baseUrl: string;
@@ -50,44 +49,23 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
     this.lastSetCookies.push(...rawList);
   }
 
-  // ---- Helpers de respuesta (nunca leen el body dos veces) ----
-  /** Parsea el body como JSON cuando res.ok.
-   * Si hay error, intenta leer JSON/text y lanza HttpError con status y detail. */
-  private async parseOrThrow<T>(res: Response, fallback: string): Promise<T> {
-    const text = await res.text();
+  //  Helpers 
+   private async parseOrThrow<T>(res: Response): Promise<T> {
+    const raw = await res.text();
+    let data: any = null;
+    try { data = raw ? JSON.parse(raw) : null; } catch { data = raw; }
 
-    if (res.ok) {
-      try {
-        return JSON.parse(text) as T;
-      } catch {
-        // Respuesta inválida del backend
-        throw new HttpError(502, "Respuesta inválida del servidor");
-      }
-    }
-
-    // No OK: intenta extraer detail del JSON; si no, usa texto crudo o fallback
-    try {
-      const j = JSON.parse(text);
-      const msg = j?.detail ?? j?.message ?? fallback;
+    if (!res.ok) {
+      const msg =
+        (data && (data.detail || data.message)) ||
+        (typeof data === "string" ? data : `HTTP ${res.status}`);
       throw new HttpError(res.status, msg);
-    } catch {
-      throw new HttpError(res.status, text || fallback);
     }
+    return data as T;
   }
 
-  /** Para endpoints sin contenido (DELETE): valida status y lanza HttpError si corresponde. */
-  private async ensureOk(res: Response, fallback: string): Promise<void> {
-    const text = await res.text();
-    if (res.ok) return;
+  
 
-    try {
-      const j = JSON.parse(text);
-      const msg = j?.detail ?? j?.message ?? fallback;
-      throw new HttpError(res.status, msg);
-    } catch {
-      throw new HttpError(res.status, text || fallback);
-    }
-  }
 
   private toArray<T>(data: any): T[] {
     if (Array.isArray(data)) return data;
@@ -95,9 +73,9 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
     return [];
   }
 
-  // ============================================================
-  // ========================== CAMPUS ==========================
-  // ============================================================
+  
+  //  CAMPUS 
+  
   async listCampus(): Promise<Campus[]> {
     const url = new URL(`${this.baseUrl}/admin/locations/campus`);
     url.searchParams.set("page", "1");
@@ -110,7 +88,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    const data = await this.parseOrThrow<any>(res, "No se pudieron cargar los campus");
+    const data = await this.parseOrThrow<any>(res);
     return this.toArray<Campus>(data);
   }
 
@@ -123,7 +101,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    return this.parseOrThrow<Campus>(res, "No se pudo crear el campus");
+    return this.parseOrThrow<Campus>(res);
   }
 
   async updateCampus(
@@ -139,7 +117,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    return this.parseOrThrow<Campus>(res, "No se pudo actualizar el campus");
+    return this.parseOrThrow<Campus>(res);
   }
 
   async deleteCampus(id: string): Promise<void> {
@@ -150,7 +128,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    await this.ensureOk(res, "No se pudo eliminar el campus");
+    await this.parseOrThrow<void>(res);
   }
 
   async reactivateCampus(id: string): Promise<Campus> {
@@ -161,12 +139,11 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    return this.parseOrThrow<Campus>(res, "No se pudo reactivar el campus");
+    return this.parseOrThrow<Campus>(res);
   }
 
-  // ============================================================
-  // ========================= BUILDINGS ========================
-  // ============================================================
+
+  //  BUILDINGS  
   async listBuildings(params?: { campusId?: string }): Promise<Building[]> {
     const url = new URL(`${this.baseUrl}/admin/locations/buildings`);
     url.searchParams.set("page", "1");
@@ -180,7 +157,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    const data = await this.parseOrThrow<any>(res, "No se pudieron cargar los edificios");
+    const data = await this.parseOrThrow<any>(res);
     return this.toArray<Building>(data);
   }
 
@@ -193,7 +170,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    return this.parseOrThrow<Building>(res, "No se pudo crear el edificio");
+    return this.parseOrThrow<Building>(res);
   }
 
   async updateBuilding(
@@ -209,7 +186,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    return this.parseOrThrow<Building>(res, "No se pudo actualizar el edificio");
+    return this.parseOrThrow<Building>(res);
   }
 
   async deleteBuilding(id: string): Promise<void> {
@@ -220,7 +197,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    await this.ensureOk(res, "No se pudo eliminar el edificio");
+    await this.parseOrThrow<void>(res);
   }
 
   async reactivateBuilding(id: string): Promise<Building> {
@@ -231,12 +208,11 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    return this.parseOrThrow<Building>(res, "No se pudo reactivar el edificio");
+    return this.parseOrThrow<Building>(res);
   }
 
-  // ============================================================
-  // =========================== ROOMS ==========================
-  // ============================================================
+
+  //  ROOMS 
   async listRooms(params?: { buildingId?: string }): Promise<Room[]> {
     const url = new URL(`${this.baseUrl}/admin/locations/rooms`);
     url.searchParams.set("page", "1");
@@ -250,7 +226,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    const data = await this.parseOrThrow<any>(res, "No se pudieron cargar las salas");
+    const data = await this.parseOrThrow<any>(res);
     return this.toArray<Room>(data);
   }
 
@@ -265,7 +241,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    return this.parseOrThrow<Room>(res, "No se pudo crear la sala");
+    return this.parseOrThrow<Room>(res);
   }
 
   async updateRoom(
@@ -281,7 +257,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    return this.parseOrThrow<Room>(res, "No se pudo actualizar la sala");
+    return this.parseOrThrow<Room>(res);
   }
 
   async deleteRoom(id: string): Promise<void> {
@@ -292,7 +268,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    await this.ensureOk(res, "No se pudo eliminar la sala");
+    await this.parseOrThrow<void>(res);
   }
 
   async reactivateRoom(id: string): Promise<Room> {
@@ -303,12 +279,12 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    return this.parseOrThrow<Room>(res, "No se pudo reactivar la sala");
+    return this.parseOrThrow<Room>(res);
   }
 
-  // ============================================================
-  // ========================= PAGINADOS ========================
-  // ============================================================
+
+  //  PAGINADOS 
+
   async listCampusPage(params?: {
     page?: number; limit?: number; q?: string; active?: boolean;
   }): Promise<Page<Campus, CampusStats>> {
@@ -325,7 +301,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    return this.parseOrThrow<Page<Campus, CampusStats>>(res, "No se pudieron cargar los campus");
+    return this.parseOrThrow<Page<Campus, CampusStats>>(res);
   }
 
   async listBuildingsPage(params?: {
@@ -345,7 +321,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    return this.parseOrThrow<Page<Building, BuildingStats>>(res, "No se pudieron cargar los edificios");
+    return this.parseOrThrow<Page<Building, BuildingStats>>(res);
   }
 
   async listRoomsPage(params?: {
@@ -365,6 +341,6 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    return this.parseOrThrow<Page<Room, RoomStats>>(res, "No se pudieron cargar las salas");
+    return this.parseOrThrow<Page<Room, RoomStats>>(res);
   }
 }

@@ -1,7 +1,5 @@
-﻿from __future__ import annotations
-# =========================
-#  Imports
-# =========================
+from __future__ import annotations
+import base64 
 import json, os, time, logging, asyncio, hashlib, re, subprocess, shlex, tempfile, shutil
 try:
     import dateparser
@@ -31,11 +29,76 @@ from app.use_cases.telegram.link_account import LinkTelegramAccount
 from app.frameworks_drivers.config.settings import (
     ASR_BASE_URL, ASR_MODEL_NAME, ASR_API_KEY, ASR_LANG,
 )
+from datetime import datetime
+from datetime import datetime, timedelta
 
+ISO_RE  = re.compile(r"\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?([Zz]|[+\-]\d{2}:\d{2})?")
+DMY_RE  = re.compile(r'^\s*(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?\s*$', re.I)
+TIME_RE = re.compile(r'^\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?\s*$', re.I)
 
-# =========================
+def _first(d: dict, *keys):
+    """Devuelve el primer valor no vacío de d[key] o de d[key]['iso'/'at'/'value'] si es dict.
+       Además prueba dentro de 'meta' si existe.
+    """
+    for k in keys:
+        v = d.get(k)
+        if not v and isinstance(d.get("meta"), dict):
+            v = d["meta"].get(k)
+        if isinstance(v, dict):
+            v = v.get("iso") or v.get("at") or v.get("value") or v.get("utc")
+        if v not in (None, "", []):
+            return v
+    return None
+
+def _parse_any_dt(val):
+    """Acepta ISO, DD-MM-YYYY, 'YYYY-MM-DD HH:MM'.
+       Usa dateparser si está disponible como último recurso.
+    """
+    if not val:
+        return None
+    # Epoch ms/s
+    if isinstance(val, (int, float)):
+        try:
+            return datetime.fromtimestamp(val / 1000 if val > 10_000_000_000 else val)
+        except Exception:
+            return None
+
+    if isinstance(val, str):
+        s = val.strip()
+
+        #  DD-MM-YYYY 
+        m = DMY_RE.match(s)
+        if m:
+            d, mo, y, hh, mm, ss = m.groups()
+            hh = int(hh) if hh is not None else 0
+            mm = int(mm) if mm is not None else 0
+            ss = int(ss) if ss is not None else 0
+            try:
+                return datetime(int(y), int(mo), int(d), hh, mm, ss)
+            except Exception:
+                pass
+
+        # ISO y variantes
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        try:
+            if "T" in s or ISO_RE.search(s):
+                return datetime.fromisoformat(s.replace(" ", "T"))
+            # 'YYYY-MM-DD HH:MM'
+            return datetime.fromisoformat(s.replace(" ", "T"))
+        except Exception:
+            pass
+
+        # dateparser como último recurso
+        if dateparser is not None:
+            try:
+                return dateparser.parse(s, languages=["es", "en"], settings={"PREFER_DATES_FROM": "future"})
+            except Exception:
+                return None
+
+    return None
+
 #  Logging & Globals
-# =========================
 log = logging.getLogger("telegram")
 log.setLevel(logging.DEBUG)
 
@@ -45,9 +108,7 @@ _BGLOGGER = setup_json_logger("telegram_bg", log_file="logs/telegram_bg.jsonl")
 _telegram_client = None
 _asr_client = None
 
-# =========================
 #  Performance Tweaks
-# =========================
 ENABLE_PAUSES = False
 ASR_TIMEOUT = 30                 # objetivo agresivo
 WAV_AR = 16000                   # 16kHz mono PCM
@@ -58,13 +119,15 @@ ASR_CONNECT_TIMEOUT = 1.0
 MCP_TIMEOUT_AGGRESSIVE = 1.5
 PENDING_ACTION_TTL = 20  # 10 minutos para confirmar/cancelar
 
+LIST_STATE_TTL = 1800  # 30 min
+PAGE_SIZE_DEFAULT = 6
 
-# =========================
+# Marcador que ya emite tu LangGraphAgent (_attach_items_payload)
+CINAP_LIST_RE = re.compile(r"<!--CINAP_LIST:([A-Za-z0-9+/=]+)-->")
+
 #  Dominio (CINAP/UCT): Reglas
-#  (relajado: no se bloquea nada si STRICT_DOMAIN_ENFORCEMENT=False)
-# =========================
 STRICT_DOMAIN_MESSAGE = "Lo siento, solo puedo ayudarte con temas del sistema de asesorías y agendamiento del CINAP."
-STRICT_DOMAIN_ENFORCEMENT = False  # <<--- Cambia a True si quieres volver a aplicar el guard estricto
+STRICT_DOMAIN_ENFORCEMENT = False  #  Cambia a True si quieres volver a aplicar el guard estricto
 
 DOMAIN_KEYWORDS = {
     "cinap", "uct",
@@ -78,9 +141,7 @@ ACK_KEYWORDS = {
     "gracias", "thanks", "thank you",
     "ok", "vale", "perfecto", "listo", "entiendo", "sí", "si"
 }
-# =========================
 #  Confirm/Cancel helpers (texto)
-# =========================
 CONFIRM_WORDS = {"confirmar","confirmo","confirm","sí","si","ok","vale","listo","de acuerdo"}
 CANCEL_WORDS  = {"cancelar","cancela","anular","rechazar","descartar","no"}
 
@@ -125,9 +186,7 @@ def _enforce_domain_reply(user_text: str, reply_text: str) -> str:
         return STRICT_DOMAIN_MESSAGE
     return reply_text
 
-# =========================
 #  ASR Keywords & Regex
-# =========================
 CALENDAR_KEYWORDS = [
     "asesoría", "asesoria", "agendar", "cita", "reunión", "appointment",
     "calendario", "calendar", "meeting", "schedule", "programar"
@@ -157,9 +216,7 @@ GLOSARIO_REGEX = [
     ),
 ]
 
-# =========================
 #  HTTP Clients
-# =========================
 async def _get_telegram_client():
     global _telegram_client
     if _telegram_client is None:
@@ -216,9 +273,7 @@ async def _close_shared_clients():
         _asr_client = None
     log.info("Clientes HTTP cerrados")
 
-# =========================
-#  Utils (Telegram & Texto)
-# =========================
+#  Utils Telegram & Texto
 def _chunk(s: str, n: int = 4000):
     for i in range(0, len(s), n):
         yield s[i:i+n]
@@ -243,9 +298,7 @@ def _mdv2_escape(s: str) -> str:
         s = s.replace(ch, f"\\{ch}")
     return s
 
-# =========================
-#  Cache helpers (Redis-like)
-# =========================
+#  Cache helpers 
 async def _cache_get_asr_transcription(audio_hash: str, cache=None):
     if not cache:
         return None
@@ -269,9 +322,8 @@ async def _cache_set_asr_transcription(audio_hash: str, transcript: str, cache=N
         log.info(f"ASR cached en Redis: {audio_hash[:8]}... bytes={len(transcript.encode('utf-8'))}")
     except Exception as e:
         log.warning(f"Error guardando ASR en cache: {e}")
-# =========================
-#  Pending Action helpers (Redis-like)
-# =========================
+
+#  Pending Action helpers 
 async def _get_pending_action(chat_id: int, cache=None):
     if not cache: return None
     try:
@@ -301,9 +353,7 @@ async def _clear_pending_action(chat_id: int, cache=None):
     except Exception as e:
         log.warning(f"Error limpiando pending_action: {e}")
 
-# =========================
 #  Telegram File Ops
-# =========================
 async def tg_get_file_path(file_id: str, file_unique_id: str, cache=None):
     if not file_id:
         return None
@@ -372,9 +422,7 @@ async def tg_download_file(file_path: str):
         log.error(f"Error descargando: {e}")
         return None
 
-# =========================
 #  Audio validation & helpers
-# =========================
 def _validate_audio_metadata(audio_obj: dict) -> str:
     try:
         duration = audio_obj.get("duration", 0)
@@ -499,9 +547,7 @@ def _validate_audio_energy(audio_bytes: bytes) -> str:
     except Exception:
         return _analyze_audio_quality_basic(audio_bytes)
 
-# =========================
 #  ASR & Text Normalization
-# =========================
 def _clean_transcript_text(transcript: str) -> str:
     if not transcript:
         return transcript
@@ -577,9 +623,8 @@ def _normalizar_siglas(texto: str) -> str:
         texto = pattern.sub(replacement, texto)
     return texto
 
-# =========================
+
 #  Slot-filling simple (fecha/hora)
-# =========================
 HOUR_RE = re.compile(r"\b(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b", re.I)
 WHO_RE  = re.compile(r"\bcon\s+([A-ZÁÉÍÓÚÑ][\wáéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][\wáéíóúñ]+)*)", re.U)
 
@@ -608,9 +653,8 @@ def extract_event_slots(text: str):
 def slots_complete_for_create_event(slots: dict) -> bool:
     return bool(slots.get("date") and slots.get("time"))
 
-# =========================
+
 #  ASR Calls
-# =========================
 class ASRResult:
     def __init__(self, text: str, confidence: float = 0.0, language: str = "es",
                  segments: list = None, processing_time: float = 0.0):
@@ -819,9 +863,7 @@ async def asr_transcribe(audio_bytes: bytes, filename: str = "audio.ogg", cache=
 async def transcribe_optimized(audio_bytes: bytes, cache=None) -> ASRResult | None:
     return await asr_transcribe(audio_bytes, "audio.ogg", cache)
 
-# =========================
 #  Intent Classification
-# =========================
 class IntentClassification:
     def __init__(self, intent_type: str, confidence: float,
                  extracted_params: dict = None, requires_llm: bool = False):
@@ -845,6 +887,14 @@ def classify_user_intent(asr_result: ASRResult) -> IntentClassification:
         (r"disponibilidad.*(\w+)", {"action": "availability"}),
         (r"horario.*libre", {"action": "free_slots"}),
     ]
+    if re.search(r"(lista(me)?|mu[eé]strame|mostrar|ver).*(mis )?(eventos|asesor[ií]as|citas)", text):
+        return IntentClassification(
+            "calendar_simple",
+            0.9 + confidence_boost,
+            extracted_params={"action": "view"},
+            requires_llm=False
+        )
+
     for pattern, params in calendar_simple_patterns:
         if re.search(pattern, text):
             return IntentClassification("calendar_simple", 0.8 + confidence_boost, extracted_params=params, requires_llm=False)
@@ -874,9 +924,8 @@ def classify_user_intent(asr_result: ASRResult) -> IntentClassification:
 
     return IntentClassification("unknown", 0.3, requires_llm=True)
 
-# =========================
+
 #  MCP Tools Mapping
-# =========================
 INTENT_TO_TOOL = {
     "calendar_simple:view":          "list_upcoming_events",
     "calendar_simple:availability":  "list_professor_availability",
@@ -909,7 +958,6 @@ async def _maybe_store_pending_from_mcp(result, chat_id: int, cache=None):
 
 
 
-
 def _needs_mcp_tools(text: str) -> bool:
     text_lower = text.lower().strip()
     quick_exclusions = [
@@ -937,27 +985,127 @@ def _needs_mcp_tools(text: str) -> bool:
     has_action = any(a in text_lower for a in action_indicators)
     has_calendar = any(w in text_lower for w in calendar_words)
     return has_action and has_calendar
+#  Helper: adjuntar payload para el renderer de listas 
+def _attach_items_payload_for_direct(text: str, items: list[dict], kind: str) -> str:
+    def _first(d: dict, *keys):
+        for k in keys:
+            v = d.get(k)
+            if isinstance(v, dict):
+                v = v.get("iso") or v.get("at") or v.get("value") or v.get("utc")
+            if v not in (None, "", []):
+                return v
+        return None
 
-# =========================
-#  Routing (MCP & LLM) + Domain Guard (relajado)
-# =========================
-async def route_to_mcp_direct(intent: IntentClassification, asr_result: ASRResult,
-                             chat_id: int, mcp_client_getter, cache=None) -> str | None:
+    def _compose_start(d: dict):
+        v = _first(d, "start","start_time","inicio","fechaHoraInicio","startAt","start_at","startTime","startTimeIso","when")
+        if v: return v
+        fecha = _first(d, "fecha","date","dia","day")
+        hora  = _first(d, "hora","time","hora_inicio","horaInicio","slot")
+        if fecha and hora: return f"{fecha} {hora}"
+        return fecha or None
+
+    def _compose_end(d: dict):
+        return _first(d, "end","end_time","fin","fechaHoraFin","endAt","end_at","endTime","endTimeIso")
+
+    ui_items = []
+    for it in items or []:
+        ui_items.append({
+            "title": it.get("title") or it.get("nombre") or "",
+            "subtitle": it.get("subtitle") or it.get("email") or it.get("asesor") or "",
+            "start": _compose_start(it),
+            "end":   _compose_end(it),
+            "meta": it,  
+        })
+    payload = {"kind": kind, "items": ui_items}
+    blob = base64.b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
+    base = (text or "").strip()
+    return (base + ("\n\n" if base else "") + f"<!--CINAP_LIST:{blob}-->").strip()
+
+
+#  Helper: formatear la respuesta directa del MCP como CINAP_LIST 
+def _format_mcp_direct_result(result, tool_name: str) -> str:
+    try:
+        if isinstance(result, dict):
+            #  Si vino un listado
+            data = result.get("data") or {}
+            items = data.get("items") or data.get("events") or result.get("items")
+            if isinstance(items, list) and items:
+                header = (result.get("say") or result.get("message") or result.get("text") or "").strip()
+                return _attach_items_payload_for_direct(header, items, kind=tool_name)
+
+            #  Si vino un único evento
+            ev = data.get("event") or result.get("event")
+            if isinstance(ev, dict):
+                title = ev.get("title") or "(sin título)"
+                sub = ev.get("subtitle") or ev.get("email") or ""
+                return f"{title}\n{sub}" if sub else title
+
+            #  Fallback: texto plano
+            return result.get("message") or result.get("text") or json.dumps(result, ensure_ascii=False)
+        return str(result)
+    except Exception:
+        # Fallback  ante cualquier excepción
+        if isinstance(result, dict):
+            return result.get("message") or result.get("text") or json.dumps(result, ensure_ascii=False)
+        return str(result)
+
+
+#  Routing (MCP & LLM) + Domain Guard 
+
+async def route_to_mcp_direct(
+    intent: IntentClassification,
+    asr_result: ASRResult,
+    chat_id: int,
+    mcp_client_getter,
+    cache=None
+) -> str | None:
     try:
         mcp = mcp_client_getter() if mcp_client_getter else None
         if not mcp:
             return None
 
         tool = None
-        args = {}
+        args: dict = {}
+
         if intent.intent_type == "calendar_simple":
-            action = intent.extracted_params.get("action")
+            # Determinar acción (usa la que venga, y si no, infiérela del texto)
+            action = (intent.extracted_params or {}).get("action")
+            spoken = (asr_result.text or "").lower()
+
+            if not action:
+                # lista / ver / mostrar
+                if re.search(r"(lista(me)?|mu[eé]strame|muestrame|mostrar|ver).*(mis )?(eventos|asesor[ií]as|citas)", spoken):
+                    action = "view"
+                # disponibilidad
+                elif "disponibilidad" in spoken:
+                    action = "availability"
+                # crear / agendar / programar
+                elif any(w in spoken for w in ["agendar", "programar", "crear", "reservar", "reserva"]):
+                    action = "schedule"
+
+            #Mapear action -> tool + args
             if action == "view":
                 tool = INTENT_TO_TOOL["calendar_simple:view"]
-                args = {"window": "next_7_days"}
+                # ventana temporal heurística
+                if "próxima semana" in spoken or "proxima semana" in spoken:
+                    window = "next_week"
+                elif "esta semana" in spoken:
+                    window = "this_week"
+                elif "mañana" in spoken or "manana" in spoken:
+                    window = "tomorrow"
+                elif "hoy" in spoken:
+                    window = "today"
+                else:
+                    window = "next_7_days"
+                args = {"window": window}
+
             elif action == "availability":
                 tool = INTENT_TO_TOOL["calendar_simple:availability"]
-                args = {"range": "this_week"}
+                rng = "this_week"
+                if "próxima semana" in spoken or "proxima semana" in spoken:
+                    rng = "next_week"
+                args = {"range": rng}
+
             elif action == "schedule":
                 tool = INTENT_TO_TOOL["calendar_simple:schedule"]
                 slots = extract_event_slots(asr_result.text)
@@ -968,42 +1116,109 @@ async def route_to_mcp_direct(intent: IntentClassification, asr_result: ASRResul
                     "attendee": slots.get("attendee"),
                 }
                 if not slots_complete_for_create_event(args):
+                    # No tenemos fecha/hora suficientes -> dejar que LLM resuelva o pedir más info
                     return None
             else:
+                # No se reconoce acción
                 return None
+
         elif intent.intent_type == "professor_simple":
             tool = INTENT_TO_TOOL.get("professor_simple")
             args = intent.extracted_params or {}
+
         else:
             return None
 
+        #  Inyectar user_id si aplica
+        try:
+            cached_uid = None
+            if cache:
+                cached_uid_bytes = await cache.get(f"user_by_chat:{chat_id}")
+                if cached_uid_bytes:
+                    cached_uid = cached_uid_bytes.decode("utf-8")
+
+            tools_necesitan_user = {
+                "list_asesorias",
+                "list_upcoming_events",
+                "create_calendar_event",
+                "cancel_event",
+                "list_my_events",
+            }
+            if (tool in tools_necesitan_user) and not args.get("user_id") and cached_uid:
+                args["user_id"] = cached_uid
+
+            if (tool in tools_necesitan_user) and not args.get("user_id"):
+                log.info(f"[MCP] user_id faltante para tool={tool} (chat_id={chat_id}). Pide /start.")
+                return (
+                    "Para usar esta función primero debes vincular tu cuenta.\n\n"
+                    "Envía: `/start <token_de_vinculacion>`"
+                )
+        except Exception as e:
+            log.warning(f"Error resolviendo/injectando user_id para MCP: {e}")
+
+        #  Idempotencia
         idem = f"tg:{chat_id}:{int(time.time()*1000)}"
         args["idempotency_key"] = idem
 
+        #  Llamada MCP
         try:
+            # logging previo para inspección
+            try:
+                args_preview = json.dumps(args, ensure_ascii=False)[:600]
+            except Exception:
+                args_preview = str(args)[:600]
+            log.info(f"[MCP_DIRECT] tool={tool} args={args_preview}")
+
             async with astage("telegram.mcp_direct"):
                 result = await asyncio.wait_for(
                     mcp.call_tool(tool, args, thread_id=f"tg:{chat_id}"),
                     timeout=MCP_TIMEOUT_AGGRESSIVE
                 )
         except asyncio.TimeoutError:
+            log.warning(f"[MCP_DIRECT] timeout tool={tool}")
             return None
-        
+
+        # logging de la respuesta cruda
+        try:
+            log.info(f"[MCP_DIRECT] raw={str(result)[:800]}")
+        except Exception:
+            pass
+
+        # Guardar pending/preview si el MCP lo devuelve así
         await _maybe_store_pending_from_mcp(result, chat_id, cache)
 
-        if isinstance(result, dict):
-            return result.get("message") or result.get("text") or str(result)
-        return str(result)
+        #  Formatear para UI (CINAP_LIST) y devolver
+        try:
+            return _format_mcp_direct_result(result, tool)
+        except Exception as e:
+            log.warning(f"[MCP_DIRECT] format failed: {e}")
+            if isinstance(result, dict):
+                return result.get("message") or result.get("text") or json.dumps(result, ensure_ascii=False)
+            return str(result)
+
     except Exception as e:
         log.warning(f" MCP Direct FAILED: {e}")
         return None
 
-async def route_to_llm_plus_mcp(asr_result: ASRResult, chat_id: int, agent_getter) -> str | None:
+
+
+async def route_to_llm_plus_mcp(asr_result: ASRResult, chat_id: int, agent_getter, cache=None) -> str | None:
     try:
         agent = agent_getter()
         if not agent:
             return None
 
+        #  Intentamos recuperar user_id desde cache para este chat 
+        user_id: str | None = None
+        try:
+            if cache:
+                uid_bytes = await cache.get(f"user_by_chat:{chat_id}")
+                if uid_bytes:
+                    user_id = uid_bytes.decode("utf-8")
+        except Exception as e:
+            log.warning(f"[LLM+MCP] No se pudo obtener user_id desde cache: {e}")
+
+        #  Domain prompt (igual que antes), con nota operativa si hay user_id 
         if STRICT_DOMAIN_ENFORCEMENT:
             DOMAIN_PROMPT = """
             Eres el asistente institucional del Centro de Innovación en Aprendizaje,
@@ -1018,53 +1233,144 @@ async def route_to_llm_plus_mcp(asr_result: ASRResult, chat_id: int, agent_gette
             "Lo siento, solo puedo ayudarte con temas del sistema de asesorías y agendamiento del CINAP."
             """.strip()
         else:
-            # Prompt suave: NO bloquea nada, solo sugiere priorizar temas UCT/CINAP cuando aplique.
             DOMAIN_PROMPT = """
             Eres un asistente útil y conciso para usuarios de la Universidad Católica de Temuco (UCT) y del CINAP.
             Responde de forma clara y directa. Si el usuario pregunta sobre UCT/CINAP/agenda académica, prioriza detalles prácticos.
             Si la consulta es general y no relacionada, respóndela normalmente. No es necesario rechazar preguntas fuera de dominio.
             """.strip()
 
-        if hasattr(agent, "update_system_prompt"):
-            agent.update_system_prompt(DOMAIN_PROMPT)
-        elif hasattr(agent, "set_system_prompt"):
-            agent.set_system_prompt(DOMAIN_PROMPT)
-        elif hasattr(agent, "system_prompt"):
-            try:
-                agent.system_prompt = DOMAIN_PROMPT
-            except Exception:
-                pass
-        elif hasattr(agent, "add_system_message"):
-            try:
-                agent.add_system_message(DOMAIN_PROMPT)
-            except Exception:
-                pass
+        if user_id:
+            DOMAIN_PROMPT += f"""
 
+            Contexto operativo:
+            - El usuario autenticado tiene user_id="{user_id}".
+            - Si invocas herramientas MCP que requieran 'user_id' (p. ej. list_asesorias, list_upcoming_events,
+              create_calendar_event, cancel_event, list_my_events), pasa user_id="{user_id}" por defecto
+              salvo que el usuario especifique otro explícitamente.
+            """.rstrip()
+
+        # Aplicar el prompt de sistema al agente 
+        try:
+            if hasattr(agent, "update_system_prompt"):
+                agent.update_system_prompt(DOMAIN_PROMPT)
+            elif hasattr(agent, "set_system_prompt"):
+                agent.set_system_prompt(DOMAIN_PROMPT)
+            elif hasattr(agent, "system_prompt"):
+                try:
+                    agent.system_prompt = DOMAIN_PROMPT
+                except Exception:
+                    pass
+            elif hasattr(agent, "add_system_message"):
+                try:
+                    agent.add_system_message(DOMAIN_PROMPT)
+                except Exception:
+                    pass
+        except Exception as e:
+            log.warning(f"[LLM+MCP] No se pudo setear system prompt: {e}")
+
+        # Inyectar user_id en el contexto del agente / tools 
+        if user_id:
+            try:
+                #  Contexto genérico para el agente
+                if hasattr(agent, "set_context"):
+                    agent.set_context({"user_id": user_id})
+                elif hasattr(agent, "update_context"):
+                    agent.update_context({"user_id": user_id})
+                elif hasattr(agent, "set_meta"):
+                    agent.set_meta(user_id=user_id)
+
+                #  Inyección directa para callbacks de tools 
+                try:
+                    agent._current_user = {"user_id": str(user_id)}
+                except Exception:
+                    pass
+
+                #  Defaults de herramientas 
+                defaults_flat = {
+                    "list_asesorias": {"user_id": user_id},
+                    "list_upcoming_events": {"user_id": user_id},
+                    "list_my_events": {"user_id": user_id},
+                    "create_calendar_event": {"user_id": user_id},
+                    "cancel_event": {"user_id": user_id},
+                }
+                defaults_input = {
+                    k: {"input": v} for k, v in defaults_flat.items()
+                }
+
+                # Intenta varios métodos que distintos agentes suelen exponer
+                if hasattr(agent, "set_default_tool_args"):
+                    # priorizamos la forma con "input" por el esquema pydantic típico
+                    agent.set_default_tool_args(defaults_input | defaults_flat)
+                elif hasattr(agent, "set_tool_context"):
+                    agent.set_tool_context({"user_id": user_id})
+                elif hasattr(agent, "register_tool_defaults"):
+                    agent.register_tool_defaults(defaults_input | defaults_flat)
+                else:
+                    # último recurso: deja un atributo convencional que tu on_tool_call puede leer
+                    try:
+                        agent._default_tool_args = defaults_input | defaults_flat
+                    except Exception:
+                        pass
+
+                # Si el agente permite interceptar llamadas a tools, inyecta user_id siempre
+                async def _inject_uid_mw(tool_name: str, tool_args: dict) -> dict:
+                    try:
+                        if tool_args is None:
+                            tool_args = {}
+                        # Siempre asegura "input"
+                        if "input" not in tool_args or not isinstance(tool_args.get("input"), dict):
+                            tool_args["input"] = {}
+                        tool_args["input"].setdefault("user_id", user_id)
+                        # Y, por compatibilidad, también en plano
+                        tool_args.setdefault("user_id", user_id)
+                    except Exception:
+                        pass
+                    return tool_args
+
+                if hasattr(agent, "set_tool_call_interceptor"):
+                    agent.set_tool_call_interceptor(_inject_uid_mw)
+                elif hasattr(agent, "register_tool_middleware"):
+                    agent.register_tool_middleware(_inject_uid_mw)
+                elif hasattr(agent, "add_tool_middleware"):
+                    agent.add_tool_middleware(_inject_uid_mw)
+            except Exception as e:
+                log.warning(f"[LLM+MCP] No se pudo establecer contexto/tool defaults con user_id: {e}")
+
+        #  Invocar el agente normalmente 
+        text_in = (asr_result.text or "").strip() if asr_result else ""
+        if not text_in:
+            # Nada que preguntar; evita invocación innecesaria
+            return None
+
+        timeout = 45  # audio suele activar tools; dale margen
         async with astage("telegram.llm_plus_mcp"):
-            log.info(f"LLM invocation: chat_id={chat_id} text_len={len(asr_result.text) if asr_result and asr_result.text else 0}")
-            result = await agent.invoke(asr_result.text, thread_id=f"tg:{chat_id}")
+            log.info(
+                f"LLM invocation: chat_id={chat_id} text_len={len(text_in)} uid={'yes' if user_id else 'no'}"
+            )
+            try:
+                result = await asyncio.wait_for(
+                    agent.invoke(text_in, thread_id=f"tg:{chat_id}"),
+                    timeout=timeout
+                )
+            except asyncio.TimeoutError:
+                log.warning(f"LLM+MCP timeout ({timeout}s) para audio transcrito (chat_id={chat_id})")
+                return " La consulta está tomando más tiempo del esperado\\. Intenta con una pregunta más específica\\."
+            except Exception as e:
+                log.error(f"Error en agent.invoke (audio): {e}")
+                if "maximum context length" in str(e):
+                    return " Tu consulta es muy larga o tienes mucho historial\\. Intenta con una pregunta más breve o empieza una nueva conversación\\."
+                return " Error procesando tu consulta\\. Intenta de nuevo\\."
 
-        response = result if isinstance(result, str) else str(result)
+        response = result if isinstance(result, str) else (str(result) if result is not None else "")
 
         # En modo relajado no se fuerza dominio; _enforce_domain_reply será no-op si STRICT_DOMAIN_ENFORCEMENT=False
-        response = _enforce_domain_reply(asr_result.text or "", response or "")
+        response = _enforce_domain_reply(text_in, response or "")
         log.info(f"LLM+MCP SUCCESS (len={len(response)} chars)")
-        return response
+        return response or " No tengo una respuesta para eso."
+
     except Exception as e:
         log.warning(f"LLM+MCP FAILED: {e}")
         return None
-
-# Emojis
-EMOJI_VOICE = "🗣️"
-EMOJI_BOT = "🤖"
-EMOJI_BRAIN = "🧠"
-EMOJI_TARGET = "🎯"
-EMOJI_WARNING = "⚠️"
-EMOJI_WAVE = "👋"
-EMOJI_BUILDING = "🏛️"
-EMOJI_LOCATION = "📍"
-EMOJI_SMILE = "😊"
-EMOJI_CHECK = "✅"
 
 async def intelligent_routing_system(asr_result: ASRResult, chat_id: int, agent_getter, mcp_client_getter, cache) -> str:
     async with astage("telegram.intent_classification"):
@@ -1074,7 +1380,8 @@ async def intelligent_routing_system(asr_result: ASRResult, chat_id: int, agent_
         log.info(
             "Routing decision inputs: chat_id=%s intent=%s confidence=%.2f requires_llm=%s text_preview=%s",
             chat_id, intent.intent_type, intent.confidence, intent.requires_llm,
-            (asr_result.text[:120] + '...') if asr_result and asr_result.text and len(asr_result.text) > 120 else (asr_result.text if asr_result and asr_result.text else '')
+            (asr_result.text[:120] + '...') if asr_result and asr_result.text and len(asr_result.text) > 120
+            else (asr_result.text if asr_result and asr_result.text else '')
         )
     except Exception:
         log.info("Routing decision inputs: (could not stringify intent or text)")
@@ -1098,7 +1405,7 @@ async def intelligent_routing_system(asr_result: ASRResult, chat_id: int, agent_
     except Exception:
         pass
 
-    # 1) Saludo directo
+    #  Saludo directo
     if intent.intent_type == "greeting":
         greetings = [
             "¡Hola! Soy tu asistente de CINAP. ¿En qué puedo ayudarte hoy?",
@@ -1110,7 +1417,7 @@ async def intelligent_routing_system(asr_result: ASRResult, chat_id: int, agent_
 
     response = None
 
-    # 2) MCP directo si es simple
+    #  MCP directo si es simple
     if not intent.requires_llm and intent.confidence > 0.6:
         log.info("Routing: MCP_DIRECT")
         set_meta(router_choice="mcp_direct", intent=intent.intent_type, chat_id=chat_id)
@@ -1141,9 +1448,10 @@ async def intelligent_routing_system(asr_result: ASRResult, chat_id: int, agent_
                 })
             except Exception:
                 pass
-            response = await route_to_llm_plus_mcp(asr_result, chat_id, agent_getter)
+            #  ahora pasamos cache
+            response = await route_to_llm_plus_mcp(asr_result, chat_id, agent_getter, cache)
     else:
-        # 3) LLM+MCP completo
+        #  LLM+MCP completo
         log.info("Routing: LLM+MCP")
         set_meta(router_choice="llm", intent=intent.intent_type, chat_id=chat_id)
         try:
@@ -1157,21 +1465,22 @@ async def intelligent_routing_system(asr_result: ASRResult, chat_id: int, agent_
             })
         except Exception:
             pass
-        response = await route_to_llm_plus_mcp(asr_result, chat_id, agent_getter)
+        #  ahora pasamos cache
+        response = await route_to_llm_plus_mcp(asr_result, chat_id, agent_getter, cache)
 
     if not response:
         response = "Lo siento, tuve un problema técnico. ¿Podrías repetir tu consulta?"
         log.info("Final response fallback used (no response from MCP/LLM)")
 
-    # En modo relajado no se fuerza dominio (no-op si STRICT_DOMAIN_ENFORCEMENT=False)
+    # En modo relajado no se fuerza dominio 
     response = _enforce_domain_reply(asr_result.text or "", response or "")
     return response
 
-# =========================
+
 #  Telegram Router
-# =========================
 def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=None, get_session_dep=get_session_dep):
     router = APIRouter(prefix="/telegram", tags=["telegram"])
+    
 
     class OptimizedTelegramBot:
         def __init__(self):
@@ -1179,7 +1488,8 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
 
         async def send_message(self, chat_id: int, text: str,
                                disable_web_page_preview: bool = False,
-                               allow_sending_without_reply: bool = False):
+                               allow_sending_without_reply: bool = False,
+                               reply_markup: dict | None = None):
             client = await _get_telegram_client()
             try:
                 text = _fix_mojibake(text)
@@ -1190,8 +1500,10 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                 "text": text,
                 "parse_mode": "MarkdownV2",
                 "disable_web_page_preview": disable_web_page_preview,
-                "allow_sending_without_reply": allow_sending_without_reply
+                "allow_sending_without_reply": allow_sending_without_reply,
             }
+            if reply_markup:
+                payload["reply_markup"] = reply_markup
             try:
                 response = await client.post(f"{self.base}/sendMessage", json=payload)
                 if response.status_code == 200:
@@ -1204,7 +1516,8 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                 return None
 
         async def edit_message(self, chat_id: int, message_id: int, text: str,
-                               disable_web_page_preview: bool = False):
+                               disable_web_page_preview: bool = False,
+                               reply_markup: dict | None = None):
             client = await _get_telegram_client()
             payload = {
                 "chat_id": chat_id,
@@ -1213,16 +1526,370 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                 "parse_mode": "MarkdownV2",
                 "disable_web_page_preview": disable_web_page_preview
             }
+            if reply_markup:
+                payload["reply_markup"] = reply_markup
             try:
                 response = await client.post(f"{self.base}/editMessageText", json=payload)
                 return response.status_code == 200
             except Exception:
                 return False
+                
+        async def answer_callback(self, callback_query_id: str, text: str | None = None,
+                                show_alert: bool = False, cache_time: int | None = None):
+            client = await _get_telegram_client()
+            payload = {"callback_query_id": callback_query_id}
+            if text is not None:
+                payload["text"] = text
+            if show_alert:
+                payload["show_alert"] = True
+            if cache_time is not None:
+                payload["cache_time"] = int(cache_time)
+            try:
+                await client.post(f"{self.base}/answerCallbackQuery", json=payload)
+            except Exception as e:
+                log.warning(f"answerCallbackQuery error: {e}")
+
 
     bot = OptimizedTelegramBot()
 
+    async def _get_user_id_cached(chat_id: int) -> str | None:
+        if not cache:
+            return None
+        try:
+            b = await cache.get(f"user_by_chat:{chat_id}")
+            return b.decode("utf-8") if b else None
+        except Exception:
+            return None
+
+    async def _resolve_and_cache_user_id(session, cache, *, chat_id: int | None = None, telegram_user_id: int | None = None):
+        """
+        Resuelve el usuario (UUID) a partir del chat_id o telegram_user_id y lo cachea.
+        Retorna str(user_id) o None.
+        """
+        uid = None
+
+        #  Cache por chat
+        if cache and chat_id is not None:
+            try:
+                b = await cache.get(f"user_by_chat:{chat_id}")
+                if b:
+                    return b.decode("utf-8")
+            except Exception:
+                pass
+
+        #  Cache por telegram_user_id
+        if cache and telegram_user_id is not None:
+            try:
+                b = await cache.get(f"user_by_tgid:{telegram_user_id}")
+                if b:
+                    uid = b.decode("utf-8")
+            except Exception:
+                pass
+
+        #  Repo (DB)
+        if not uid and telegram_user_id is not None:
+            try:
+                repo = SqlAlchemyTelegramRepo(session, cache)
+                got = await repo.find_user_id_by_telegram(telegram_user_id)
+                if got:
+                    uid = str(got)
+            except Exception as e:
+                log.warning(f"_resolve_and_cache_user_id db lookup failed: {e}")
+
+        # Cachear si lo obtuvimos
+        if uid and cache:
+            try:
+                if chat_id is not None:
+                    await cache.set(f"user_by_chat:{chat_id}", uid.encode("utf-8"), ttl_seconds=86400)
+                if telegram_user_id is not None:
+                    await cache.set(f"user_by_tgid:{telegram_user_id}", uid.encode("utf-8"), ttl_seconds=86400)
+            except Exception:
+                pass
+
+        return uid
+
+
+
     async def _send_direct_message(chat_id: int, text: str) -> None:
         await bot.send_message(chat_id, text, disable_web_page_preview=True, allow_sending_without_reply=True)
+    #  CINAP LIST Rendering (paginación) 
+    async def _save_list_state(key: str, state: dict):
+        if not cache: 
+            return
+        try:
+            await cache.set(f"tg:list:{key}", json.dumps(state, ensure_ascii=False).encode("utf-8"), ttl_seconds=LIST_STATE_TTL)
+        except Exception as e:
+            log.warning(f"Error guardando list_state: {e}")
+
+    async def _load_list_state(key: str) -> dict | None:
+        if not cache:
+            return None
+        try:
+            raw = await cache.get(f"tg:list:{key}")
+            return json.loads(raw.decode("utf-8")) if raw else None
+        except Exception as e:
+            log.warning(f"Error leyendo list_state: {e}")
+            return None
+        
+
+    def _format_item_when(item: dict) -> str | None:
+        #  Intentos directos
+        ds = _parse_any_dt(
+            _first(item, "start", "inicio", "start_time", "startAt", "start_at",
+                "fecha_inicio", "inicio_iso", "fechaHoraInicio", "startTime", "startTimeIso", "when")
+            or _first(item, "start_ts", "start_ms", "startEpoch", "inicio_epoch")
+        )
+
+        de = _parse_any_dt(
+            _first(item, "end", "fin", "end_time", "endAt", "end_at",
+                "fecha_fin", "fin_iso", "fechaHoraFin", "endTime", "endTimeIso")
+            or _first(item, "end_ts", "end_ms", "endEpoch", "fin_epoch")
+        )
+
+        #  Componer si hay fecha/hora sueltas en campos conocidos
+        if not ds:
+            fecha = _first(item, "fecha", "date", "dia", "day")
+            hora  = _first(item, "hora", "time", "hora_inicio", "horaInicio", "slot")
+            if fecha and hora:
+                ds = _parse_any_dt(f"{fecha} {hora}")
+            elif fecha:
+                ds = _parse_any_dt(fecha)
+
+        #  Duración → fin
+        if ds and not de:
+            dur_min = _first(item, "duration_min", "duracion_min", "duracion", "duration", "minutes")
+            try:
+                if isinstance(dur_min, str) and dur_min.isdigit():
+                    dur_min = int(dur_min)
+                if isinstance(dur_min, (int, float)) and dur_min > 0:
+                    de = ds + timedelta(minutes=int(dur_min))
+            except Exception:
+                pass
+
+        #  Si 'end' vino como hora suelta, combínala con la fecha de 'ds'
+        if not de and ds:
+            end_raw = _first(item, "end", "fin", "end_time", "fechaHoraFin", "endAt", "end_at", "endTime", "endTimeIso")
+            if isinstance(end_raw, str):
+                m = TIME_RE.match(end_raw.strip())
+                if m:
+                    hh, mm, ss, ampm = m.groups()
+                    hh = int(hh); mm = int(mm); ss = int(ss) if ss else 0
+                    if ampm:
+                        ampm = ampm.lower()
+                        if ampm == "pm" and 1 <= hh <= 11: hh += 12
+                        if ampm == "am" and hh == 12: hh = 0
+                    try:
+                        de = ds.replace(hour=hh, minute=mm, second=ss)
+                    except Exception:
+                        pass
+
+        #  Fallback: escaneo profundo de meta 
+        if not ds:
+            def _flatten(d, out, prefix=""):
+                if not isinstance(d, dict):
+                    return
+                for k, v in d.items():
+                    key = f"{prefix}{k}" if not prefix else f"{prefix}.{k}"
+                    out[key] = v
+                    if isinstance(v, dict):
+                        _flatten(v, out, key)
+
+            flat = {}
+            _flatten(item, flat)
+            if isinstance(item.get("meta"), dict):
+                _flatten(item["meta"], flat)
+
+            #  Combina cualquier 'fecha' + 'hora' si existen en niveles arbitrarios
+            cand_fecha = None
+            cand_hora  = None
+            for k, v in flat.items():
+                kl = k.lower()
+                if cand_fecha is None and any(w in kl for w in ("fecha", "date", "dia", "day")):
+                    cand_fecha = v
+                if cand_hora is None and any(w in kl for w in ("hora", "time", "slot", "hora_inicio", "starttime")):
+                    cand_hora = v
+                if cand_fecha and cand_hora:
+                    break
+            if cand_fecha and cand_hora:
+                ds = _parse_any_dt(f"{cand_fecha} {cand_hora}")
+            elif cand_fecha and not ds:
+                ds = _parse_any_dt(cand_fecha)
+
+            #  Si aún no hay 'de', intenta detectar un 'end' candidato en el flatten
+            if ds and not de:
+                for k, v in flat.items():
+                    kl = k.lower()
+                    if any(w in kl for w in ("end", "fin", "hasta", "to", "until")):
+                        de_tmp = _parse_any_dt(v)
+                        if de_tmp and de_tmp >= ds:
+                            de = de_tmp
+                            break
+
+        #  Render final
+        if ds and de:
+            return f"{ds.strftime('%d/%m/%Y')} • {ds.strftime('%H:%M')}–{de.strftime('%H:%M')}"
+        if ds:
+            return f"{ds.strftime('%d/%m/%Y %H:%M')}"
+
+        #  Último recurso: campos literales
+        return _first(item, "when", "cuándo", "cuando", "horario")
+
+
+    def _title_of(it: dict) -> str:
+        # busca en raíz y en meta
+        t = _first(it, "title", "titulo", "name", "nombre")
+        if t: 
+            return str(t)
+
+        # intenta construir uno: p.ej. "Asesoría — <servicio/tema>"
+        servicio = _first(it, "service", "servicio", "tipo", "type")
+        if isinstance(servicio, dict):
+            servicio = _first(servicio, "title", "nombre", "name") or servicio.get("title") or servicio.get("nombre") or servicio.get("name")
+        tema = _first(it, "subject", "tema", "course", "curso", "categoria", "category")
+
+        if servicio and tema:
+            return f"{servicio} — {tema}"
+        if servicio:
+            return str(servicio)
+        if tema:
+            return str(tema)
+
+        # revisa campos típicos de eventos
+        t = _first(it, "summary", "resumen", "descripcion", "description")
+        if t:
+            return str(t)[:60]
+
+        return "(sin título)"
+
+    def _subtitle_of(it: dict) -> str:
+        # primero usa subtitle si existe
+        st = _first(it, "subtitle", "subtitulo")
+        if st:
+            return str(st)
+
+        # intenta armar: "Docente/Asesor — Estado: XXX"
+        persona = _first(it, "asesor", "advisor", "docente", "profesor", "teacher", "owner", "owner_name", "ownerName")
+        estado  = _first(it, "estado", "status", "state")
+        correo  = _first(it, "email", "correo")
+
+        parts = []
+        if persona:
+            parts.append(str(persona))
+        if estado:
+            parts.append(f"Estado: {estado}")
+        if not parts and correo:
+            parts.append(str(correo))
+
+        return " — ".join(parts)
+
+
+
+    def _extract_cinap_list(raw_text: str) -> tuple[str, dict | None]:
+        """
+        Devuelve (texto_sin_marcador, payload_dict) si encuentra CINAP_LIST.
+        payload = {"kind": "...", "items": [{"title","subtitle","start","end",...}, ...]}
+        """
+        if not raw_text or not isinstance(raw_text, str):
+            return raw_text, None
+        m = CINAP_LIST_RE.search(raw_text)
+        if not m:
+            return raw_text, None
+        b64 = m.group(1)
+        try:
+            payload = json.loads(base64.b64decode(b64).decode("utf-8"))
+        except Exception:
+            payload = None
+        clean = CINAP_LIST_RE.sub("", raw_text).strip()
+        return clean, payload if isinstance(payload, dict) else None
+
+    def _truncate(s: str, n: int = 28) -> str:
+        return (s[: n-1] + "…") if isinstance(s, str) and len(s) > n else (s or "")
+    
+    def _should_show_status(kind: str | None, it: dict) -> bool:
+        k = (kind or "").lower()
+        accionables = {
+            "list_asesorias", "list_my_events", "list_upcoming_events",
+            "list_calendar_events", "asesorias", "eventos"
+        }
+        if k in accionables:
+            return True
+        # Para listas no accionables (asesores, categorías/servicios), solo si viene un estado "real"
+        st = _first(it, "estado", "status", "state")
+        return bool(st and str(st).strip() and str(st).strip().lower() != "pendiente")
+
+    def _render_page_text(items: list[dict], page: int, page_size: int, title: str | None = None, kind: str | None = None) -> str:
+        start = page * page_size
+        page_items = items[start:start + page_size]
+        header = (f"*{title}*\n" if title else "")
+        lines = []
+        for i, it in enumerate(page_items, start=1):
+            t  = _title_of(it)
+            st = _subtitle_of(it)
+            estado = _first(it, "estado", "status", "state") 
+            when_str = _format_item_when(it)
+
+            line = f"{i + start}\\) {t}"
+            if st:
+                line += f" — {st}"
+            if when_str:
+                line += f"\n {when_str}"
+            if _should_show_status(kind, it) and estado:
+                line += f"\n Estado: {str(estado).upper()}"
+            lines.append(line)
+
+        body = "\n\n".join(lines) if lines else "_Sin resultados_"
+        return _mdv2_escape((header + body).strip())
+
+
+    def _build_list_keyboard(items: list[dict], key: str, page: int, page_size: int, kind: str | None = None) -> dict:
+        start = page * page_size
+        page_items = items[start:start + page_size]
+        k = (kind or "").lower()
+        # Solo listas "accionables" tendrán Confirmar/Cancelar
+        can_act = k in {
+            "list_asesorias", "list_my_events", "list_upcoming_events",
+            "list_calendar_events", "asesorias", "eventos"
+        }
+
+        rows = []
+        for idx, it in enumerate(page_items):
+            abs_idx = start + idx
+            title_btn   = {"text": _truncate(it.get("title") or "Ver detalle"), "callback_data": f"LIT|{key}|{abs_idx}"}
+            confirm_btn = {"text": "✅ Confirmar", "callback_data": f"LCONFIRM|{key}|{abs_idx}"}
+            cancel_btn  = {"text": "❌ Cancelar", "callback_data": f"LCANCEL|{key}|{abs_idx}"}
+            rows.append([title_btn])
+            if can_act:
+                rows.append([confirm_btn, cancel_btn])   # solo si corresponde
+
+        nav = []
+        if page > 0:
+            nav.append({"text": "◀ Anterior", "callback_data": f"LPG|{key}|{page-1}"})
+        if (start + page_size) < len(items):
+            nav.append({"text": "Siguiente ▶", "callback_data": f"LPG|{key}|{page+1}"})
+        if nav:
+            rows.append(nav)
+        rows.append([{"text": "Cerrar", "callback_data": f"LCLOSE|{key}"}])
+        return {"inline_keyboard": rows}
+
+
+    #  Helper para formatear la respuesta del MCP_DIRECT como CINAP_LIST 
+   
+
+    async def _send_list_message(chat_id: int, raw_text: str):
+        text_wo_marker, payload = _extract_cinap_list(raw_text)
+        if not payload or not isinstance(payload.get("items"), list) or len(payload["items"]) == 0:
+            return False  # no hay lista
+        key = f"{chat_id}:{int(time.time()*1000)}:{len(payload['items'])}"
+        kind = (payload.get("kind") or "").lower()
+        state = {"kind": kind, "items": payload["items"]}
+        await _save_list_state(key, state)
+        page = 0
+        page_size = PAGE_SIZE_DEFAULT
+        title = payload.get("kind") or "Resultados"
+        text = _render_page_text(state["items"], page, page_size, title=title, kind=state["kind"])
+        kb = _build_list_keyboard(state["items"], key, page, page_size, state["kind"])
+        await bot.send_message(chat_id, text, disable_web_page_preview=True, allow_sending_without_reply=True, reply_markup=kb)
+        return True
 
     async def _is_duplicate_update(update_id: int) -> bool:
         if not cache or not update_id:
@@ -1245,9 +1912,7 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
         except Exception as e:
             log.warning(f"Error marcando update: {e}")
 
-    # =========================
-    #  Background: Audio Flow (sin guard estricto)
-    # =========================
+    #  Background: Audio Flow 
     async def _process_audio_background(chat_id: int, file_id: str, file_unique_id: str, audio_obj: dict):
         log.info(f"ULTRA-FAST background task: chat_id={chat_id}, file_id={file_id[:8] if file_id else 'None'}...")
         rid = new_request()
@@ -1262,7 +1927,7 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                 log.error("No se pudo obtener agente")
                 return
 
-            # 1) Validación metadatos
+            #  Validación metadatos
             metadata_result = _validate_audio_metadata(audio_obj)
             if metadata_result != "good":
                 if metadata_result == "too_short":
@@ -1276,7 +1941,7 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                 await _send_direct_message(chat_id, error_msg)
                 return
 
-            # 2) getFile → 3) descarga
+            #  getFile -> descarga
             async with astage("telegram.get_file_path"):
                 file_id_hash = hashlib.md5(file_id.encode()).hexdigest()[:8] if file_id else "unknown"
                 file_path = await tg_get_file_path(file_id, file_unique_id, cache)
@@ -1324,16 +1989,15 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                 await _send_direct_message(chat_id, " Audio vacío o no detecté mensaje\\. Intenta hablar más claro\\.")
                 return
 
-            # 5) Autenticidad
+            # Autenticidad
             if not _validate_transcript_authenticity(transcript):
                 await _send_direct_message(chat_id, " Audio no claro o con ruido\\. Intenta de nuevo\\.")
                 return
 
-            # 5.1) (ANTES había guard de dominio; ahora solo registramos)
             if not _is_domain_related(transcript) and not _is_ack(transcript):
                 log.info("Transcripción fuera de dominio (permitido por configuración relajada)")
 
-            # === Respuestas rápidas por keywords (UCT / CINAP)
+            #  Respuestas rápidas por keywords (UCT / CINAP)
             tlow = (transcript or "").lower()
             for a, b in [
                 ("chin up", "cinap"), ("chi nap", "cinap"), ("che nap", "cinap"),
@@ -1384,7 +2048,7 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
             if calendar_intent.get("is_calendar_event", False):
                 log.info(f"CALENDAR EVENT DETECTED: {calendar_intent}")
                 calendar_response = (
-                    f"{EMOJI_TARGET} ¡Detecté que quieres agendar una asesoría!\n\n"
+                    f" ¡Detecté que quieres agendar una asesoría!\n\n"
                 )
                 if calendar_intent.get("time_mentions"):
                     calendar_response += f" Horario mencionado: {', '.join(calendar_intent['time_mentions'])}\n"
@@ -1403,23 +2067,31 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                     await _send_direct_message(chat_id, response_text)
                 return
 
-            # 6) Routing inteligente
+            # Routing inteligente
             async with astage("telegram.intelligent_routing"):
                 response = await intelligent_routing_system(asr_result, chat_id, agent_getter, mcp_client_getter, cache)
 
+            #  si la respuesta trae CINAP_LIST, muéstrala con UI y sal
+            try:
+                rendered = await _send_list_message(chat_id, response)
+                if rendered:
+                    return
+            except Exception as e:
+                log.warning(f"CINAP_LIST render (audio) failed: {e}")
+
+            # Si no es lista, envía transcript + respuesta como antes
             safe_transcript = _mdv2_escape(transcript)
-            safe_response = _mdv2_escape(response)
-            response_text = f" _{safe_transcript}_\n\n {safe_response}"
+            safe_response  = _mdv2_escape(response)
+            response_text  = f" _{safe_transcript}_\n\n {safe_response}"
             async with astage("telegram.tg_send"):
                 await _send_direct_message(chat_id, response_text)
+
             return
         except Exception as e:
             log.error(f"Error procesando audio: {e}")
             await _send_direct_message(chat_id, " Error interno\\. Contacta soporte\\.")
 
-    # =========================
     #  Webhook principal
-    # =========================
     @router.post("/webhook")
     async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)):
         async with astage("telegram.total"):
@@ -1433,6 +2105,7 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
             msg = update.get("message")
             cbq = update.get("callback_query")
             set_meta(source="telegram", update_id=update_id)
+            
 
             try:
                 if msg:
@@ -1466,6 +2139,19 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                                 )
                                 if success:
                                     await bot.send_message(chat_id, _mdv2_escape("✅ Cuenta vinculada exitosamente!"))
+
+                                    # cachear user_id para este chat 
+                                    try:
+                                        repo2 = SqlAlchemyTelegramRepo(session, cache)
+                                        uid = await repo2.find_user_id_by_telegram(msg["from"]["id"])
+                                        if uid and cache:
+                                            # Mapeo principal: chat_id -> user_id 
+                                            await cache.set(f"user_by_chat:{chat_id}", uid.encode("utf-8"), ttl_seconds=86400)
+                                            # Opcional: mapeo adicional por telegram_user_id 
+                                            await cache.set(f"user_by_tgid:{msg['from']['id']}", uid.encode("utf-8"), ttl_seconds=86400)
+                                    except Exception as e:
+                                        log.warning(f"no se pudo cachear user_id tras /start: {e}")
+
                                 else:
                                     await bot.send_message(chat_id, _mdv2_escape("⚠️ Token inválido o expirado"))
                             except Exception as e:
@@ -1475,7 +2161,7 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                             await bot.send_message(chat_id, _mdv2_escape("Enviando: /start <token_de_vinculacion>"))
                         return {"ok": True}
 
-                    # Audio / Voice → background
+                    # Audio 
                     elif voice or audio:
                         audio_obj = voice or audio
                         file_id = audio_obj.get("file_id")
@@ -1491,7 +2177,22 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                     elif text and chat_id:
                         text_lower = text.lower().strip()
                         words = text_lower.split()
-                        # ⛔️ PRIORIDAD: si hay acción pendiente y el usuario dice confirmar/cancelar, ir directo a MCP
+
+                        # resolver user_id y guardarlo en cache 
+                        resolved_user_id = None
+                        try:
+                            repo = SqlAlchemyTelegramRepo(session, cache)
+                            resolved_user_id = await _resolve_and_cache_user_id(session, cache, chat_id=chat_id, telegram_user_id=msg["from"]["id"])
+                            if resolved_user_id and cache:
+                                await cache.set(
+                                    f"user_by_chat:{chat_id}",
+                                    str(resolved_user_id).encode("utf-8"),
+                                    ttl_seconds=86400
+                                )
+                        except Exception as e:
+                            log.warning(f"resolve user_id failed: {e}")
+
+                        #si hay acción pendiente y el usuario dice confirmar/cancelar, ir directo a MCP
                         pending = await _get_pending_action(chat_id, cache)
                         if pending and (_is_confirmation_text(text_lower) or _is_cancellation_text(text_lower)):
                             mcp = mcp_client_getter() if mcp_client_getter else None
@@ -1504,6 +2205,18 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                             args["confirm"] = _is_confirmation_text(text_lower)
                             args["idempotency_key"] = f"tg:{chat_id}:{int(time.time()*1000)}"
 
+                            #   inyectar user_id si falta 
+                            if "user_id" not in args or not args.get("user_id"):
+                                if resolved_user_id:
+                                    args["user_id"] = str(resolved_user_id)
+                                elif cache:
+                                    try:
+                                        uid_bytes = await cache.get(f"user_by_chat:{chat_id}")
+                                        if uid_bytes:
+                                            args["user_id"] = uid_bytes.decode("utf-8")
+                                    except Exception:
+                                        pass
+
                             try:
                                 result = await asyncio.wait_for(
                                     mcp.call_tool(tool, args, thread_id=f"tg:{chat_id}"),
@@ -1515,7 +2228,8 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                             except asyncio.TimeoutError:
                                 await bot.send_message(chat_id, _mdv2_escape(" No pude confirmar a tiempo. Intenta de nuevo."))
                             return {"ok": True}
-                        # Respuestas instantáneas (sub-1s)
+
+                        # Respuestas instantáneas 
                         if len(words) <= 5:
                             if any(k in text_lower for k in ["hola", "hi", "buenas", "buenos días", "buenas tardes", "hello", "saludos"]):
                                 quick_response = _mdv2_escape("¡Hola! Soy tu asistente de CINAP. ¿En qué puedo ayudarte hoy?")
@@ -1542,9 +2256,7 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                                 thanks_response = _mdv2_escape("¡De nada! Estoy aquí para ayudarte. ¿Necesitas algo más?")
                                 await bot.send_message(chat_id, thanks_response, disable_web_page_preview=True, allow_sending_without_reply=True)
                                 return {"ok": True}
-    
 
-                        # (ANTES: GUARD de dominio estricto. AHORA: permitido)
                         if not _is_domain_related(text) and not _is_ack(text):
                             log.info("Mensaje de texto fuera de dominio (permitido por configuración relajada)")
 
@@ -1557,10 +2269,50 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                             await bot.send_message(chat_id, " No se pudo obtener agente")
                             return {"ok": True}
 
+                        #  pasar user_id al Agent para tools 
+                        try:
+                            if resolved_user_id and hasattr(agent, "_current_user"):
+                                agent._current_user = str(resolved_user_id)
+                        except Exception:
+                            pass
+
                         try:
                             needs_mcp = _needs_mcp_tools(text)
                             timeout = 45 if needs_mcp else 20
                             async with astage("telegram.agent_fast"):
+                                #  pasar user_id al Agent para tools
+                                try:
+                                    # Fallbacks por si aún no está resuelto
+                                    if not resolved_user_id:
+                                        #  cache por chat_id
+                                        if cache:
+                                            b = await cache.get(f"user_by_chat:{chat_id}")
+                                            if b:
+                                                resolved_user_id = b.decode("utf-8")
+
+                                        #  cache por telegram_user_id
+                                        if not resolved_user_id and cache and msg.get("from", {}).get("id"):
+                                            b = await cache.get(f"user_by_tgid:{msg['from']['id']}")
+                                            if b:
+                                                resolved_user_id = b.decode("utf-8")
+
+                                        #  DB (repo)
+                                        if not resolved_user_id and msg.get("from", {}).get("id"):
+                                            repo = SqlAlchemyTelegramRepo(session, cache)
+                                            got = await repo.find_user_id_by_telegram(msg["from"]["id"])
+                                            if got:
+                                                resolved_user_id = str(got)
+                                                # cachear para siguientes mensajes
+                                                if cache:
+                                                    await cache.set(f"user_by_chat:{chat_id}", resolved_user_id.encode("utf-8"), ttl_seconds=86400)
+                                                    await cache.set(f"user_by_tgid:{msg['from']['id']}", resolved_user_id.encode("utf-8"), ttl_seconds=86400)
+
+                                    # Inyecta al agente 
+                                    if resolved_user_id:
+                                        agent._current_user = {"user_id": str(resolved_user_id)}
+                                except Exception as e:
+                                    log.warning(f"set _current_user failed: {e}")
+
                                 try:
                                     reply = await asyncio.wait_for(
                                         agent.invoke(text, thread_id=f"tg:{chat_id}"),
@@ -1577,46 +2329,396 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                                     else:
                                         reply = " Error procesando tu consulta\\. Intenta de nuevo\\."
 
+                            #  HOTFIX list_asesorias (reintento con user_id) 
+                            try:
+                                reply_str = json.dumps(reply, ensure_ascii=False) if isinstance(reply, (dict, list)) else str(reply)
+
+                                if (
+                                    "Error executing tool list_asesorias" in reply_str
+                                    and "Field required" in reply_str
+                                    and "user_id" in reply_str
+                                ):
+                                    #  Resolver user_id si aún no lo tenemos
+                                    uid = resolved_user_id
+                                    if not uid and cache:
+                                        try:
+                                            b = await cache.get(f"user_by_chat:{chat_id}")
+                                            if b:
+                                                uid = b.decode("utf-8")
+                                        except Exception:
+                                            pass
+
+                                    if not uid:
+                                        # No hay user vinculado: pide /start
+                                        reply = ("Para listar tus asesorías primero debes vincular tu cuenta.\n\n"
+                                                "Envía: `/start <token_de_vinculacion>`")
+                                    else:
+                                        #  Extraer start/end del mensaje de error
+                                        start = None
+                                        end = None
+
+                                        # Patrón común en el error pydantic mostrado
+                                        m_start = re.search(r"'start':\s*'([^']+)'", reply_str)
+                                        m_end   = re.search(r"'end':\s*'([^']+)'", reply_str)
+                                        if m_start: start = m_start.group(1)
+                                        if m_end:   end   = m_end.group(1)
+
+                                        # Fallback genérico a any ISO-like en el string
+                                        if not (start and end):
+                                            iso_matches = re.findall(r"\d{4}-\d{2}-\d{2}T[0-9:\-+]+", reply_str)
+                                            if len(iso_matches) >= 2:
+                                                start, end = iso_matches[0], iso_matches[1]
+
+                                        if start and end and mcp_client_getter:
+                                            try:
+                                                mcp = mcp_client_getter()
+                                                args_retry = {
+                                                    "start": start,
+                                                    "end": end,
+                                                    "user_id": str(uid),
+                                                    "idempotency_key": f"tg:{chat_id}:{int(time.time()*1000)}",
+                                                }
+                                                tool_result = await asyncio.wait_for(
+                                                    mcp.call_tool("list_asesorias", args_retry, thread_id=f"tg:{chat_id}"),
+                                                    timeout=max(MCP_TIMEOUT_AGGRESSIVE, 2.0)
+                                                )
+                                                reply = tool_result.get("message") if isinstance(tool_result, dict) else str(tool_result)
+                                            except Exception as e:
+                                                log.warning(f"Retry list_asesorias with user_id failed: {e}")
+                                                # dejamos reply con el error original si el retry falla
+                                        else:
+                                            # Si no tenemos fechas, dejamos el error original
+                                            pass
+                            except Exception as e:
+                                log.warning(f"HOTFIX list_asesorias failed: {e}")
+                            #  /HOTFIX list_asesorias 
+
                             # En modo relajado no se fuerza dominio; _enforce_domain_reply será no-op
                             final_reply = _enforce_domain_reply(text, reply)
+                            #  Si hay lista CINAP, la renderizamos con teclado + paginación:
+                            try:
+                                rendered = await _send_list_message(chat_id, final_reply)
+                                if rendered:
+                                    return {"ok": True}
+                            except Exception as e:
+                                log.warning(f"CINAP_LIST render failed: {e}")
+                            # Si no hay lista, enviamos como texto normal:
                             safe_reply_fast = _mdv2_escape(final_reply)
-
                             if len(safe_reply_fast) > 4000:
                                 for part in _chunk(safe_reply_fast, 3900):
-                                    await bot.send_message(
-                                        chat_id, part,
-                                        disable_web_page_preview=True, allow_sending_without_reply=True
-                                    )
+                                    await bot.send_message(chat_id, part, disable_web_page_preview=True, allow_sending_without_reply=True)
                             else:
-                                await bot.send_message(
-                                    chat_id, safe_reply_fast,
-                                    disable_web_page_preview=True, allow_sending_without_reply=True
-                                )
+                                await bot.send_message(chat_id, safe_reply_fast, disable_web_page_preview=True, allow_sending_without_reply=True)
+
                         except Exception as e:
                             log.error(f"Error procesando texto: {e}")
-                            await bot.send_message(chat_id, "⚠️ Error procesando mensaje")
-                    return {"ok": True}
+                            await bot.send_message(chat_id, "Error procesando mensaje")
+                        return {"ok": True}
 
-                # Callback Query
+                # Callback Query: paginación/ítems de listas CINAP
                 if cbq:
                     chat_id = cbq.get("message", {}).get("chat", {}).get("id")
-                    data = cbq.get("data")
-                    if chat_id:
-                        await bot.send_message(int(chat_id), f"Callback: {data}")
-                    return {"ok": True}
+                    msg_id  = cbq.get("message", {}).get("message_id")
+                    data    = cbq.get("data") or ""
+                    cq_id   = cbq.get("id")
+                        # corta el spinner al toque
+                    if cq_id:
+                        try:
+                            await bot.answer_callback(cq_id, text="Procesando…")
+                        except Exception:
+                            pass
+
+                    try:                            
+                        # Paginación
+                        if data.startswith("LPG|"):
+                            _, key, page_str = data.split("|", 2)
+                            state = await _load_list_state(key) or {"items": [], "kind": ""}
+                            items = state.get("items", [])
+                            kind  = state.get("kind", "")
+                            page  = max(0, int(page_str))
+
+                            text = _render_page_text(items, page, PAGE_SIZE_DEFAULT, kind=kind)
+                            kb   = _build_list_keyboard(items, key, page, PAGE_SIZE_DEFAULT, kind)
+
+                            await bot.edit_message(int(chat_id), int(msg_id), text, disable_web_page_preview=True, reply_markup=kb)
+
+                            if cq_id:
+                                try:
+                                    await bot.answer_callback(cq_id)
+                                except Exception:
+                                       pass
+                            return {"ok": True}
+
+                            
+                            # Ver detalle
+                            
+                        elif data.startswith("LIT|"):
+                            _, key, idx_str = data.split("|", 2)
+                            state = await _load_list_state(key) or {"items": [], "kind": ""}
+                            items = state.get("items", [])
+                            idx   = int(idx_str)
+                            it    = items[idx] if 0 <= idx < len(items) else {}
+
+                            title = _title_of(it)
+                            sub   = _subtitle_of(it)
+
+                            detail   = f"*{title}*\n{sub}" if sub else f"*{title}*"
+                            when_str = _format_item_when(it)
+                            if when_str:
+                                detail += f"\n🗓 {when_str}"
+
+                            await bot.send_message(
+                                int(chat_id),
+                                _mdv2_escape(detail),
+                                disable_web_page_preview=True,
+                                allow_sending_without_reply=True
+                            )
+
+                            if cq_id:
+                                try:
+                                    await bot.answer_callback(cq_id)
+                                except Exception:
+                                    pass
+                            return {"ok": True}
+
+                            
+                            # Confirmar asesoría
+                        elif data.startswith("LCONFIRM|"):
+                            _, key, idx_str = data.split("|", 2)
+                            state = await _load_list_state(key) or {"items": [], "kind": ""}
+                            items = state.get("items", [])
+                            kind  = state.get("kind", "")
+                            idx   = int(idx_str)
+                            it    = items[idx] if 0 <= idx < len(items) else {}
+
+                            #  Confirmar en BD
+                            asesoria_id = (it.get("meta") or {}).get("id") or it.get("asesoria_id") or it.get("id")
+                            repo_events = None
+                            try:
+                                from app.interface_adapters.gateways.db.sqlalchemy_calendar_events_repo import SqlAlchemyCalendarEventsRepo
+                                repo_events = SqlAlchemyCalendarEventsRepo(session, cache)
+                                if asesoria_id:
+                                    await repo_events.mark_confirmed(str(asesoria_id))
+                            except Exception as e:
+                                log.warning(f"mark_confirmed failed: {e}")
+
+                            # Preparar datos para RSVP en Google Calendar del usuario autenticado
+                            meta            = it.get("meta") or {}
+                            # Aunque tengas calendarId del organizador, para RSVP marcamos la copia del USUARIO => "primary"
+                            event_id        = (
+                                meta.get("google_event_id")
+                                or meta.get("event_id")
+                                or meta.get("eventId")
+                                or meta.get("calendar_event_id")
+                                or meta.get("calendarEventId")
+                                or meta.get("provider_event_id")
+                                or meta.get("providerEventId")
+                            )
+                            attendee_email  = (
+                                meta.get("email")
+                                or meta.get("student_email")
+                                or meta.get("attendee_email")
+                                or meta.get("docente_email")
+                                or meta.get("teacher_email")
+                                or meta.get("usuario_email")
+                            )
+
+                            if asesoria_id and (not event_id or not attendee_email):
+                                try:
+                                    if repo_events is None:
+                                        from app.interface_adapters.gateways.db.sqlalchemy_calendar_events_repo import SqlAlchemyCalendarEventsRepo
+                                        repo_events = SqlAlchemyCalendarEventsRepo(session, cache)
+                                    extra_meta = await repo_events.get_calendar_payload(str(asesoria_id))
+                                    if extra_meta:
+                                        event_id = event_id or extra_meta.get("calendar_event_id")
+                                        attendee_email = attendee_email or extra_meta.get("docente_email")
+                                except Exception as e:
+                                    log.warning(f"calendar payload lookup failed: {e}")
+
+                            # Resolver usuario vinculado a este chat (para usar sus credenciales Google)
+                            resolved_user_id = await _get_user_id_cached(chat_id)
+                            if not resolved_user_id:
+                                try:
+                                    # Intenta resolver y cachear desde DB si no estaba en cache
+                                    tg_user_id = (cbq.get("from") or {}).get("id")
+                                    resolved_user_id = await _resolve_and_cache_user_id(
+                                        session, cache,
+                                        chat_id=chat_id,
+                                        telegram_user_id=tg_user_id
+                                    )
+                                except Exception as e:
+                                    log.warning(f"resolve user_id on LCONFIRM failed: {e}")
+
+                            g_ok = False
+                            if event_id and attendee_email and resolved_user_id:
+                                try:
+                                    #  Obtener refresh token del usuario para Google
+                                    try:
+                                        from app.interface_adapters.gateways.db.sqlalchemy_user_repo import SqlAlchemyUserRepo
+                                        oauth_repo = SqlAlchemyUserRepo(session, default_role_id=None)
+                                        refresh_token = await oauth_repo.get_refresh_token_by_usuario_id(
+                                            str(resolved_user_id), provider="google"
+                                        )
+                                    except Exception as e:
+                                        refresh_token = None
+                                        log.warning(f"get_refresh_token_by_usuario_id failed: {e}")
+
+                                    if not refresh_token:
+                                        log.info("Usuario sin refresh token de Google: no se puede marcar RSVP")
+                                    else:
+                                        # Llamar a GoogleCalendarClient autenticado como el usuario
+                                        from app.interface_adapters.gateways.calendar.google_calendar_client import GoogleCalendarClient
+                                        gclient = GoogleCalendarClient(
+                                            client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
+                                            client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+                                            # Este getter se usa internamente por el cliente; devolvemos el token del usuario resuelto
+                                            get_refresh_token_by_usuario_id=lambda uid: refresh_token if str(uid) == str(resolved_user_id) else None,
+                                        )
+
+                                        # Marcamos el RSVP en la COPIA del usuario
+                                        await gclient.set_attendee_response(
+                                            usuario_id=str(resolved_user_id),   # importante: que el cliente cargue las credenciales de este usuario
+                                            calendar_id="primary",
+                                            event_id=str(event_id),
+                                            attendee_email=str(attendee_email),
+                                            response="accepted",                # {'accepted','declined','tentative'}
+                                        )
+                                        g_ok = True
+
+                                except Exception as e:
+                                    log.warning(f"Google RSVP accept failed: {e}")
+
+                            #  Mensaje al usuario 
+                            detalle = it.get("title") or "Asesoría"
+                            msg = f"*{_mdv2_escape(detalle)}*\nEstado: {_mdv2_escape('Confirmada')}"
+                            if g_ok:
+                                msg += f"\n🗓 {_mdv2_escape('Confirmado también en tu Google Calendar')}"
+                            else:
+                                # Si no se pudo Google, damos una pista útil 
+                                msg += f"\n {_mdv2_escape('No pude actualizar tu Google Calendar. Vincula tu cuenta o vuelve a intentarlo.')}"
+
+                            await bot.send_message(
+                                int(chat_id),
+                                text=msg,
+                                disable_web_page_preview=True,
+                                allow_sending_without_reply=True
+                            )
+
+                            if cq_id:
+                                try:
+                                    await bot.answer_callback(cq_id, text="✅ Confirmada")
+                                except Exception:
+                                    pass
+
+                            return {"ok": True}
+
+                            # Cancelar asesoría
+                        elif data.startswith("LCANCEL|"):
+                            _, key, idx_str = data.split("|", 2)
+                            state = await _load_list_state(key) or {"items": [], "kind": ""}
+                            items = state.get("items", [])
+                            kind  = state.get("kind", "")
+                            idx   = int(idx_str)
+                            it    = items[idx] if 0 <= idx < len(items) else {}
+
+                            asesoria_id = (it.get("meta") or {}).get("id") or it.get("asesoria_id") or it.get("id")
+                            cupo_id     = (it.get("meta") or {}).get("cupo_id") or (it.get("meta") or {}).get("slot_id")
+
+                            ok_db = True
+                            try:
+                                from app.interface_adapters.gateways.db.sqlalchemy_calendar_events_repo import SqlAlchemyCalendarEventsRepo
+                                repo = SqlAlchemyCalendarEventsRepo(session, cache)
+                                if asesoria_id and cupo_id:
+                                    await repo.delete_asesoria_and_mark_cancelled(str(asesoria_id), cupo_id=str(cupo_id))
+                                elif asesoria_id:
+                                    await repo.update_event_state(str(asesoria_id), "CANCELADA")
+                                else:
+                                    ok_db = False
+                            except Exception as e:
+                                log.warning(f"cancel failed: {e}")
+                                ok_db = False
+
+                                # Actualiza el ítem en la lista y re-renderiza
+                            if 0 <= idx < len(items):
+                                items[idx]["estado"] = "CANCELADA"
+                                items[idx]["status"] = "CANCELADA"
+                                state["items"] = items
+                                await _save_list_state(key, state)
+
+                            page = 0  # si no llevas tracking de página
+                            text = _render_page_text(items, page, PAGE_SIZE_DEFAULT, kind=kind) 
+                            kb   = _build_list_keyboard(items, key, page, PAGE_SIZE_DEFAULT, kind)
+                                # feedback rápido al tap
+                            if cq_id:
+                                try:
+                                    await bot.answer_callback(cq_id, text=" Cancelada")
+                                except Exception:
+                                    pass
+
+                                # edita el mensaje original (lista)
+                            await bot.edit_message(int(chat_id), int(msg_id), text, disable_web_page_preview=True, reply_markup=kb)
+
+                                # y manda un mensaje corto (opcional)
+                            detalle = it.get("title") or "Asesoría"
+                            await bot.send_message(
+                                int(chat_id),
+                                _mdv2_escape(f"{detalle}\nEstado: Cancelada"),
+                                disable_web_page_preview=True,
+                                allow_sending_without_reply=True
+                            )
+                            return {"ok": True}
+
+
+                            # Cerrar lista
+                        elif data.startswith("LCLOSE|"):
+                            try:
+                                await bot.edit_message(
+                                    int(chat_id),
+                                    int(msg_id),
+                                    _mdv2_escape("Cerrado."),
+                                    disable_web_page_preview=True,
+                                    reply_markup={"inline_keyboard": []}
+                                )
+                            except Exception:
+                                pass
+                            if cq_id:
+                                try:
+                                    await bot.answer_callback(cq_id, text="Cerrado")
+                                except Exception:
+                                    pass
+                            return {"ok": True}
+
+                            # Fallback
+                        else:
+                            await bot.send_message(int(chat_id), _mdv2_escape(f"Callback: {data}"), disable_web_page_preview=True, allow_sending_without_reply=True)
+                            if cq_id:
+                                try:
+                                    await bot.answer_callback(cq_id)
+                                except Exception:
+                                    pass
+                            return {"ok": True}
+
+                    except Exception as e:
+                        log.warning(f"Error en callback: {e}")
+                        if cq_id:
+                            try:
+                                await bot.answer_callback(cq_id, text=" Error")
+                            except Exception:
+                                pass
+                        return {"ok": True}
 
                 return {"ok": True}
             finally:
                 await _mark_update_processed(update_id)
         return {"ok": True}
 
+
     router.close_clients = _close_shared_clients
     router.warmup_connections = _warmup_connections
     return router
 
-# =========================
+
 #  Extra: Intent detectors used above
-# =========================
 def _detect_calendar_event_intent(text: str) -> dict:
     if not text or not isinstance(text, str):
         return {"is_calendar_event": False}

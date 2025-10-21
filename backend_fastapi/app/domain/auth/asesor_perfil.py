@@ -2,6 +2,14 @@ from dataclasses import dataclass
 from typing import List, Optional
 from .user import User
 
+@dataclass
+class AdvisorPage:
+    items: list["AdvisorInfo"]
+    page: int
+    per_page: int
+    total: int
+    pages: int
+
 @dataclass(frozen=True)
 class AsesorPerfil:
     id: str

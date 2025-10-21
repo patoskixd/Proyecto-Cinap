@@ -84,3 +84,28 @@ class CupoModel(Base):
     estado = sa.Column(estado_cupo,nullable=False,server_default=EstadoCupo.ABIERTO.value,)
     notas  = sa.Column(sa.Text)
 
+class EstadoAsesoria(PyEnum):
+    PENDIENTE   = "PENDIENTE"
+    CONFIRMADA  = "CONFIRMADA"
+    CANCELADA   = "CANCELADA"
+    COMPLETADA  = "COMPLETADA"
+
+estado_asesoria = sa.Enum(
+    EstadoAsesoria,
+    name="estado_asesoria",
+    native_enum=True,
+    create_type=False,  # ya existe en la BD
+)
+
+class AsesoriaModel(Base):
+    __tablename__ = "asesoria"
+    id = sa.Column(UUID(as_uuid=True), primary_key=True)
+    docente_id = sa.Column(UUID(as_uuid=True), sa.ForeignKey("docente_perfil.id", ondelete="RESTRICT"), nullable=False)
+    cupo_id = sa.Column(UUID(as_uuid=True), sa.ForeignKey("cupo.id", ondelete="RESTRICT"), nullable=False)
+    estado = sa.Column(estado_asesoria, nullable=False, server_default=EstadoAsesoria.PENDIENTE.value)
+    origen = sa.Column(sa.Text)
+    notas = sa.Column(sa.Text)
+    creado_en = sa.Column(sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False)
+
+    docente = relationship("DocentePerfilModel", lazy="selectin")
+    cupo = relationship("CupoModel", lazy="selectin")

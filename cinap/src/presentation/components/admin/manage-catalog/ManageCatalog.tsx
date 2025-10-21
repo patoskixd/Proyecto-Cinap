@@ -138,12 +138,20 @@ export default function ManageCatalog() {
                   onEdit={() => setEditOpen({ open: true, category: cat })}
                   onDelete={() => setConfirmDeleteCat({ id: cat.id, name: cat.name, description: cat.description })}
                   onActivate={async () => {
-                    try { await updateCategory(cat.id, { active: true }); notify("Categoría activada", "success"); }
-                    catch (e: any) { notify(parseError(e), "error"); }
+                    try {
+                      await updateCategory(cat.id, { active: true });
+                      notify("Categoría activada", "success");     // verde
+                    } catch (e: any) {
+                      notify(parseError(e), "error");
+                    }
                   }}
                   onDeactivate={async () => {
-                    try { await updateCategory(cat.id, { active: false }); notify("Categoría desactivada", "success"); }
-                    catch (e: any) { notify(parseError(e), "error"); }
+                    try {
+                      await updateCategory(cat.id, { active: false });
+                      notify("Categoría desactivada", "error");     // rojo
+                    } catch (e: any) {
+                      notify(parseError(e), "error");
+                    }
                   }}
                   onViewServices={() => setServicesModalFor(cat)}
                   onAddService={() => setCreateServiceFor(cat)}
@@ -193,11 +201,11 @@ export default function ManageCatalog() {
                   onEdit={() => setEditOpen({ open: true, category: cat })}
                   onDelete={() => setConfirmDeleteCat({ id: cat.id, name: cat.name, description: cat.description })}
                   onActivate={async () => {
-                    try { await reactivateCategory(cat.id); notify("Categoría reactivada", "success"); }
+                    try { await reactivateCategory(cat.id); notify("Categoría activada", "success"); }
                     catch (e: any) { notify(parseError(e), "error"); }
                   }}
                   onDeactivate={async () => {
-                    try { await updateCategory(cat.id, { active: false }); notify("Categoría desactivada", "success"); }
+                    try { await updateCategory(cat.id, { active: false }); notify("Categoría desactivada", "error"); }
                     catch (e: any) { notify(parseError(e), "error"); }
                   }}
                   onViewServices={() => setServicesModalFor(cat)}
@@ -261,11 +269,15 @@ export default function ManageCatalog() {
             if (full) setServiceEditing(full);
           }}
           onToggleActive={async (svc, next) => {
-            try { await setServiceActive(svc.id, next); notify("Estado del servicio actualizado", "success"); }
-            catch (e:any) { notify(parseError(e), "error"); }
+            try {
+              await setServiceActive(svc.id, next);
+              notify(next ? "Servicio activado" : "Servicio desactivado", next ? "success" : "error");
+            } catch (e:any) {
+              notify(parseError(e), "error");
+            }
           }}
           onDelete={(svc) => setConfirmDeleteSvc({ id: svc.id, name: svc.name, duration: svc.duration })}
-        />
+        />  
       )}
 
       {/* Crear servicio */}

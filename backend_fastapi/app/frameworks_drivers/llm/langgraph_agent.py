@@ -105,17 +105,65 @@ def _normalize_event_delete_by_title_args(kwargs: dict) -> dict:
     return out
 
 def _attach_items_payload(text: str, items: list[dict], kind: str) -> str:
+    from datetime import datetime
+
+    def _first(d: dict, *keys):
+        for k in keys:
+            v = d.get(k)
+            if isinstance(v, dict):
+                v = v.get("iso") or v.get("at") or v.get("value") or v.get("utc")
+            if v not in (None, "", []):
+                return v
+        return None
+
+    def _compose_start(d: dict):
+        # 1) Directos comunes
+        v = _first(
+            d,
+            "start", "start_time", "inicio",
+            "fechaHoraInicio", "startAt", "start_at",
+            "startTime", "startTimeIso", "when"
+        )
+        if v:
+            return v
+        # 2) Composición fecha + hora (muy común en tu backend)
+        fecha = _first(d, "fecha", "date", "dia", "day")
+        hora  = _first(d, "hora", "time", "hora_inicio", "horaInicio", "slot")
+        if fecha and hora:
+            try:
+                # Deja que el webhook lo parsee; basta concatenar
+                return f"{fecha} {hora}"
+            except Exception:
+                pass
+        # 3) Solo fecha (el webhook igual la muestra)
+        if fecha:
+            return fecha
+        return None
+
+    def _compose_end(d: dict):
+        v = _first(
+            d,
+            "end", "end_time", "fin",
+            "fechaHoraFin", "endAt", "end_at",
+            "endTime", "endTimeIso"
+        )
+        return v
+
     ui_items = []
-    for it in items:
+    for it in (items or []):
         ui_items.append({
-            "title": it.get("title") or "",
-            "subtitle": it.get("subtitle") or it.get("email") or "",
-            "start": it.get("start"),
-            "end": it.get("end"),
+            "title": it.get("title") or it.get("nombre") or "",
+            "subtitle": it.get("subtitle") or it.get("email") or it.get("asesor") or "",
+            "start": _compose_start(it),
+            "end":   _compose_end(it),
+            # ⬇⬇⬇ Conserva todo el item original
+            "meta": it,
         })
+
     payload = {"kind": kind, "items": ui_items}
     blob = base64.b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
-    return text + f"\n\n<!--CINAP_LIST:{blob}-->"
+    return ((text or "").strip() + ("\n\n" if text else "") + f"<!--CINAP_LIST:{blob}-->").strip()
+
 
 def _strip_think(text: str | None) -> str:
     if not isinstance(text, str):

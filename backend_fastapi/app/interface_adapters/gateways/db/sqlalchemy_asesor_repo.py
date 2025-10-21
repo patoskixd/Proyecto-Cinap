@@ -1,19 +1,19 @@
 from __future__ import annotations
 from typing import Optional, List
 import uuid
+import sqlalchemy as sa
 from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.use_cases.ports.asesor_repos import AsesorPerfilRepo
 from app.use_cases.ports.auth_repos import UserRepo
-from app.domain.auth.asesor_perfil import AsesorPerfil, RegisterAdvisorRequest, AdvisorInfo
+from app.domain.auth.asesor_perfil import AsesorPerfil, RegisterAdvisorRequest, AdvisorInfo, AdvisorPage, ServiceInfo
 from app.domain.auth.user import User, Role
 from app.interface_adapters.orm.models_asesor import (
-    AsesorPerfilModel, 
-    AsesorServicioModel, 
+    AsesorPerfilModel,
+    AsesorServicioModel,
     ServicioModel,
-    CategoriaModel
 )
 from app.interface_adapters.orm.models_auth import UsuarioModel, RolModel
 from app.interface_adapters.orm.models_scheduling import CupoModel
@@ -98,51 +98,134 @@ class SqlAlchemyAsesorRepo(AsesorPerfilRepo):
         return await self.create_perfil(usuario_id)
 
     async def list_advisors(self) -> List[AdvisorInfo]:
-        """Lista todos los asesores con su información completa"""
-        from app.interface_adapters.orm.models_scheduling import CategoriaModel
-        
-        query = (
-            select(AsesorPerfilModel)
-            .options(
-                selectinload(AsesorPerfilModel.usuario).selectinload(UsuarioModel.rol),
-                selectinload(AsesorPerfilModel.servicios).selectinload(AsesorServicioModel.servicio).selectinload(ServicioModel.categoria)
+        page = await self.list_advisors_page(page=1, limit=1_000_000)
+        return page.items
+
+    async def list_advisors_page(
+        self,
+        *,
+        page: int,
+        limit: int,
+        query: str | None = None,
+        category_id: str | None = None,
+        service_id: str | None = None,
+    ) -> AdvisorPage:
+        page = max(page, 1)
+        limit = max(min(limit, 200), 1)
+        offset = (page - 1) * limit
+
+        filters = []
+        joined_user = False
+        joined_services = False
+
+        def ensure_user(stmt):
+            nonlocal joined_user
+            if not joined_user:
+                stmt = stmt.join(UsuarioModel, UsuarioModel.id == AsesorPerfilModel.usuario_id, isouter=True)
+                joined_user = True
+            return stmt
+
+        def ensure_services(stmt):
+            nonlocal joined_services
+            if not joined_services:
+                stmt = stmt.join(AsesorServicioModel, AsesorServicioModel.asesor_id == AsesorPerfilModel.id, isouter=True)
+                stmt = stmt.join(ServicioModel, ServicioModel.id == AsesorServicioModel.servicio_id, isouter=True)
+                joined_services = True
+            return stmt
+
+        if query:
+            pattern = f"%{query.strip().lower()}%"
+            filters.append(
+                sa.or_(
+                    sa.func.lower(UsuarioModel.nombre).like(pattern),
+                    sa.func.lower(UsuarioModel.email).like(pattern),
+                )
             )
+
+        if category_id:
+            try:
+                filters.append(ServicioModel.categoria_id == uuid.UUID(category_id))
+            except ValueError:
+                filters.append(sa.text("1=0"))
+
+        if service_id:
+            try:
+                filters.append(ServicioModel.id == uuid.UUID(service_id))
+            except ValueError:
+                filters.append(sa.text("1=0"))
+
+        count_stmt = select(sa.func.count(sa.distinct(AsesorPerfilModel.id))).select_from(AsesorPerfilModel)
+        if query:
+            count_stmt = ensure_user(count_stmt)
+        if category_id or service_id:
+            count_stmt = ensure_services(count_stmt)
+        if filters:
+            count_stmt = count_stmt.where(sa.and_(*filters))
+
+        total = (await self.session.execute(count_stmt)).scalar_one()
+
+        items_stmt = ensure_user(select(AsesorPerfilModel))
+        if category_id or service_id:
+            items_stmt = ensure_services(items_stmt)
+
+        items_stmt = (
+            items_stmt.options(
+                selectinload(AsesorPerfilModel.usuario).selectinload(UsuarioModel.rol),
+                selectinload(AsesorPerfilModel.servicios)
+                .selectinload(AsesorServicioModel.servicio)
+                .selectinload(ServicioModel.categoria),
+            )
+            .order_by(AsesorPerfilModel.id, sa.func.lower(UsuarioModel.nombre))
+            .offset(offset)
+            .limit(limit)
         )
-        result = await self.session.execute(query)
+        if filters:
+            items_stmt = items_stmt.where(sa.and_(*filters))
+
+        items_stmt = items_stmt.distinct(AsesorPerfilModel.id)
+
+        result = await self.session.execute(items_stmt)
         models = result.scalars().all()
-        
-        advisors = []
+
+        advisors: List[AdvisorInfo] = []
         for model in models:
-            # Obtener servicios con sus categorías
-            services_with_categories = []
+            services_with_categories: List[ServiceInfo] = []
             categories = set()
-            
-            if hasattr(model, 'servicios') and model.servicios:
-                from app.domain.auth.asesor_perfil import ServiceInfo
+
+            if hasattr(model, "servicios") and model.servicios:
                 for asesor_servicio in model.servicios:
                     servicio = asesor_servicio.servicio
                     if servicio:
-                        service_info = ServiceInfo(
-                            id=str(servicio.id),
-                            name=servicio.nombre,
-                            category_id=str(servicio.categoria_id),
-                            category_name=servicio.categoria.nombre if hasattr(servicio, 'categoria') and servicio.categoria else ""
+                        services_with_categories.append(
+                            ServiceInfo(
+                                id=str(servicio.id),
+                                name=servicio.nombre,
+                                category_id=str(servicio.categoria_id),
+                                category_name=servicio.categoria.nombre if servicio.categoria else "",
+                            )
                         )
-                        services_with_categories.append(service_info)
                         categories.add(str(servicio.categoria_id))
-            
-            advisor_info = AdvisorInfo(
-                id=str(model.id),
-                usuario_id=str(model.usuario_id),
-                name=model.usuario.nombre if model.usuario else "",
-                email=model.usuario.email if model.usuario else "",
-                activo=model.activo,
-                services=services_with_categories,  
-                categories=list(categories)  
+
+            advisors.append(
+                AdvisorInfo(
+                    id=str(model.id),
+                    usuario_id=str(model.usuario_id),
+                    name=model.usuario.nombre if model.usuario else "",
+                    email=model.usuario.email if model.usuario else "",
+                    activo=model.activo,
+                    services=services_with_categories,
+                    categories=list(categories) if categories else None,
+                )
             )
-            advisors.append(advisor_info)
-        
-        return advisors
+
+        pages = max((total + limit - 1) // limit, 1) if total else 1
+        return AdvisorPage(
+            items=advisors,
+            page=page,
+            per_page=limit,
+            total=total,
+            pages=pages,
+        )
 
     async def register_advisor(self, request: RegisterAdvisorRequest) -> AdvisorInfo:
         """

@@ -1,5 +1,5 @@
 import type { TeachersRepo } from "@/application/admin/teachers/ports/TeachersRepo";
-import type { Teacher, TeacherId } from "@/domain/admin/teachers";
+import type { Teacher, TeacherId, TeacherPage } from "@/domain/admin/teachers";
 
 export class AdminTeachersBackendRepo implements TeachersRepo {
   private readonly baseUrl: string;
@@ -44,16 +44,29 @@ export class AdminTeachersBackendRepo implements TeachersRepo {
     };
   }
 
-  async list(): Promise<Teacher[]> {
-    const res = await fetch(`${this.baseUrl}/admin/teachers/`, {
+  async list(params: { page?: number; limit?: number; query?: string } = {}): Promise<TeacherPage> {
+    const { page = 1, limit = 20, query } = params;
+    const qs = new URLSearchParams();
+    qs.set("page", String(page));
+    qs.set("limit", String(limit));
+    if (query) qs.set("q", query);
+
+    const res = await fetch(`${this.baseUrl}/admin/teachers/?${qs.toString()}`, {
       method: "GET",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
       cache: "no-store",
     });
     if (!res.ok) throw new Error((await res.text()) || "No se pudieron cargar los docentes");
-    const data = await this.parse<any[]>(res);
-    return (data ?? []).map(this.mapBackendTeacher);
+    const data = await this.parse<any>(res);
+    const items = Array.isArray(data?.items) ? data.items : [];
+    return {
+      items: items.map((row: any) => this.mapBackendTeacher(row)),
+      page: data?.page ?? page,
+      perPage: data?.per_page ?? limit,
+      total: data?.total ?? items.length,
+      pages: data?.pages ?? 1,
+    };
   }
 
   async update(teacher: Teacher): Promise<void> {

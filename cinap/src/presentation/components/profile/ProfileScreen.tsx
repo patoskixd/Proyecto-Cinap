@@ -30,9 +30,16 @@ export default function ProfileScreen() {
 
   const { user, stats } = data;
 
+  const totalAsesorias = stats.total ?? stats.completed + stats.canceled;
+  const resolvedAsesorias = stats.completed + stats.canceled;
+  const successRate =
+    resolvedAsesorias > 0 ? Math.round((stats.completed / resolvedAsesorias) * 100) : 0;
+
   const btnLabel = tg.linked
-    ? `Vinculado${tg.username ? ` como ${tg.username.startsWith('@') ? tg.username : '@' + tg.username}` : " ✓"}`
-    : (busy ? "Conectando..." : "Vincular Telegram");
+    ? `Vinculado${tg.username ? ` como ${tg.username.startsWith("@") ? tg.username : "@" + tg.username}` : ""}`
+    : busy
+    ? "Conectando..."
+    : "Vincular Telegram";
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -154,17 +161,17 @@ export default function ProfileScreen() {
             <div className="text-sm font-medium text-gray-600">Canceladas</div>
           </div>
 
-          {/* Total de Asesorías */}
+          {/* Total de asesorias */}
           <div className="group bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl border border-white/20 p-8 transition-all duration-300 hover:shadow-2xl hover:scale-105">
             <div className="flex items-center justify-between mb-4">
               <div className="p-3 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-2xl shadow-lg">
-                <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M7 4V3a1 1 0 10-2 0v1H4a2 2 0 00-2 2v13a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7zm13 6H4v9h16v-9z" />
                 </svg>
               </div>
             </div>
-            <div className="text-4xl font-bold text-gray-900 mb-2">{stats.completed + stats.canceled}</div>
-            <div className="text-sm font-medium text-gray-600">Total de Asesorías</div>
+            <div className="text-4xl font-bold text-gray-900 mb-2">{totalAsesorias}</div>
+            <div className="text-sm font-medium text-gray-600">Total de asesorias</div>
           </div>
 
           {/* Tasa de Éxito */}
@@ -177,7 +184,7 @@ export default function ProfileScreen() {
               </div>
             </div>
             <div className="text-4xl font-bold text-gray-900 mb-2">
-              {stats.completed + stats.canceled > 0 ? Math.round((stats.completed / (stats.completed + stats.canceled)) * 100) : 0}%
+              {successRate}%
             </div>
             <div className="text-sm font-medium text-gray-600">Tasa de Éxito</div>
           </div>

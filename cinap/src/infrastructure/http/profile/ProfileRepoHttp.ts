@@ -1,40 +1,37 @@
 import { httpGetCached } from "@/infrastructure/http/client";
 import type { ProfileRepo, ProfileSummary } from "@/application/profile/ports/ProfileRepo";
 
-type MeWrapped =
-  | { authenticated: false }
-  | { authenticated: true; user: { id: string; email: string; name: string; role?: string } };
-
-type MeFlat = { id: string; email: string; name: string; role?: string };
-
-function unwrap(me: MeWrapped | MeFlat): MeFlat {
-  if (typeof (me as any).authenticated !== "undefined") {
-    const mw = me as MeWrapped;
-    if (!mw.authenticated) throw new Error("UNAUTHENTICATED");
-    return mw.user;
-  }
-  return me as MeFlat;
-}
+type SummaryPayload = {
+  user: { id: string; name: string; email: string; role?: string };
+  stats: { completed?: number; canceled?: number; total?: number };
+};
 
 function normalizeRole(r?: string): ProfileSummary["user"]["role"] {
   const v = (r ?? "").toLowerCase();
-  if (v === "asesor" || v === "advisor") return "Asesor" as ProfileSummary["user"]["role"];
-  if (v === "admin" || v === "administrator") return "Admin" as ProfileSummary["user"]["role"];
-  return "Profesor" as ProfileSummary["user"]["role"];
+  if (v === "asesor" || v === "advisor") return "Asesor";
+  if (v === "admin" || v === "administrator") return "Admin";
+  return "Profesor";
 }
 
 export class ProfileRepoHttp implements ProfileRepo {
   async getMyProfile(): Promise<ProfileSummary> {
-    const me = await httpGetCached<MeWrapped | MeFlat>("/auth/me", { ttlMs: 60_000 });
-    const u = unwrap(me);
-
-    // Estatico por ahora ya que no genero estas metricas aun
-    const completed = 0;
-    const canceled = 0;
+    const payload = await httpGetCached<SummaryPayload>("/profile/summary", { ttlMs: 30_000 });
+    const stats = payload.stats ?? {};
 
     return {
-      user: { id: u.id, name: u.name, email: u.email, role: normalizeRole(u.role) },
-      stats: { completed, canceled },
+      user: {
+        id: payload.user.id,
+        name: payload.user.name,
+        email: payload.user.email,
+        role: normalizeRole(payload.user.role),
+      },
+      stats: {
+        completed: stats.completed ?? 0,
+        canceled: stats.canceled ?? 0,
+        total:
+          stats.total ??
+          ((stats.completed ?? 0) + (stats.canceled ?? 0)),
+      },
     };
   }
 }

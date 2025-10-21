@@ -10,10 +10,11 @@ export function RoleSections({ role, data }: { role: Role; data: DashboardData }
   return (
     <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr] items-start">
       {/* Columna izquierda: Próximas asesorías */}
-      <UpcomingAppointments appointments={data.upcoming} />
+      <UpcomingAppointments appointments={data.upcoming} role={role} total={data.upcomingTotal} />
+
 
       {/* Columna derecha: panel por rol */}
-      {role === "teacher" && <TeacherPanel items={data.drafts} />}
+      {role === "teacher" && <TeacherPanel  />}
       {role === "advisor" && <AdvisorPanel />}
       {role === "admin" && <AdminPanel />}
     </div>

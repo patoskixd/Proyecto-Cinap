@@ -9,7 +9,6 @@ export default function DashboardHeader({
   subtitle,
   ctaHref,
   ctaLabel,
-  ctaIcon = "➕",
 }: {
   title: string;
   subtitle?: string;

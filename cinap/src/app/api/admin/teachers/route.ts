@@ -14,9 +14,23 @@ export async function GET(req: NextRequest) {
   try {
     const repo = new AdminTeachersBackendRepo(getCookieString(req));
     const listUC = new ListTeachers(repo);
-    const teachers = await listUC.exec();
+    const params = req.nextUrl.searchParams;
+    const page = Number(params.get("page") ?? "1") || 1;
+    const limit = Number(params.get("limit") ?? "20") || 20;
+    const query = params.get("q") || undefined;
 
-    const resp = NextResponse.json(teachers, { status: 200 });
+    const teachers = await listUC.exec({ page, limit, query });
+
+    const resp = NextResponse.json(
+      {
+        items: teachers.items,
+        page: teachers.page,
+        per_page: teachers.perPage,
+        total: teachers.total,
+        pages: teachers.pages,
+      },
+      { status: 200 },
+    );
     appendSetCookies(repo.getSetCookies?.() ?? [], resp);
     return resp;
   } catch (e: any) {

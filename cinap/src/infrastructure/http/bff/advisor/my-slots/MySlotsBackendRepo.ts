@@ -73,7 +73,15 @@ async getMySlotsPage(params: {
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
     });
-    if (!res.ok) throw new Error(await res.text() || "No se pudo eliminar");
+    if (!res.ok) {
+      const txt = await res.text();
+      try {
+        const data = JSON.parse(txt);
+        throw new Error(data?.detail?.message || data?.detail || data?.message || "No se pudo eliminar");
+      } catch {
+        throw new Error(txt || "No se pudo eliminar");
+      }
+    }
   }
 
   async reactivateMySlot(id: string): Promise<MySlot> {

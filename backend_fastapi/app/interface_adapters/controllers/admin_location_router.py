@@ -81,6 +81,9 @@ def make_admin_location_router(
     def page_envelope(total: int, page: int, limit: int, items: list[dict]) -> dict:
         pages = max(1, (total + limit - 1) // limit)
         return {"items": items, "page": page, "per_page": limit, "total": total, "pages": pages}
+    
+
+
 
     #  Campus  
     @router.get("/campus")
@@ -322,6 +325,9 @@ def make_admin_location_router(
         try:
             code = patch.code.upper() if patch.code else None
             return await repo.update_campus(campus_id, patch.name, patch.address, code, patch.active)
+        except IntegrityError:
+            # nombre/código duplicado
+            raise HTTPException(status_code=409, detail="Campus duplicado")
         except ValueError:
             raise HTTPException(404, "Campus no encontrado")
 
@@ -331,6 +337,8 @@ def make_admin_location_router(
         try:
             code = patch.code.upper() if patch.code else None
             return await repo.update_campus(campus_id, patch.name, patch.address, code, patch.active)
+        except IntegrityError:
+            raise HTTPException(status_code=409, detail="Campus duplicado")
         except ValueError:
             raise HTTPException(404, "Campus no encontrado")
 
@@ -359,8 +367,13 @@ def make_admin_location_router(
     @router.post("/buildings")
     async def create_building(payload: BuildingIn, session: AsyncSession = Depends(get_session_dep)):
         repo = SqlAlchemyAdminLocationRepo(session)
-        code = payload.code.upper() if payload.code else None
-        return await repo.create_building(payload.name, payload.campusId, code)
+        try:
+            code = payload.code.upper() if payload.code else None
+            return await repo.create_building(payload.name, payload.campusId, code)
+        except IntegrityError as e:
+            raise HTTPException(409, "Edificio duplicado")
+        except ValueError:
+            raise HTTPException(409, "Edificio duplicado")
 
     @router.put("/buildings/{building_id}")
     async def update_building(building_id: str, patch: BuildingPatch, session: AsyncSession = Depends(get_session_dep)):
@@ -368,6 +381,8 @@ def make_admin_location_router(
         try:
             code = patch.code.upper() if patch.code else None
             return await repo.update_building(building_id, patch.name, patch.campusId, code, patch.active)
+        except IntegrityError as e:
+            raise HTTPException(409, "Edificio duplicado")
         except ValueError:
             raise HTTPException(404, "Edificio no encontrado")
 
@@ -377,6 +392,8 @@ def make_admin_location_router(
         try:
             code = patch.code.upper() if patch.code else None
             return await repo.update_building(building_id, patch.name, patch.campusId, code, patch.active)
+        except IntegrityError as e:
+            raise HTTPException(409, "Edificio duplicado")
         except ValueError:
             raise HTTPException(404, "Edificio no encontrado")
 
@@ -403,7 +420,10 @@ def make_admin_location_router(
     @router.post("/rooms")
     async def create_room(payload: RoomIn, session: AsyncSession = Depends(get_session_dep)):
         repo = SqlAlchemyAdminLocationRepo(session)
-        return await repo.create_room(payload.name, payload.buildingId, payload.number, payload.type, payload.capacity)
+        try:
+            return await repo.create_room(payload.name, payload.buildingId, payload.number, payload.type, payload.capacity)
+        except IntegrityError:
+            raise HTTPException(409, "Sala duplicada")
 
     @router.put("/rooms/{room_id}")
     async def update_room(room_id: str, patch: RoomPatch, session: AsyncSession = Depends(get_session_dep)):
@@ -412,6 +432,8 @@ def make_admin_location_router(
             return await repo.update_room(
                 room_id, patch.name, patch.buildingId, patch.number, patch.type, patch.capacity, patch.active
             )
+        except IntegrityError:
+            raise HTTPException(409, "Sala duplicada")
         except ValueError:
             raise HTTPException(404, "Sala no encontrada")
 
@@ -422,6 +444,8 @@ def make_admin_location_router(
             return await repo.update_room(
                 room_id, patch.name, patch.buildingId, patch.number, patch.type, patch.capacity, patch.active
             )
+        except IntegrityError:
+            raise HTTPException(409, "Sala duplicada")
         except ValueError:
             raise HTTPException(404, "Sala no encontrada")
 

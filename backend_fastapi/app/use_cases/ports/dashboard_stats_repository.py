@@ -1,28 +1,13 @@
-from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Optional
 from uuid import UUID
+from abc import ABC, abstractmethod
 
 
 class DashboardStatsRepository(ABC):
-    """Puerto para obtener estadísticas del dashboard por rol."""
-    
     @abstractmethod
-    async def get_admin_stats(self) -> Dict[str, Any]:
-        """
-        Obtiene estadísticas para rol administrador.
-        """
-        pass
-    
+    async def admin_stats(self) -> Dict[str, int]:
+        ...
+
     @abstractmethod
-    async def get_advisor_stats(self, advisor_id: UUID) -> Dict[str, Any]:
-        """
-        Obtiene estadísticas para rol asesor.
-        """
-        pass
-    
-    @abstractmethod
-    async def get_teacher_stats(self, teacher_id: UUID) -> Dict[str, Any]:
-        """
-        Obtiene estadísticas para rol docente.
-        """
-        pass
+    async def personal_stats(self, role: str, profile_id: Optional[UUID]) -> Dict[str, int]:
+        ...

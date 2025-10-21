@@ -17,9 +17,16 @@ from app.use_cases.slots.open_slots import (
 )
 from app.interface_adapters.gateways.db.sqlalchemy_slots_repo import SqlAlchemySlotsRepo
 from app.interface_adapters.orm.models_scheduling import (
-    CupoModel, ServicioModel, CategoriaModel, RecursoModel, EdificioModel, CampusModel, EstadoCupo
+    CupoModel,
+    ServicioModel,
+    CategoriaModel,
+    RecursoModel,
+    EdificioModel,
+    CampusModel,
+    EstadoCupo,
+    AsesoriaModel,
 )
-from app.interface_adapters.orm.models_scheduling import CupoModel, EstadoCupo
+from app.interface_adapters.orm.models_scheduling import EstadoAsesoria
 
 
 class ResourceOut(BaseModel):
@@ -70,6 +77,7 @@ class MySlotOut(BaseModel):
     status: Literal["disponible", "ocupado", "cancelado", "expirado", "realizado"]
     student: dict | None = None
     notes: str | None = None
+    locked: bool = False
 
 
 class MySlotPatchIn(BaseModel):
@@ -135,6 +143,15 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
             "realizado": EstadoCupo.REALIZADO,
         }[s]
 
+    locked_expr = sa.exists(
+        sa.select(sa.literal(1))
+        .select_from(AsesoriaModel)
+        .where(
+            AsesoriaModel.cupo_id == CupoModel.id,
+            AsesoriaModel.estado == EstadoAsesoria.CANCELADA,
+        )
+    ).label("locked")
+
     def fmt_slot_row_to_out(row) -> MySlotOut:
         ini = row.inicio.astimezone(ZoneInfo("America/Santiago"))
         fin = row.fin.astimezone(ZoneInfo("America/Santiago"))
@@ -152,6 +169,7 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
             status=db_to_ui_estado(row.estado),
             student=None,
             notes=row.notas,
+            locked=bool(getattr(row, "locked", False)),
         )
 
     @r.get("/create-data", response_model=CreateDataOut)
@@ -226,6 +244,7 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
                 RecursoModel.nombre.label("recurso_alias"),
                 EdificioModel.nombre.label("edificio"),
                 CampusModel.nombre.label("campus"),
+                locked_expr,
             )
             .join(ServicioModel, ServicioModel.id == CupoModel.servicio_id)
             .join(CategoriaModel, CategoriaModel.id == ServicioModel.categoria_id)
@@ -405,6 +424,7 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
                 RecursoModel.nombre.label("recurso_alias"),
                 EdificioModel.nombre.label("edificio"),
                 CampusModel.nombre.label("campus"),
+                locked_expr,
             )
             .join(ServicioModel, ServicioModel.id == CupoModel.servicio_id)
             .join(CategoriaModel, CategoriaModel.id == ServicioModel.categoria_id)
@@ -606,6 +626,7 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
                 RecursoModel.nombre.label("recurso_alias"),
                 EdificioModel.nombre.label("edificio"),
                 CampusModel.nombre.label("campus"),
+                locked_expr,
             )
             .join(ServicioModel, ServicioModel.id == CupoModel.servicio_id)
             .join(CategoriaModel, CategoriaModel.id == ServicioModel.categoria_id)
@@ -642,6 +663,23 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
         if slot.estado == EstadoCupo.RESERVADO:
             raise HTTPException(status_code=409, detail="No puedes eliminar un cupo reservado")
 
+        has_cancelled_asesoria = (
+            await session.execute(
+                sa.select(sa.literal(True))
+                .select_from(AsesoriaModel)
+                .where(
+                    AsesoriaModel.cupo_id == slot.id,
+                    AsesoriaModel.estado == EstadoAsesoria.CANCELADA,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if has_cancelled_asesoria:
+            raise HTTPException(
+                status_code=409,
+                detail="No puedes eliminar un cupo asociado a una asesoria cancelada",
+            )
+
         await session.delete(slot)
         await session.commit()
         return {"ok": True}
@@ -669,6 +707,23 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
             raise HTTPException(status_code=404, detail="Cupo no encontrado")
         if slot.estado == EstadoCupo.RESERVADO:
             raise HTTPException(status_code=409, detail="No puedes reactivar un reservado")
+
+        has_cancelled_asesoria = (
+            await session.execute(
+                sa.select(sa.literal(True))
+                .select_from(AsesoriaModel)
+                .where(
+                    AsesoriaModel.cupo_id == slot.id,
+                    AsesoriaModel.estado == EstadoAsesoria.CANCELADA,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if has_cancelled_asesoria:
+            raise HTTPException(
+                status_code=409,
+                detail="No puedes reactivar un cupo asociado a una asesoria cancelada",
+            )
 
         now_q = sa.func.now()
         too_late = (await session.execute(

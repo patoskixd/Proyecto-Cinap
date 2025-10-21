@@ -4,8 +4,13 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text, select
 
+from zoneinfo import ZoneInfo
+
 from app.interface_adapters.orm.models_scheduling import AsesorPerfilModel
 from app.use_cases.ports.confirmations_port import AdvisorConfirmationsRepo, PendingConfirmationDTO
+
+
+CL_TZ = ZoneInfo("America/Santiago")
 
 def _slugify_categoria(nombre: str) -> str:
     n = (nombre or "").strip().lower()
@@ -49,6 +54,7 @@ class SqlAlchemyAdvisorConfirmationsRepo(AdvisorConfirmationsRepo):
         out: list[PendingConfirmationDTO] = []
         for r in rows:
             inicio = r["inicio"]
+            inicio_local = inicio.astimezone(CL_TZ) if inicio.tzinfo else inicio
             category_label = r["categoria_nombre"] or ""
             category_slug = _slugify_categoria(category_label)
             location = " / ".join([x for x in [r["campus_nombre"], r["edificio_nombre"]] if x])
@@ -61,11 +67,11 @@ class SqlAlchemyAdvisorConfirmationsRepo(AdvisorConfirmationsRepo):
                 "serviceTitle": r["servicio_nombre"] or "",
                 "teacher": r["docente_nombre"] or "",
                 "teacherEmail": r["docente_email"] or "",
-                "dateISO": inicio.date().isoformat(),
-                "time": inicio.strftime("%H:%M"),
+                "dateISO": inicio_local.date().isoformat(),
+                "time": inicio_local.strftime("%H:%M"),
                 "location": location,
                 "room": room,
-                "createdAtISO": r["creado_en"].isoformat(),
+                "createdAtISO": (r["creado_en"].astimezone(CL_TZ).isoformat() if getattr(r["creado_en"], "tzinfo", None) else r["creado_en"].isoformat()),
                 "status": "pending",
             })
         return out

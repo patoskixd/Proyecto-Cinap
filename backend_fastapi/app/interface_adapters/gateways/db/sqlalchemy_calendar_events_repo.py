@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import uuid
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,14 +30,14 @@ class SqlAlchemyCalendarEventsRepo(CalendarEventsRepo):
                 logger.info(f"Usuario encontrado: {result}")
                 return result
             else:
-                logger.warning(f"No se encontró usuario en cache para channel_id: {channel_id}")
+                logger.warning(f"No se encontrÃ³ usuario en cache para channel_id: {channel_id}")
         else:
             logger.error("Cache no disponible")
         return None
 
     async def save_channel_owner(self, channel_id: str, usuario_id: str, resource_id: str | None = None) -> None:
         if self.cache:
-            # 24h por defecto (ajústalo si lo necesitas)
+            # 24h por defecto (ajÃºstalo si lo necesitas)
             await self.cache.set(f"gc:channel:{channel_id}", usuario_id.encode(), ttl_seconds=86_400)
 
     async def upsert_calendar_event(
@@ -47,7 +47,7 @@ class SqlAlchemyCalendarEventsRepo(CalendarEventsRepo):
         calendar_event_id: str,
         html_link: str | None
     ) -> None:
-        # Usar una aproximación más simple evitando el cast 
+        # Usar una aproximaciÃ³n mÃ¡s simple evitando el cast 
         import uuid
         
         # Primero buscar el user_identity_id
@@ -64,12 +64,12 @@ class SqlAlchemyCalendarEventsRepo(CalendarEventsRepo):
         if not user_identity_row:
             raise RuntimeError(
                 "No existe user_identity Google para el asesor organizador. "
-                "Conecta Google (provider='google') antes de crear asesorías."
+                "Conecta Google (provider='google') antes de crear asesorÃ­as."
             )
         
         user_identity_id = user_identity_row[0]
         
-        # Ahora hacer el upsert con parámetros simples
+        # Ahora hacer el upsert con parÃ¡metros simples
         sql = text("""
             INSERT INTO calendar_event (
                 asesoria_id,
@@ -100,7 +100,7 @@ class SqlAlchemyCalendarEventsRepo(CalendarEventsRepo):
         if res.rowcount in (0, None):
             raise RuntimeError(
                 "No existe user_identity Google para el asesor organizador. "
-                "Conecta Google (provider='google') antes de crear asesorías."
+                "Conecta Google (provider='google') antes de crear asesorÃ­as."
             )
 
         await self.s.commit()
@@ -127,7 +127,7 @@ class SqlAlchemyCalendarEventsRepo(CalendarEventsRepo):
         return [dict(r) for r in rows]
 
     async def list_pending_and_cancelled_for_organizer(self, organizer_usuario_id: str) -> list[dict]:
-        """Obtiene asesorías PENDIENTES y CANCELADAS para manejar re-aceptaciones"""
+        """Obtiene asesorÃ­as PENDIENTES y CANCELADAS para manejar re-aceptaciones"""
         sql = text("""
           SELECT
              a.id   AS asesoria_id,
@@ -147,67 +147,179 @@ class SqlAlchemyCalendarEventsRepo(CalendarEventsRepo):
         rows = (await self.s.execute(sql, {"org_uid": organizer_usuario_id})).mappings().all()
         return [dict(r) for r in rows]
 
+    async def get_calendar_payload(self, asesoria_id: str) -> Optional[dict]:
+        """
+        Regresa informaciÃ³n bÃ¡sica de Calendar y del docente para una asesorÃ­a.
+        """
+        sql = text("""
+            SELECT
+                ce.calendar_event_id   AS calendar_event_id,
+                ce.provider            AS provider,
+                ui.usuario_id          AS organizer_usuario_id,
+                a.cupo_id              AS cupo_id,
+                u.email                AS docente_email
+            FROM asesoria a
+            LEFT JOIN calendar_event ce ON ce.asesoria_id = a.id
+            LEFT JOIN user_identity ui  ON ui.id = ce.user_identity_id
+            JOIN docente_perfil dp      ON dp.id = a.docente_id
+            JOIN usuario u              ON u.id = dp.usuario_id
+            WHERE a.id = CAST(:id AS uuid)
+            ORDER BY ce.actualizado_en DESC NULLS LAST
+            LIMIT 1
+        """)
+        row = (await self.s.execute(sql, {"id": asesoria_id})).mappings().first()
+        return dict(row) if row else None
+
     async def mark_confirmed(self, asesoria_id: str) -> None:
+        # 1) AsesorÃ­a -> CONFIRMADA
         await self.s.execute(
             text("UPDATE asesoria SET estado = 'CONFIRMADA' WHERE id = CAST(:id AS uuid)"),
             {"id": asesoria_id}
         )
+
+        # 2) Cupo asociado -> RESERVADO (vÃ­a subconsulta; sirve tanto si venÃ­a CANCELADO como ABIERTO)
+        await self.s.execute(
+            text("""
+                UPDATE cupo
+                SET estado = 'RESERVADO'
+                WHERE id = (
+                    SELECT cupo_id
+                    FROM asesoria
+                    WHERE id = CAST(:id AS uuid)
+                )
+            """),
+            {"id": asesoria_id}
+        )
+
         await self.s.commit()
 
+
+    async def update_event_state(self, asesoria_id: str, new_state: str) -> None:
+        await self.s.execute(
+            text("""
+                UPDATE asesoria
+                SET estado = :state
+                WHERE id = CAST(:id AS uuid)
+            """),
+            {"id": asesoria_id, "state": new_state}
+        )
+
+        upper_state = (new_state or "").upper()
+        if upper_state == "CANCELADA":
+            await self.s.execute(
+                text("""
+                    UPDATE cupo
+                    SET estado = 'CANCELADO'
+                    WHERE id = (
+                        SELECT cupo_id FROM asesoria WHERE id = CAST(:id AS uuid)
+                    )
+                """),
+                {"id": asesoria_id}
+            )
+        elif upper_state == "CONFIRMADA":
+            await self.s.execute(
+                text("""
+                    UPDATE cupo
+                    SET estado = 'RESERVADO'
+                    WHERE id = (
+                        SELECT cupo_id FROM asesoria WHERE id = CAST(:id AS uuid)
+                    )
+                """),
+                {"id": asesoria_id}
+            )
+
+        await self.s.commit()
+
+
     async def mark_rejected_and_free_slot(self, asesoria_id: str, cupo_id) -> None:
-        import logging
+        import logging, uuid
         logger = logging.getLogger(__name__)
-        
-        logger.info(f"🔧 Marcando asesoría como cancelada: asesoria_id={asesoria_id}")
-        
-        # Solo actualizar asesoría a CANCELADA, NO liberar el cupo automáticamente
-        # El asesor decidirá manualmente qué hacer con el cupo desde su panel
-        result = await self.s.execute(
+
+        logger.info(f"ðŸ”§ Marcando asesorÃ­a como CANCELADA y cupo CANCELADO: asesoria_id={asesoria_id}, cupo_id={cupo_id}")
+
+        # 1) AsesorÃ­a -> CANCELADA
+        await self.s.execute(
             text("UPDATE asesoria SET estado = 'CANCELADA' WHERE id = CAST(:id AS uuid)"),
             {"id": asesoria_id}
         )
-        logger.info(f"📝 Asesoría cancelada: {result.rowcount} filas afectadas")
-        logger.info(f"ℹ️  Cupo permanece ocupado - asesor puede gestionarlo manualmente")
-        
-        await self.s.commit()
-        logger.info(f"✅ Transacción confirmada para asesoría {asesoria_id}")
 
-    async def delete_asesoria_and_free_slot(self, asesoria_id: str, cupo_id) -> None:
-        """Elimina la asesoría y libera el cupo cuando el asesor elimina el evento desde Google Calendar"""
-        import logging
+        # 2) Cupo -> CANCELADO (no liberar a ABIERTO)
+        cupo_uuid = uuid.UUID(cupo_id) if isinstance(cupo_id, str) else cupo_id
+        await self.s.execute(
+            update(CupoModel)
+            .where(CupoModel.id == cupo_uuid)
+            .values(estado="CANCELADO")
+        )
+
+        await self.s.commit()
+        logger.info(f"âœ… AsesorÃ­a {asesoria_id} en CANCELADA y cupo {cupo_id} en CANCELADO")
+
+
+    async def delete_asesoria_and_mark_cancelled(self, asesoria_id: str, cupo_id) -> None:
+        """
+        El asesor borrÃ³ el EVENTO en Google Calendar.
+        PolÃ­tica:
+        - No borrar la asesorÃ­a (se mantiene el histÃ³rico)
+        - asesoria -> CANCELADA
+        - cupo     -> CANCELADO
+        - borrar el calendar_event (desvincular de Google)
+        """
+        import logging, uuid
         logger = logging.getLogger(__name__)
-        
-        logger.info(f"🗑️ Eliminando asesoría: asesoria_id={asesoria_id}")
-        
-        # Eliminar el calendario event primero
+        logger.info(f"ðŸ—‘ï¸ Google: asesor eliminÃ³ evento. Normalizando estados: asesoria_id={asesoria_id}, cupo_id={cupo_id}")
+
+        # 1) Eliminar vÃ­nculo con Google (calendar_event)
         await self.s.execute(
             text("DELETE FROM calendar_event WHERE asesoria_id = CAST(:id AS uuid)"),
             {"id": asesoria_id}
         )
-        logger.info(f"📅 Calendar event eliminado")
-        
-        # Eliminar la asesoría
-        result = await self.s.execute(
-            text("DELETE FROM asesoria WHERE id = CAST(:id AS uuid)"),
+        logger.info("ðŸ“… calendar_event eliminado")
+
+        # 2) AsesorÃ­a -> CANCELADA (idempotente)
+        await self.s.execute(
+            text("""
+                UPDATE asesoria
+                SET estado = 'CANCELADA'
+                WHERE id = CAST(:id AS uuid)
+            """),
             {"id": asesoria_id}
         )
-        logger.info(f"🗑️ Asesoría eliminada: {result.rowcount} filas afectadas")
-        
-        # Liberar el cupo (marcar como ABIERTO)
-        if isinstance(cupo_id, str):
-            cupo_uuid = uuid.UUID(cupo_id)
-        else:
-            cupo_uuid = cupo_id  # Ya es UUID object
-            
-        result2 = await self.s.execute(
+        logger.info("ðŸ“ asesorÃ­a marcada como CANCELADA")
+
+        # 3) Cupo -> CANCELADO (idempotente)
+        cupo_uuid = uuid.UUID(cupo_id) if isinstance(cupo_id, str) else cupo_id
+        await self.s.execute(
             update(CupoModel)
             .where(CupoModel.id == cupo_uuid)
-            .values(estado="ABIERTO")
+            .values(estado="CANCELADO")
         )
-        logger.info(f"🔓 Cupo liberado: {result2.rowcount} filas afectadas")
-        
+        logger.info("ðŸš« cupo marcado como CANCELADO")
+
         await self.s.commit()
-        logger.info(f"✅ Asesoría {asesoria_id} eliminada completamente y cupo liberado")
+        logger.info("âœ… normalizaciÃ³n completada (asesorÃ­a CANCELADA, cupo CANCELADO, calendar_event borrado)")
+
+    async def mark_cancelled(self, asesoria_id: str) -> None:
+        await self.s.execute(
+            text(
+                "UPDATE asesoria SET estado = 'CANCELADA' WHERE id = CAST(:id AS uuid)"
+            ),
+            {"id": asesoria_id},
+        )
+        await self.s.execute(
+            text(
+                """
+                UPDATE cupo
+                SET estado = 'CANCELADO'
+                WHERE id = (
+                    SELECT cupo_id
+                    FROM asesoria
+                    WHERE id = CAST(:id AS uuid)
+                )
+                """
+            ),
+            {"id": asesoria_id},
+        )
+        await self.s.commit()
 
     async def get_channels_for_user(self, usuario_id: str) -> list[str]:
         """Obtiene los channel_ids configurados para un usuario"""
@@ -273,3 +385,6 @@ class SqlAlchemyCalendarEventsRepo(CalendarEventsRepo):
         
         rows = (await self.s.execute(sql)).mappings().all()
         return [dict(r) for r in rows]
+
+
+

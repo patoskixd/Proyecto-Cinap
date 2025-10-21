@@ -3,7 +3,7 @@ from typing import Callable, Optional
 import uuid
 import sqlalchemy as sa
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +41,13 @@ class AdvisorOut(BaseModel):
     services: list[ServiceOut]
     categories: list[str] | None = None
 
+class AdvisorsPageOut(BaseModel):
+    items: list[AdvisorOut]
+    page: int
+    per_page: int
+    total: int
+    pages: int
+
 class UpdateAdvisorServicesIn(BaseModel):
     service_ids: list[str]
 
@@ -59,41 +66,62 @@ def make_admin_advisors_router(*, get_session_dep: Callable[[], AsyncSession], j
         try: jwt_port.decode(token)
         except Exception: raise HTTPException(status_code=401, detail="Token inválido")
 
-    @r.get("/", response_model=list[AdvisorOut])
-    async def list_advisors(request: Request, session: AsyncSession = Depends(get_session_dep)):
+    @r.get("/", response_model=AdvisorsPageOut)
+    async def list_advisors(
+        request: Request,
+        page: int = Query(1, ge=1),
+        limit: int = Query(20, ge=1, le=200),
+        q: str | None = Query(None),
+        category_id: str | None = Query(None),
+        service_id: str | None = Query(None),
+        session: AsyncSession = Depends(get_session_dep),
+    ):
 
         rol_result = await session.execute(
             sa.select(RolModel).where(RolModel.nombre == "Asesor")
         )
         asesor_role = rol_result.scalar_one_or_none()
         if not asesor_role:
-            return []
-        
+            return AdvisorsPageOut(items=[], page=page, per_page=limit, total=0, pages=1)
+
 
         user_repo = SqlAlchemyUserRepo(session, default_role_id=asesor_role.id)
         asesor_repo = SqlAlchemyAsesorRepo(session, user_repo, asesor_role.id)
         use_case = ListAdvisorsUseCase(asesor_repo=asesor_repo)
         
-        advisors = await use_case.execute()
-        return [
-            AdvisorOut(
-                id=advisor.id,
-                usuario_id=advisor.usuario_id,
-                name=advisor.name,
-                email=advisor.email,
-                activo=advisor.activo,
-                services=[
-                    ServiceOut(
-                        id=service.id,
-                        name=service.name,
-                        category_id=service.category_id,
-                        category_name=service.category_name
-                    ) for service in advisor.services
-                ] if advisor.services else [],
-                categories=advisor.categories
-            )
-            for advisor in advisors
-        ]
+        page_data = await use_case.execute(
+            page=page,
+            limit=limit,
+            query=q,
+            category_id=category_id,
+            service_id=service_id,
+        )
+        return AdvisorsPageOut(
+            items=[
+                AdvisorOut(
+                    id=advisor.id,
+                    usuario_id=advisor.usuario_id,
+                    name=advisor.name,
+                    email=advisor.email,
+                    activo=advisor.activo,
+                    services=[
+                        ServiceOut(
+                            id=getattr(service, "id", "") or (service.get("id") if isinstance(service, dict) else ""),
+                            name=getattr(service, "name", "") or (service.get("name") if isinstance(service, dict) else ""),
+                            category_id=getattr(service, "category_id", "") or (service.get("category_id") if isinstance(service, dict) else ""),
+                            category_name=getattr(service, "category_name", "") or (service.get("category_name") if isinstance(service, dict) else ""),
+                        )
+                        for service in (advisor.services or [])
+                    ],
+                    categories=advisor.categories,
+                )
+                for advisor in page_data.items
+            ],
+            page=page_data.page,
+            per_page=page_data.per_page,
+            total=page_data.total,
+            pages=page_data.pages,
+        )
 
     @r.post("/", response_model=AdvisorOut)
     async def register_advisor(

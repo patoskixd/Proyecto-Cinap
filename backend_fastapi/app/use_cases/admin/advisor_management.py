@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Optional
 from app.use_cases.ports.asesor_repos import AsesorPerfilRepo
-from app.domain.auth.asesor_perfil import RegisterAdvisorRequest, AdvisorInfo
+from app.domain.auth.asesor_perfil import RegisterAdvisorRequest, AdvisorInfo, AdvisorPage
 
 @dataclass
 class RegisterAdvisorUseCase:
@@ -16,9 +16,23 @@ class ListAdvisorsUseCase:
     """Use case para listar todos los asesores"""
     asesor_repo: AsesorPerfilRepo
 
-    async def execute(self) -> List[AdvisorInfo]:
-        """Retorna la lista de todos los asesores registrados"""
-        return await self.asesor_repo.list_advisors()
+    async def execute(
+        self,
+        *,
+        page: int = 1,
+        limit: int = 20,
+        query: str | None = None,
+        category_id: str | None = None,
+        service_id: str | None = None,
+    ) -> AdvisorPage:
+        """Retorna la lista paginada de asesores registrados"""
+        return await self.asesor_repo.list_advisors_page(
+            page=page,
+            limit=limit,
+            query=query,
+            category_id=category_id,
+            service_id=service_id,
+        )
 
 @dataclass
 class GetAdvisorUseCase:

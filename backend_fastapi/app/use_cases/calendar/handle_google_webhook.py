@@ -141,7 +141,7 @@ class HandleGoogleWebhook:
                     logger.info(f"Evento eliminado por asesor para asesoría {asesoria_id}, eliminando asesoría y liberando cupo")
                     
                     try:
-                        await self.repo.delete_asesoria_and_free_slot(asesoria_id, cupo_id)
+                        await self.repo.delete_asesoria_and_mark_cancelled(asesoria_id, cupo_id)
                         print(f" ELIMINADA: Asesoría {asesoria_id} eliminada completamente y cupo liberado")
                         logger.info(f"Asesoría {asesoria_id} eliminada completamente por eliminación del evento")
                         synced += 1

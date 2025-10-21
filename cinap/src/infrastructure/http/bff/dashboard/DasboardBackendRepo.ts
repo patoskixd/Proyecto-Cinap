@@ -1,5 +1,17 @@
+// infrastructure/http/bff/dashboard/DashboardBackendRepo.ts
 import type { DashboardRepo, DashboardData, DashboardInput } from "@/application/dashboard/ports/DashboardRepo";
-import type { Role } from "@/domain/auth";
+
+type BackendApt = {
+  id: string;
+  inicio: string;   // ISO
+  fin?: string;     // ISO
+  servicio?: string;
+  docente?: string | null;
+  asesor?: string | null;
+  ubicacion?: string | null;
+  location?: string | null;
+  estado?: "confirmada" | "pendiente" | "CONFIRMADA" | "PENDIENTE";
+};
 
 export class DashboardBackendRepo implements DashboardRepo {
   private lastSetCookies: string[] = [];
@@ -35,30 +47,46 @@ export class DashboardBackendRepo implements DashboardRepo {
     try { return JSON.parse(txt) as T; } catch { throw new Error(txt || `HTTP ${res.status}`); }
   }
 
-  async getDashboard({ role, userId }: DashboardInput): Promise<DashboardData> {
-    // Mapear roles del frontend al backend
-    const roleMap: Record<Role, string> = {
-      'admin': 'Admin',
-      'advisor': 'Asesor', 
-      'teacher': 'Profesor'
+  // ---- helpers de mapeo ----
+  private toTime(iso?: string) {
+    if (!iso) return "--:--";
+    try { return new Date(iso).toLocaleTimeString("es-CL", { timeStyle: "short" }); } catch { return "--:--"; }
+  }
+
+  private toDateLabel(iso?: string) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const today = new Date();
+    const tomorrow = new Date(); tomorrow.setDate(today.getDate() + 1);
+    const same = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+    if (same(d, today)) return "Hoy";
+    if (same(d, tomorrow)) return "Mañana";
+    return d.toLocaleDateString("es-CL", { weekday: "short", day: "2-digit" })
+      .replace(/\.$/, ""); // quita punto en "jue."
+  }
+
+  private mapApt(a: BackendApt) {
+    const estado = (a.estado ?? "pendiente").toString().toLowerCase();
+    const status = estado.includes("confirm") ? "confirmada" as const : "pendiente" as const;
+
+    return {
+      id: a.id,
+      time: this.toTime(a.inicio),
+      dateLabel: this.toDateLabel(a.inicio),
+      title: a.servicio ?? "Asesoría",
+      // pasamos ambos nombres para que la UI los muestre según rol
+      teacherName: a.docente ?? undefined,
+      advisorName: a.asesor ?? undefined,
+      status,
+      location: a.ubicacion ?? a.location ?? "Por definir",
     };
+  }
 
-    const backendRole = roleMap[role];
-    if (!backendRole) {
-      throw new Error(`Rol no válido: ${role}`);
-    }
-
-    // Llamar al nuevo endpoint unificado /dashboard
-    const url = new URL(`${this.baseUrl}/dashboard`);
-    // No enviar el role como query parameter, dejar que el backend lo obtenga del JWT
-    // if (backendRole) {
-    //   url.searchParams.set("role", backendRole);
-    // }
-
-    const res = await fetch(url, {
-      method: "GET", 
-      headers: { 
-        cookie: this.cookie, 
+  async getDashboard({ role }: DashboardInput): Promise<DashboardData> {
+    const res = await fetch(`${this.baseUrl}/dashboard`, {
+      method: "GET",
+      headers: {
+        cookie: this.cookie,
         accept: "application/json",
         "Content-Type": "application/json"
       },
@@ -72,22 +100,27 @@ export class DashboardBackendRepo implements DashboardRepo {
       throw new Error(errorText || `HTTP ${res.status}: No se pudo cargar dashboard`);
     }
 
-    // Parsear respuesta del backend
-    const backendResponse = await this.parse<{
+    const backend = await this.parse<{
       success: boolean;
       data: any;
       role: string;
       user_id?: string;
     }>(res);
 
-    if (!backendResponse.success) {
-      throw new Error("Error en la respuesta del servidor");
-    }
+    if (!backend.success) throw new Error("Error en la respuesta del servidor");
+    const data = backend.data ?? {};
 
-    const { data } = backendResponse;
+    const roleNorm = (backend.role ?? role ?? "").toString().trim().toLowerCase();
+    const isAdmin = roleNorm === "admin";
 
-    // Transformar respuesta según el rol
-    if (role === "admin") {
+    // SOLO admin puede usar nextAppointmentsAll; el resto usa nextAppointments (filtrado por usuario)
+    const rawApts: BackendApt[] = isAdmin
+      ? (data.nextAppointmentsAll ?? data.nextAppointments ?? [])
+      : (data.nextAppointments ?? []);
+
+    const upcoming = rawApts.map(this.mapApt.bind(this));
+
+    if (isAdmin) {
       const adminMetrics = {
         advisorsTotal: data.advisorsTotal ?? 0,
         teachersTotal: data.teachersTotal ?? 0,
@@ -98,43 +131,23 @@ export class DashboardBackendRepo implements DashboardRepo {
       };
 
       return {
-        upcoming: [],
-        drafts: [],
+        upcoming,
         monthCount: adminMetrics.appointmentsThisMonth,
-        pendingCount: 0, // Para admin no necesitamos pendingCount específico
+        pendingCount: adminMetrics.pendingCount,
         isCalendarConnected: true,
         adminMetrics,
+        // Mantén el total que viene del back; sólo si no viene, cae al length
+        upcomingTotal: typeof data.upcomingTotal === "number" ? data.upcomingTotal : upcoming.length,
       };
     }
 
-    if (role === "advisor") {
-      return {
-        upcoming: data.nextAppointments?.map((apt: any) => ({
-          id: apt.id,
-          title: apt.servicio || "Asesoría",
-          start: apt.inicio,
-          end: apt.fin,
-          studentName: apt.docente || "Docente",
-          location: "Por definir",
-          status: "confirmed" as const
-        })) ?? [],
-        drafts: [],
-        monthCount: data.monthCount ?? 0,
-        pendingCount: data.pendingCount ?? 0,
-        isCalendarConnected: true,
-      };
-    }
-
-    if (role === "teacher") {
-      return {
-        upcoming: [],
-        drafts: [],
-        monthCount: data.monthCount ?? 0, // Ahora usar monthCount del backend
-        pendingCount: data.pendingCount ?? 0,
-        isCalendarConnected: true,
-      };
-    }
-
-    throw new Error(`Rol no implementado: ${role}`);
+    // Docente/Asesor => SIEMPRE datos personales
+    return {
+      upcoming,
+      monthCount: data.monthCount ?? 0,
+      pendingCount: data.pendingCount ?? 0,
+      isCalendarConnected: true,
+      upcomingTotal: typeof data.upcomingTotal === "number" ? data.upcomingTotal : upcoming.length,
+    };
   }
 }

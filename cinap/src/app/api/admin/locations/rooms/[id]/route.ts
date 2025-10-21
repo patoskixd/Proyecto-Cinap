@@ -8,34 +8,48 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const getCookieString = (req: NextRequest) => req.headers.get("cookie") ?? "";
-
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function PUT(req: NextRequest, ctx: Ctx) {
-  const { id } = await ctx.params;
-  const body = await req.json().catch(() => ({}));
-  const repo = new AdminLocationBackendRepo(getCookieString(req));
-  const data = await new UpdateRoom(repo).exec(id, body);
-  const resp = NextResponse.json(data, { status: 200 });
-  appendSetCookies(repo.getSetCookies?.() ?? [], resp);
-  return resp;
+  try {
+    const { id } = await ctx.params;
+    const body = await req.json().catch(() => ({}));
+    const repo = new AdminLocationBackendRepo(getCookieString(req));
+    const data = await new UpdateRoom(repo).exec(id, body);
+    const resp = NextResponse.json(data, { status: 200 });
+    appendSetCookies(repo.getSetCookies?.() ?? [], resp);
+    return resp;
+  } catch (e: any) {
+    const status = e?.status ?? 500;
+    return NextResponse.json({ detail: e?.detail ?? e?.message ?? "Error" }, { status });
+  }
 }
 
 export async function PATCH(req: NextRequest, ctx: Ctx) {
-  const { id } = await ctx.params;
-  const body = await req.json().catch(() => ({}));
-  const repo = new AdminLocationBackendRepo(getCookieString(req));
-  const data = await new UpdateRoom(repo).exec(id, body);
-  const resp = NextResponse.json(data, { status: 200 });
-  appendSetCookies(repo.getSetCookies?.() ?? [], resp);
-  return resp;
+  try {
+    const { id } = await ctx.params;
+    const body = await req.json().catch(() => ({}));
+    const repo = new AdminLocationBackendRepo(getCookieString(req));
+    const data = await new UpdateRoom(repo).exec(id, body);
+    const resp = NextResponse.json(data, { status: 200 });
+    appendSetCookies(repo.getSetCookies?.() ?? [], resp);
+    return resp;
+  } catch (e: any) {
+    const status = e?.status ?? 500;
+    return NextResponse.json({ detail: e?.detail ?? e?.message ?? "Error" }, { status });
+  }
 }
 
 export async function DELETE(req: NextRequest, ctx: Ctx) {
-  const { id } = await ctx.params;
-  const repo = new AdminLocationBackendRepo(getCookieString(req));
-  await new DeleteRoom(repo).exec(id);
-  const resp = NextResponse.json({ ok: true }, { status: 200 });
-  appendSetCookies(repo.getSetCookies?.() ?? [], resp);
-  return resp;
+  try {
+    const { id } = await ctx.params;
+    const repo = new AdminLocationBackendRepo(getCookieString(req));
+    await new DeleteRoom(repo).exec(id);
+    const resp = NextResponse.json({ ok: true }, { status: 200 });
+    appendSetCookies(repo.getSetCookies?.() ?? [], resp);
+    return resp;
+  } catch (e: any) {
+    const status = e?.status ?? 500;
+    return NextResponse.json({ detail: e?.detail ?? e?.message ?? "Error" }, { status });
+  }
 }

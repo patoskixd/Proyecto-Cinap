@@ -1,6 +1,14 @@
 from dataclasses import dataclass
 from .user import User
 
+@dataclass
+class TeacherPage:
+    items: list["TeacherInfo"]
+    page: int
+    per_page: int
+    total: int
+    pages: int
+
 @dataclass(frozen=True)
 class DocentePerfil:
     id: str

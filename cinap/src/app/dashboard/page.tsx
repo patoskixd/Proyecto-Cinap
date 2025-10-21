@@ -36,7 +36,6 @@ export default function DashboardPage() {
   if (!mounted) return null;
   if (!isAuthed) return null;
   if (!hasValidRole) return <div className="flex justify-center items-center min-h-screen">Cargando...</div>;
-  if (loading) return <div className="flex justify-center items-center min-h-screen">Cargando...</div>;
   if (error) return <div className="flex justify-center items-center min-h-screen text-red-600">{error}</div>;
 
   // En este punto, role está garantizado como válido por la validación hasValidRole

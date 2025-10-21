@@ -1,32 +1,98 @@
 // utils/parseError.ts
-// Normaliza errores de API/servidor a mensajes legibles.
-// Mapea violaciones de UNIQUE (duplicados) a textos en español.
+type DetailObj = {
+  message?: string;
+  code?: string;
+  errors?: any;
+  [k: string]: any;
+};
+
+function extractData(err: any): any {
+  // axios-style
+  if (err?.response?.data !== undefined) return err.response.data;
+  // fetch-style custom (ver más abajo)
+  if (err?.data !== undefined) return err.data;
+  // FastAPI error pasado directo
+  if (err?.detail !== undefined) return err.detail;
+  // algún wrapper raro
+  if (err?.body !== undefined) return err.body;
+  if (err?.payload !== undefined) return err.payload;
+  if (err?.error !== undefined) return err.error;
+  return undefined;
+}
 
 export function parseError(err: any): string {
   try {
-    const msg = err?.message ?? String(err ?? "");
-    const status = err?.status ?? err?.response?.status;
-    const data = err?.response?.data ?? err?.data ?? {};
-    const code = err?.code ?? data?.code;
-    const detail = data?.detail ?? err?.detail ?? "";
-    const full = [msg, detail].filter(Boolean).join(" ");
+    if (!err) return "Ha ocurrido un error.";
+    if (typeof err === "string") return err;
 
-    // Duplicados (Postgres 23505, o textos típicos)
-    if (code === "23505" || /unique|duplicad[oa]|already exists|ya existe/i.test(full)) {
-      if (/servicio|service/i.test(full)) return "Ya existe un servicio con ese nombre en esta categoría.";
-      if (/categor(i|í)a|category/i.test(full)) return "Ya existe una categoría con ese nombre.";
-      return "Ya existe un registro con esos datos.";
+    // Mensaje de Error estándar
+    if (err instanceof Error && err.message && err.message !== "Failed to fetch") {
+      // Ojo: "Failed to fetch" suele ser CORS/conectividad; lo tratamos más abajo.
+      return err.message;
     }
 
-    // Otras situaciones típicas
-    if (status === 400) return "Datos inválidos. Revisa los campos e inténtalo de nuevo.";
-    if (status === 404) return "El recurso no existe o fue eliminado.";
-    if (status === 409) return "Conflicto con los datos enviados.";
-    if (status === 500) return "Ocurrió un error en el servidor. Inténtalo más tarde.";
+    const data = extractData(err);
+
+    // FastAPI: detail puede ser string u objeto
+    const detail = data?.detail !== undefined ? data.detail : data;
+
+    // 1) detail string
+    if (typeof detail === "string" && detail.trim()) return detail.trim();
+
+    // 2) detail objeto con { message, code, errors }
+    if (detail && typeof detail === "object") {
+      const d = detail as DetailObj;
+
+      if (typeof d.message === "string" && d.message.trim()) return d.message.trim();
+
+      // Pydantic / FastAPI validation errors
+      if (Array.isArray(d) && d.length && typeof d[0]?.msg === "string") {
+        return d.map((e: any) => e.msg).join(", ");
+      }
+      if (!Array.isArray(d) && Array.isArray(d.errors) && d.errors.length) {
+        const msgs = d.errors
+          .map((e: any) => e?.message || e?.msg || JSON.stringify(e))
+          .filter(Boolean);
+        if (msgs.length) return msgs.join(", ");
+      }
+
+      // Códigos propios (los que te propuse en el backend)
+      if (!Array.isArray(d) && d.code) {
+        switch (d.code) {
+          case "DUPLICATE_CATEGORY_NAME":
+            return d.message || "Ya existe una categoría con ese nombre.";
+          case "DUPLICATE_SERVICE_NAME":
+            return d.message || "Ya existe un servicio con ese nombre en esa categoría.";
+          default:
+            return d.message || `Error: ${d.code}`;
+        }
+      }
+
+      // Si el objeto trae 'detail' anidado
+      if (!Array.isArray(d) && typeof d.detail === "string" && d.detail.trim()) return d.detail.trim();
+      if (!Array.isArray(d) && d.detail && typeof d.detail === "object") {
+        const inner = (d.detail.message || d.detail.msg || "").trim();
+        if (inner) return inner;
+      }
+    }
+
+    // 3) FastAPI: err.detail directamente
+    if (typeof err?.detail === "string" && err.detail.trim()) return err.detail.trim();
+
+    // 4) HTTP status genérico
+    if (err?.status) {
+      const st = `Error ${err.status}${err.statusText ? `: ${err.statusText}` : ""}`;
+      return st;
+    }
+
+    // 5) Network/CORS
+    if (err instanceof Error && err.message === "Failed to fetch") {
+      return "No se pudo conectar con el servidor.";
+    }
 
     // Fallback
-    return msg || "Algo salió mal. Intenta de nuevo.";
+    return "Error inesperado. Inténtalo de nuevo.";
   } catch {
-    return "Ocurrió un error inesperado.";
+    return "Error inesperado.";
   }
 }

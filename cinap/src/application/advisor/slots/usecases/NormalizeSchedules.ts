@@ -11,10 +11,9 @@ const toMin = (hhmm: string) => {
 
 
 const weekdayFromISO = (iso: string): WeekdayId | null => {
-
   const [y, m, d] = iso.split("-").map(Number);
   const dt = new Date(y, (m ?? 1) - 1, d ?? 1);
-  const js = dt.getDay(); 
+  const js = dt.getDay();
 
   const map: Array<WeekdayId | null> = [
     null,
@@ -33,8 +32,9 @@ export function normalizeSchedules(
 ): { merged: UIRule[]; errors: string[] } {
   const errors: string[] = [];
 
-  const byDate = new Map<string, UIRule>();    
-  const byWeekday = new Map<WeekdayId, UIRule>(); 
+  const byDate = new Map<string, UIRule[]>();
+  const byWeekday = new Map<WeekdayId, UIRule>();
+
   for (const r of rules) {
     const start = toMin(r.startTime);
     const end = toMin(r.endTime);
@@ -48,16 +48,25 @@ export function normalizeSchedules(
       if (!day) {
         continue;
       }
-      byDate.set(r.isoDate, { ...r, day });
+      const normalizedRule: UIRule = { ...r, isoDate: r.isoDate, day };
+      const list = byDate.get(r.isoDate) ?? [];
+      const existingIdx = list.findIndex(
+        (item) => item.startTime === normalizedRule.startTime && item.endTime === normalizedRule.endTime,
+      );
+      if (existingIdx >= 0) list[existingIdx] = normalizedRule;
+      else list.push(normalizedRule);
+      byDate.set(r.isoDate, list);
     } else {
       byWeekday.set(r.day, r);
     }
   }
 
   const merged: UIRule[] = [
-    ...Array.from(byDate.values()).sort((a, b) =>
-      (a.isoDate ?? "").localeCompare(b.isoDate ?? "")
-    ),
+    ...Array.from(byDate.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .flatMap(([, list]) =>
+        [...list].sort((a, b) => toMin(a.startTime) - toMin(b.startTime)),
+      ),
     ...Array.from(byWeekday.values()),
   ];
 
