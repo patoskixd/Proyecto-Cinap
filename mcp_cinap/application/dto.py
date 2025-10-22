@@ -9,7 +9,7 @@ class AvailabilityIn:
     start: datetime
     end: datetime
     page: int = 1
-    per_page: int = 10
+    per_page: int = 50
     asesor_id: Optional[UUID] = None
 
 @dataclass

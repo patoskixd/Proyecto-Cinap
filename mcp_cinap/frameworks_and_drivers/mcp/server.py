@@ -6,7 +6,7 @@ import httpx
 from mcp.server.fastmcp import FastMCP
 
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 from application.ports import Pagination, TimeRange
@@ -52,7 +52,7 @@ class CheckAvailabilityInput(BaseModel):
     end: datetime = Field(..., description="Término ISO8601 con TZ America/Santiago")
     advisor: Optional[str] = Field(None, description="Nombre o email del asesor (opcional)")
     page: int = Field(1, ge=1)
-    per_page: int = Field(10, ge=1, le=100)
+    per_page: int = Field(50, ge=1, le=100)
 
 class ListAsesoriasInput(BaseModel):
     start: datetime = Field(..., description="Inicio ISO8601 con TZ America/Santiago")
@@ -61,13 +61,13 @@ class ListAsesoriasInput(BaseModel):
     role: Literal["auto","docente","asesor"] = Field("auto")
     estado: Optional[str] = Field(None, description="PENDIENTE/CANCELADA/CONFIRMADA/REPROGRAMADA")
     page: int = Field(1, ge=1)
-    per_page: int = Field(10, ge=1, le=100)
+    per_page: int = Field(50, ge=1, le=100)
 
 class ScheduleAsesoriaInput(BaseModel):
     advisor: str = Field(..., description="Nombre o email del asesor")
     service: str = Field(..., description="Nombre del servicio")
     start: datetime = Field(..., description="Inicio ISO8601 con TZ (America/Santiago)")
-    end: datetime = Field(..., description="Fin ISO8601 con TZ (America/Santiago)")
+    end: Optional[datetime] = Field(None, description="(Opcional) Fin ISO8601 con TZ (America/Santiago)")
     origen: str = Field("chat", description="Origen de la reserva")
     notas: Optional[str] = Field(None, description="Notas opcionales")
     confirm: bool = Field(False, description="False=preview, True=ejecuta")
@@ -83,13 +83,13 @@ class CancelAsesoriaInput(BaseModel):
     advisor: Optional[str] = Field(None, description="(Docente) Nombre o email del asesor")
     service: Optional[str] = Field(None, description="(Docente, opcional) Nombre del servicio")
     start: datetime = Field(..., description="Inicio ISO con TZ America/Santiago")
-    end:   datetime = Field(..., description="Fin ISO con TZ America/Santiago")
+    end:   Optional[datetime] = Field(None, description="(Opcional) Fin ISO con TZ America/Santiago")
     confirm: bool = Field(False, description="False=preview, True=ejecuta")
     user_id: Optional[UUID] = Field(None, description="ID de usuario autenticado (JWT)")
 
 class ConfirmAsesoriaInput(BaseModel):
     start: datetime = Field(..., description="Inicio ISO con TZ America/Santiago")
-    end:   datetime = Field(..., description="Fin ISO con TZ America/Santiago")
+    end:   Optional[datetime] = Field(None, description="(Opcional) Fin ISO con TZ America/Santiago")
     advisor: str = Field(..., description="Nombre o email del asesor")
     confirm: bool = Field(False, description="False=preview, True=ejecuta")
     user_id: Optional[UUID] = Field(None, description="ID del usuario autenticado (JWT)")
@@ -264,11 +264,100 @@ def build_mcp() -> FastMCP:
             )) or []
 
             if not out:
-                msg = (
-                    f"No se encontraron cupos disponibles para el servicio '{svc_name}' "
-                    f"{f'con {adv_name} ' if adv_name else ''}en el rango indicado."
-                )
-                return {"ok": True, "say": msg}
+                from datetime import timedelta
+                delta = timedelta(days=7)
+
+                near_after = await CheckAvailability(uow).execute(AvailabilityIn(
+                    servicio_id=svc_id,
+                    asesor_id=adv_id,
+                    start=end,
+                    end=end + delta,
+                    page=1,
+                    per_page=10,
+                )) or []
+
+                near_before = await CheckAvailability(uow).execute(AvailabilityIn(
+                    servicio_id=svc_id,
+                    asesor_id=adv_id,
+                    start=start - delta,
+                    end=start,
+                    page=1,
+                    per_page=10,
+                )) or []
+
+                def _dist_seconds(slot):
+                    si, sf = _get(slot, "inicio"), _get(slot, "fin")
+                    d_after = (si - end).total_seconds() if si >= end else float("inf")
+                    d_before = (start - sf).total_seconds() if sf <= start else float("inf")
+                    return min(abs(d_after), abs(d_before))
+
+                merged = { str(_get(s,"id")): s for s in [*near_after, *near_before] }.values()
+                nearby_sorted = sorted(merged, key=_dist_seconds)[:10]
+
+                if not nearby_sorted:
+                    msg = (
+                        f"No se encontraron cupos disponibles para el servicio '{svc_name}' "
+                        f"{f'con {adv_name} ' if adv_name else ''}en el rango indicado."
+                    )
+                    return {"ok": True, "say": msg}
+
+                slot_ids_needing_aid = []
+                asesor_ids = set()
+                for s in nearby_sorted:
+                    aid = _get(s, "asesor_id")
+                    if aid: asesor_ids.add(aid)
+                    else:   slot_ids_needing_aid.append(_get(s, "id"))
+
+                if slot_ids_needing_aid:
+                    rows = (await uow.session.execute(
+                        select(CupoORM.id, CupoORM.asesor_id).where(CupoORM.id.in_(slot_ids_needing_aid))
+                    )).all()
+                    cupo_to_asesor = {r.id: r.asesor_id for r in rows}
+                else:
+                    cupo_to_asesor = {}
+
+                for s in nearby_sorted:
+                    if not _get(s, "asesor_id"):
+                        cupo_id = _get(s, "id")
+                        aid = cupo_to_asesor.get(cupo_id)
+                        if aid:
+                            asesor_ids.add(aid)
+
+                asesor_name_by_id: dict[str, str] = {}
+                if not adv_name and asesor_ids:
+                    rows = await uow.advisors.get_by_ids(list(asesor_ids))
+                    asesor_name_by_id = { str(r["id"]): r["nombre"] for r in rows }
+
+                items = []
+                for slot in nearby_sorted:
+                    s_id  = _get(slot, "id")
+                    s_ini = _get(slot, "inicio")
+                    s_fin = _get(slot, "fin")
+                    sid   = _get(slot, "servicio_id")
+                    aid   = _get(slot, "asesor_id") or cupo_to_asesor.get(s_id)
+                    slot_adv_name = adv_name or (asesor_name_by_id.get(str(aid)) if aid else None) or "Asesor"
+
+                    items.append({
+                        "id": str(s_id),
+                        "title": f"Cupo cercano — {svc_name}",
+                        "subtitle": slot_adv_name,
+                        "start": _fmt_local(s_ini),
+                        "end":   s_fin.astimezone(TZ_CL).strftime("%H:%M"),
+                        "servicio_id": str(sid),
+                        "asesor_id": str(aid) if aid else None,
+                    })
+
+                return {
+                    "ok": True,
+                    "say": (
+                        f"No hay cupos en el rango indicado, pero encontré opciones cercanas "
+                    ),
+                    "data": {
+                        "items": items,
+                        "nearby": True,
+                        "pagination": {"page": 1, "per_page": len(items), "has_more": False}
+                    }
+                }
 
             def _get(obj, name, default=None):
                 if isinstance(obj, dict): return obj.get(name, default)
@@ -438,8 +527,9 @@ def build_mcp() -> FastMCP:
     async def schedule_asesoria(input: ScheduleAsesoriaInput):
         try:
             start = input.start.astimezone(TZ_CL) if input.start.tzinfo else input.start.replace(tzinfo=TZ_CL)
-            end   = input.end.astimezone(TZ_CL)   if input.end.tzinfo   else input.end.replace(tzinfo=TZ_CL)
-            if start >= end:
+            end   = (input.end.astimezone(TZ_CL) if (input.end and input.end.tzinfo) else
+                    (input.end.replace(tzinfo=TZ_CL) if input.end else None))
+            if end is not None and start >= end:
                 return {"ok": False, "error": {"code": "VALIDATION", "message": "start debe ser anterior a end"}}
         except Exception as e:
             return {"ok": False, "error": {"code": "VALIDATION", "message": f"Fechas inválidas: {e}"}}
@@ -477,23 +567,59 @@ def build_mcp() -> FastMCP:
             asesor_refresh_token = await _google_refresh_token(uow.session, asesor_usuario_id)
             attendees = [docente_email] if docente_email else []
 
-            slots = await CheckAvailability(uow).execute(AvailabilityIn(
-                asesor_id=asesor_id, servicio_id=servicio_id,
-                start=start, end=end, page=1, per_page=50
-            ))
-            exact = [s for s in slots if s.inicio == start and s.fin == end]
-            chosen = exact[0] if exact else (slots[0] if slots else None)
+            chosen = None
+            all_tried_slots = []
+
+            from datetime import timedelta
+
+            if end is not None:
+                slots = await CheckAvailability(uow).execute(AvailabilityIn(
+                    asesor_id=asesor_id, servicio_id=servicio_id,
+                    start=start, end=end, page=1, per_page=50
+                )) or []
+                all_tried_slots.extend(slots)
+                exact = [s for s in slots if s.inicio == start and s.fin == end]
+                chosen = exact[0] if exact else (slots[0] if slots else None)
+            else:
+                end_candidates = [start + timedelta(minutes=30), start + timedelta(minutes=60)]
+                for ec in end_candidates:
+                    slots = await CheckAvailability(uow).execute(AvailabilityIn(
+                        asesor_id=asesor_id, servicio_id=servicio_id,
+                        start=start, end=ec, page=1, per_page=50
+                    )) or []
+                    all_tried_slots.extend(slots)
+                    exact = [s for s in slots if s.inicio == start and s.fin == ec]
+                    if exact:
+                        chosen = exact[0]
+                        break
+
+                if chosen is None:
+                    win_end = start + timedelta(hours=3)
+                    slots = await CheckAvailability(uow).execute(AvailabilityIn(
+                        asesor_id=asesor_id, servicio_id=servicio_id,
+                        start=start, end=win_end, page=1, per_page=50
+                    )) or []
+                    all_tried_slots.extend(slots)
+                    same_start = sorted([s for s in slots if s.inicio == start], key=lambda x: x.fin)
+                    chosen = same_start[0] if same_start else None
 
             if chosen is None:
-                alt_items = [{
-                    "id": str(s.id),
-                    "title": f"Cupo — {getattr(adv_win,'nombre','Asesor')} — {svc_win.nombre}",
-                    "start": s.inicio.astimezone(TZ_CL).isoformat(),
-                    "end":   s.fin.astimezone(TZ_CL).isoformat(),
-                    "servicio_id": str(s.servicio_id),
-                } for s in slots]
-                return {"ok": False, "error": {"code": "NO_SLOT", "message": "No hay cupo exacto para ese rango"},
-                        "data": {"alternatives": alt_items}}
+                seen = set()
+                alt = []
+                for s in all_tried_slots:
+                    sid = str(s.id)
+                    if sid in seen: 
+                        continue
+                    seen.add(sid)
+                    alt.append({
+                        "id": sid,
+                        "title": f"Cupo — {getattr(adv_win,'nombre','Asesor')} — {svc_win.nombre}",
+                        "start": s.inicio.astimezone(TZ_CL).isoformat(),
+                        "end":   s.fin.astimezone(TZ_CL).isoformat(),
+                        "servicio_id": str(s.servicio_id),
+                    })
+                return {"ok": False, "error": {"code": "NO_SLOT", "message": "No hay cupo exacto para ese inicio"},
+                        "data": {"alternatives": alt[:10]}}
 
             preview = {
                 "asesor": getattr(adv_win, "nombre", None) or "Asesor",
@@ -505,7 +631,10 @@ def build_mcp() -> FastMCP:
                 "notas": input.notas,
             }
             if not input.confirm:
-                say = f"¿Confirmas reservar con {preview['asesor']} ({preview['servicio']}) el {start:%Y-%m-%d %H:%M}–{end:%H:%M}?"
+                say = (
+                    f"¿Confirmas reservar con {preview['asesor']} ({preview['servicio']}) "
+                    f"el {_fmt_local(chosen.inicio)}–{chosen.fin.astimezone(TZ_CL).strftime('%H:%M')}?"
+                )
                 next_hint = {
                     "next_tool": "event_create",
                     "suggested_args": {
@@ -529,8 +658,10 @@ def build_mcp() -> FastMCP:
             uow.session.add(nueva)
             await uow.session.flush()
 
-            say = (f"Asesoría reservada: {svc_win.nombre} con {getattr(adv_win,'nombre','Asesor')} "
-                f"el {start:%Y-%m-%d %H:%M}–{end:%H:%M}.")
+            say = (
+                f"Asesoría reservada: {svc_win.nombre} con {getattr(adv_win,'nombre','Asesor')} "
+                f"el {_fmt_local(chosen.inicio)}–{chosen.fin.astimezone(TZ_CL).strftime('%H:%M')}."
+            )
             next_hint = {
                 "next_tool": "event_create",
                 "suggested_args": {
@@ -581,21 +712,28 @@ def build_mcp() -> FastMCP:
     @app.tool(
         name="cancel_asesoria",
         description=(
-            "Cancela una asesoría del usuario. Si el usuario es DOCENTE: indicar advisor (+service opcional) y el rango exacto "
-            "[start,end). Si el usuario es ASESOR: basta indicar el rango exacto, se usará su asesor_id. "
-            "Usa confirm=false para preview y confirm=true para ejecutar. No insertes user_id, dado que lo hace el backend. "
-            "La asesoría debe estar PENDIENTE. Al cancelar, el cupo queda CANCELADO. "
-            "Además, elimina vínculos locales de calendar_event y sugiere (next_hint) eliminar el evento en Google por id."
+            "Cancela una asesoría del usuario. Si el usuario es DOCENTE: indicar advisor (+service opcional) y el inicio exacto "
+            "(end opcional). Si el usuario es ASESOR: basta indicar el inicio exacto; se usará su asesor_id. "
+            "Si no se envía end, se asume duración 30m o 60m. "
+            "Usa confirm=false para preview y confirm=true para ejecutar. No insertes user_id, lo hace el backend. "
+            "La asesoría debe estar PENDIENTE o CONFIRMADA. Al cancelar, el cupo queda CANCELADO y se sugiere borrar el evento de Google."
         ),
     )
     async def cancel_asesoria(input: CancelAsesoriaInput):
         try:
             start = input.start.astimezone(TZ_CL) if input.start.tzinfo else input.start.replace(tzinfo=TZ_CL)
-            end   = input.end.astimezone(TZ_CL)   if input.end.tzinfo   else input.end.replace(tzinfo=TZ_CL)
-            if start >= end:
-                return {"ok": False, "error": {"code": "VALIDATION", "message": "start debe ser anterior a end"}}
+            if input.end is not None:
+                end = input.end.astimezone(TZ_CL) if input.end.tzinfo else input.end.replace(tzinfo=TZ_CL)
+                if start >= end:
+                    return {"ok": False, "error": {"code": "VALIDATION", "message": "start debe ser anterior a end"}}
+            else:
+                end = None
         except Exception as e:
             return {"ok": False, "error": {"code": "VALIDATION", "message": f"Fechas inválidas: {e}"}}
+
+        end_candidates = None
+        if end is None:
+            end_candidates = [start + timedelta(minutes=30), start + timedelta(hours=1)]
 
         async with SAUnitOfWork() as uow:
             if not input.user_id:
@@ -606,19 +744,48 @@ def build_mcp() -> FastMCP:
             if not my_docente_id and not my_asesor_id:
                 return {"ok": False, "error": {"code": "NO_ROLE", "message": "El usuario no es docente ni asesor"}}
 
+            servicio_id = None
+            if input.service:
+                svc_win, svc_cands = await ResolveService(uow.services).execute(ResolveServiceIn(query=input.service, limit=10))
+                if not svc_win:
+                    return {"ok": False, "error": {"code": "AmbiguousService", "message": "No se pudo resolver el servicio"},
+                            "candidates": [c.__dict__ for c in (svc_cands or [])]}
+                servicio_id = UUID(svc_win.id)
+
             force_docente = bool(input.advisor)
 
             # Asesor
-            if my_asesor_id and not force_docente:
-                cupo = (await uow.session.execute(
-                    select(CupoORM).where(
-                        CupoORM.asesor_id == my_asesor_id,
-                        CupoORM.inicio == start,
-                        CupoORM.fin == end,
-                    )
-                )).scalar_one_or_none()
-                if not cupo:
-                    return {"ok": False, "error": {"code": "CUP_NOT_FOUND", "message": "No existe un cupo exacto tuyo en ese rango"}}
+            if my_asesor_id and not force_docente and my_docente_id is None:
+                q = select(CupoORM).where(
+                    CupoORM.asesor_id == my_asesor_id,
+                    CupoORM.inicio == start,
+                )
+                if servicio_id:
+                    q = q.where(CupoORM.servicio_id == servicio_id)
+                if end is not None:
+                    q = q.where(CupoORM.fin == end)
+                else:
+                    q = q.where(CupoORM.fin.in_(end_candidates))
+
+                cupos = (await uow.session.execute(q)).scalars().all()
+                if not cupos:
+                    return {"ok": False, "error": {"code": "CUP_NOT_FOUND", "message": "No existe un cupo tuyo que comience en ese horario"}}
+                if len(cupos) > 1 and servicio_id is None:
+                    svc_rows = (await uow.session.execute(
+                        select(ServicioORM.id, ServicioORM.nombre).where(ServicioORM.id.in_([c.servicio_id for c in cupos]))
+                    )).all()
+                    svc_name_by_id = {r.id: r.nombre for r in svc_rows}
+                    return {
+                        "ok": False,
+                        "error": {"code": "AmbiguousServiceAtTime", "message": "Hay varios servicios a esa hora"},
+                        "candidates": [
+                            {"id": str(c.servicio_id),
+                            "nombre": svc_name_by_id.get(c.servicio_id, "Servicio"),
+                            "fin": c.fin.astimezone(TZ_CL).isoformat()}
+                            for c in cupos
+                        ],
+                    }
+                cupo = cupos[0]
 
                 asesoria = (await uow.session.execute(
                     select(AsesoriaORM).where(
@@ -628,8 +795,8 @@ def build_mcp() -> FastMCP:
                 )).scalar_one_or_none()
                 if not asesoria:
                     return {"ok": False, "error": {"code": "APPT_NOT_FOUND", "message": "No hay asesoría pendiente o confirmada en ese cupo"}}
-                
-                asesor_usuario_id, _asesor_email = await _asesor_usuario_y_email(uow.session, cupo.asesor_id)
+
+                asesor_usuario_id, _ = await _asesor_usuario_y_email(uow.session, cupo.asesor_id)
                 asesor_refresh_token = await _google_refresh_token(uow.session, asesor_usuario_id)
 
                 cal_rows = (await uow.session.execute(
@@ -652,8 +819,8 @@ def build_mcp() -> FastMCP:
                     "asesor_id": str(my_asesor_id),
                     "asesoria_id": str(asesoria.id),
                     "cupo_id": str(cupo.id),
-                    "inicio": start.isoformat(),
-                    "fin": end.isoformat(),
+                    "inicio": cupo.inicio.astimezone(TZ_CL).isoformat(),
+                    "fin": cupo.fin.astimezone(TZ_CL).isoformat(),
                     "calendar_event_matches": [
                         {
                             "row_id": str(r.id),
@@ -680,7 +847,7 @@ def build_mcp() -> FastMCP:
                 await uow.session.flush()
                 await uow.session.commit()
 
-                say = "Asesoría cancelada y cupo cancelado"
+                say = "Asesoría cancelada y cupo cancelado."
                 next_hint = (next_hints[0] if len(next_hints) == 1 else next_hints) or None
                 return {
                     "ok": True,
@@ -708,39 +875,38 @@ def build_mcp() -> FastMCP:
                             "candidates": [c.__dict__ for c in (adv_cands or [])]}
                 asesor_id = UUID(adv_win.id)
 
-                servicio_id = None
-                if input.service:
-                    svc_win, svc_cands = await ResolveService(uow.services).execute(
-                        ResolveServiceIn(query=input.service, limit=10)
-                    )
-                    if not svc_win:
-                        return {"ok": False, "error": {"code": "AmbiguousService", "message": "No se pudo resolver el servicio"},
-                                "candidates": [c.__dict__ for c in (svc_cands or [])]}
-                    servicio_id = UUID(svc_win.id)
-
                 q = select(CupoORM).where(
                     CupoORM.asesor_id == asesor_id,
                     CupoORM.inicio == start,
-                    CupoORM.fin == end,
                 )
                 if servicio_id:
                     q = q.where(CupoORM.servicio_id == servicio_id)
+                if end is not None:
+                    q = q.where(CupoORM.fin == end)
+                else:
+                    q = q.where(CupoORM.fin.in_(end_candidates))
+
                 cupos = (await uow.session.execute(q)).scalars().all()
                 if not cupos:
-                    return {"ok": False, "error": {"code": "CUP_NOT_FOUND", "message": "No existe un cupo exacto para ese rango"}}
-                if len(cupos) > 1 and not servicio_id:
+                    return {"ok": False, "error": {"code": "CUP_NOT_FOUND", "message": "No existe un cupo que comience a esa hora"}}
+                if len(cupos) > 1 and servicio_id is None:
                     svc_rows = (await uow.session.execute(
-                        select(ServicioORM.id, ServicioORM.nombre).where(
-                            ServicioORM.id.in_([c.servicio_id for c in cupos])
-                        )
+                        select(ServicioORM.id, ServicioORM.nombre).where(ServicioORM.id.in_([c.servicio_id for c in cupos]))
                     )).all()
+                    svc_name_by_id = {r.id: r.nombre for r in svc_rows}
                     return {
                         "ok": False,
-                        "error": {"code": "AmbiguousServiceAtTime", "message": "Hay varios servicios en ese horario para el asesor"},
-                        "candidates": [{"id": str(r.id), "nombre": r.nombre} for r in svc_rows],
+                        "error": {"code": "AmbiguousServiceAtTime", "message": "Hay varios servicios a esa hora para el asesor"},
+                        "candidates": [
+                            {"id": str(c.servicio_id),
+                            "nombre": svc_name_by_id.get(c.servicio_id, "Servicio"),
+                            "fin": c.fin.astimezone(TZ_CL).isoformat()}
+                            for c in cupos
+                        ],
                     }
 
                 cupo = cupos[0]
+
                 asesoria = (await uow.session.execute(
                     select(AsesoriaORM).where(
                         AsesoriaORM.cupo_id == cupo.id,
@@ -750,13 +916,14 @@ def build_mcp() -> FastMCP:
                 )).scalar_one_or_none()
                 if not asesoria:
                     return {"ok": False, "error": {"code": "APPT_NOT_FOUND", "message": "No hay una asesoría pendiente o confirmada tuya en ese cupo"}}
-                
-                asesor_usuario_id, _asesor_email = await _asesor_usuario_y_email(uow.session, cupo.asesor_id)
+
+                asesor_usuario_id, _ = await _asesor_usuario_y_email(uow.session, cupo.asesor_id)
                 asesor_refresh_token = await _google_refresh_token(uow.session, asesor_usuario_id)
 
                 cal_rows = (await uow.session.execute(
                     select(CalendarEventORM).where(CalendarEventORM.asesoria_id == asesoria.id)
                 )).scalars().all()
+
                 next_hints = [
                     {
                         "next_tool": "event_delete_by_id",
@@ -773,8 +940,8 @@ def build_mcp() -> FastMCP:
                     "advisor_id": str(asesor_id),
                     "asesoria_id": str(asesoria.id),
                     "cupo_id": str(cupo.id),
-                    "inicio": start.isoformat(),
-                    "fin": end.isoformat(),
+                    "inicio": cupo.inicio.astimezone(TZ_CL).isoformat(),
+                    "fin": cupo.fin.astimezone(TZ_CL).isoformat(),
                     "calendar_event_matches": [
                         {
                             "row_id": str(r.id),
@@ -801,7 +968,7 @@ def build_mcp() -> FastMCP:
                 await uow.session.flush()
                 await uow.session.commit()
 
-                say = "Asesoría cancelada y cupo cancelado"
+                say = "Asesoría cancelada y cupo cancelado."
                 next_hint = (next_hints[0] if len(next_hints) == 1 else next_hints) or None
                 return {
                     "ok": True,
@@ -821,17 +988,21 @@ def build_mcp() -> FastMCP:
     @app.tool(
         name="confirm_asesoria",
         description=(
-            "Confirma la asistencia del docente a su asesoría (rango exacto [start,end) + advisor), "
+            "Confirma la asistencia del docente a su asesoría (start obligatorio, end opcional, + advisor), "
             "cambiando estado a CONFIRMADA. Devuelve hints para marcar asistencia (responseStatus=accepted) "
             "en Google Calendar del docente autenticado."
         ),
     )
     async def confirm_asesoria(input: ConfirmAsesoriaInput):
+        from datetime import timedelta
+
         try:
             start = input.start.astimezone(TZ_CL) if input.start.tzinfo else input.start.replace(tzinfo=TZ_CL)
-            end   = input.end.astimezone(TZ_CL)   if input.end.tzinfo   else input.end.replace(tzinfo=TZ_CL)
-            if start >= end:
-                return {"ok": False, "error": {"code": "VALIDATION", "message": "start debe ser anterior a end"}}
+            end = None
+            if input.end is not None:
+                end = input.end.astimezone(TZ_CL) if input.end.tzinfo else input.end.replace(tzinfo=TZ_CL)
+                if start >= end:
+                    return {"ok": False, "error": {"code": "VALIDATION", "message": "start debe ser anterior a end"}}
         except Exception as e:
             return {"ok": False, "error": {"code": "VALIDATION", "message": f"Fechas inválidas: {e}"}}
 
@@ -843,10 +1014,7 @@ def build_mcp() -> FastMCP:
             my_docente_id, my_asesor_id = profs.get("docente_id"), profs.get("asesor_id")
 
             if my_asesor_id and not my_docente_id:
-                return {
-                    "ok": False,
-                    "error": {"code": "FORBIDDEN_ROLE", "message": "La asistencia debe ser confirmada por el DOCENTE."}
-                }
+                return {"ok": False, "error": {"code": "FORBIDDEN_ROLE", "message": "La asistencia debe ser confirmada por el DOCENTE."}}
             if not my_docente_id:
                 return {"ok": False, "error": {"code": "NO_ROLE", "message": "El usuario no tiene perfil docente activo"}}
 
@@ -854,36 +1022,49 @@ def build_mcp() -> FastMCP:
             docente_email = await _get_usuario_email(uow.session, docente_usuario_id)
             docente_refresh_token = await _google_refresh_token(uow.session, docente_usuario_id)
 
-            adv_win, adv_cands = await ResolveAdvisor(uow.advisors).execute(
-                ResolveAdvisorIn(query=input.advisor, limit=10)
-            )
+            adv_win, adv_cands = await ResolveAdvisor(uow.advisors).execute(ResolveAdvisorIn(query=input.advisor, limit=10))
             if not adv_win:
                 return {"ok": False, "error": {"code": "AmbiguousAdvisor", "message": "No se pudo resolver el asesor"},
                         "candidates": [c.__dict__ for c in (adv_cands or [])]}
             asesor_id = UUID(adv_win.id)
 
-            cupos = (await uow.session.execute(
-                select(CupoORM).where(
-                    CupoORM.asesor_id == asesor_id,
-                    CupoORM.inicio == start,
-                    CupoORM.fin == end,
-                )
-            )).scalars().all()
+            base_q = select(CupoORM).where(
+                CupoORM.asesor_id == asesor_id,
+                CupoORM.inicio == start,
+            )
+
+            if end is None:
+                candidate_ends = [start + timedelta(minutes=30), start + timedelta(minutes=60)]
+                q = base_q.where(CupoORM.fin.in_(candidate_ends))
+            else:
+                q = base_q.where(CupoORM.fin == end)
+
+            cupos = (await uow.session.execute(q)).scalars().all()
+
             if not cupos:
+                if end is None:
+                    return {"ok": False, "error": {"code": "CUP_NOT_FOUND", "message": "No existe un cupo que comience a esa hora (30m/60m)."}}
                 return {"ok": False, "error": {"code": "CUP_NOT_FOUND", "message": "No existe un cupo exacto para ese rango"}}
-            if len(cupos) > 1:
+
+            if len(cupos) > 1 and end is None:
                 svc_rows = (await uow.session.execute(
-                    select(ServicioORM.id, ServicioORM.nombre).where(
-                        ServicioORM.id.in_([c.servicio_id for c in cupos])
-                    )
+                    select(ServicioORM.id, ServicioORM.nombre).where(ServicioORM.id.in_([c.servicio_id for c in cupos]))
                 )).all()
+                svc_map = {r.id: r.nombre for r in svc_rows}
+                candidates = [
+                    {"servicio_id": str(c.servicio_id), "servicio": svc_map.get(c.servicio_id, "Servicio"),
+                    "fin": c.fin.astimezone(TZ_CL).isoformat()}
+                    for c in cupos
+                ]
                 return {
                     "ok": False,
-                    "error": {"code": "AmbiguousServiceAtTime", "message": "Hay varios servicios en ese horario para el asesor"},
-                    "candidates": [{"id": str(r.id), "nombre": r.nombre} for r in svc_rows],
+                    "error": {"code": "AmbiguousDurationOrService", "message": "Hay más de un cupo a esa hora (30m/60m o varios servicios)."},
+                    "candidates": candidates,
                 }
 
             cupo = cupos[0]
+            if end is None:
+                end = cupo.fin
 
             asesoria = (await uow.session.execute(
                 select(AsesoriaORM).where(
@@ -912,7 +1093,7 @@ def build_mcp() -> FastMCP:
             ] or None
 
             if asesoria.estado == EstadoAsesoria.CONFIRMADA:
-                say = "La asesoría ya estaba CONFIRMADA."
+                say = "La asesoría ya estaba confirmada."
                 return {
                     "ok": True,
                     "say": say,
@@ -943,7 +1124,7 @@ def build_mcp() -> FastMCP:
                 ],
             }
             if not input.confirm:
-                say = "¿Confirmas tu asistencia a la asesoría?"
+                say = f"¿Confirmas tu asistencia a la asesoría del {_fmt_local(start)}–{end.astimezone(TZ_CL).strftime('%H:%M')}?"
                 return {
                     "ok": True,
                     "say": say,
@@ -954,7 +1135,7 @@ def build_mcp() -> FastMCP:
             await uow.session.flush()
             await uow.session.commit()
 
-            say = "Asistencia confirmada"
+            say = "Asistencia confirmada."
             return {
                 "ok": True,
                 "say": say,
