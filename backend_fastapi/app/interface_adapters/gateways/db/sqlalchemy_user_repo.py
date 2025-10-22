@@ -75,7 +75,7 @@ class SqlAlchemyUserRepo(UserRepo):
         return (await self.session.execute(q)).scalar_one_or_none()
 
 
-    async def get_refresh_token_by_usuario_id(self, usuario_id: str) -> Optional[str]:
+    async def get_refresh_token_by_usuario_id(self, usuario_id: str, provider: str = "google") -> Optional[str]:
         try:
             uid = uuid.UUID(usuario_id)
         except Exception:
@@ -83,7 +83,7 @@ class SqlAlchemyUserRepo(UserRepo):
         q = (
             select(UserIdentityModel.refresh_token_hash)  
             .where(UserIdentityModel.usuario_id == uid)
-            .where(UserIdentityModel.provider == "google")
+            .where(UserIdentityModel.provider == provider)
             .limit(1)
         )
         return (await self.session.execute(q)).scalar_one_or_none()

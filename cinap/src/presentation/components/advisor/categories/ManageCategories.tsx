@@ -37,39 +37,37 @@ export default function AdvisorCategories() {
 
   if (loading) {
     return (
-      <div className="py-6">
-        {/* Header loading actualizado */}
-        <div className="mb-6">
-          <section className="rounded-2xl bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 p-6 md:p-8 shadow-[0_10px_30px_rgba(37,99,235,0.15)] animate-pulse">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="flex-1">
-                <div className="h-8 bg-white/20 rounded-lg w-96 mb-2"></div>
-                <div className="h-4 bg-blue-100/40 rounded w-80"></div>
-              </div>
+      <div className="py-6 space-y-6">
+        <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-yellow-50/20 p-6 shadow-lg backdrop-blur-sm md:p-8">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-blue-900">Catálogo de categorías y servicios</h1>
+              <p className="mt-1 text-blue-700">Visualiza las categorías y servicios asociados a tu perfil.</p>
             </div>
-          </section>
+            <div className="flex items-center gap-3 text-blue-700">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+              <span className="font-medium">Cargando información…</span>
+            </div>
+          </div>
         </div>
 
-        {/* Loading state para Stats */}
-        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="bg-white rounded-2xl shadow-lg border p-6 transition-all duration-200">
-              <div className="text-3xl font-bold text-gray-300 mb-2">--</div>
-              <div className="text-sm font-medium text-gray-400">Cargando...</div>
-            </div>
-          ))}
+        <div className="rounded-2xl bg-white shadow-lg ring-1 ring-blue-100 p-8 text-center">
+          <div className="flex flex-col items-center gap-3 text-blue-700">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+            <p className="text-sm font-medium">Preparando resumen del catálogo…</p>
+            <p className="text-xs text-blue-600/80">Obteniendo tus categorías y servicios activos.</p>
+          </div>
         </div>
 
-        {/* Loading state para Secciones */}
         <SectionCard
           title="Mis categorías activas"
           subtitle="Servicios en los que actualmente ofreces asesorías"
           className="mt-6"
         >
-          <div className="rounded-2xl bg-white p-8 text-center border border-gray-200">
-            <div className="flex items-center justify-center gap-3">
-              <div className="w-6 h-6 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-              <span className="text-blue-700 font-medium">Cargando categorías...</span>
+          <div className="flex items-center justify-center py-12">
+            <div className="flex flex-col items-center gap-3">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+              <p className="text-sm font-medium text-blue-700">Cargando categorías activas…</p>
             </div>
           </div>
         </SectionCard>
@@ -79,10 +77,10 @@ export default function AdvisorCategories() {
           subtitle="Consulta servicios disponibles en otras categorías"
           className="mt-8"
         >
-          <div className="rounded-2xl bg-white p-8 text-center border border-gray-200">
-            <div className="flex items-center justify-center gap-3">
-              <div className="w-6 h-6 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-              <span className="text-blue-700 font-medium">Cargando categorías...</span>
+          <div className="flex items-center justify-center py-12">
+            <div className="flex flex-col items-center gap-3">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+              <p className="text-sm font-medium text-blue-700">Cargando otras categorías…</p>
             </div>
           </div>
         </SectionCard>
@@ -204,3 +202,4 @@ export default function AdvisorCategories() {
     </div>
   );
 }
+

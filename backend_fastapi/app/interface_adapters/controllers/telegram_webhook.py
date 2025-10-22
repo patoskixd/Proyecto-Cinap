@@ -1,6 +1,6 @@
 from __future__ import annotations
 import base64 
-import json, os, time, logging, asyncio, hashlib, re, subprocess, shlex, tempfile, shutil
+import json, os, time, logging, asyncio, hashlib, re, subprocess, shlex, tempfile, shutil, uuid as uuidlib
 try:
     import dateparser
 except Exception:
@@ -8,6 +8,7 @@ except Exception:
 
 from fastapi import APIRouter, Request, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+import sqlalchemy as sa
 import httpx
 
 try:
@@ -29,6 +30,8 @@ from app.use_cases.telegram.link_account import LinkTelegramAccount
 from app.frameworks_drivers.config.settings import (
     ASR_BASE_URL, ASR_MODEL_NAME, ASR_API_KEY, ASR_LANG,
 )
+from app.interface_adapters.orm.models_docente import DocentePerfilModel
+from app.interface_adapters.orm.models_scheduling import AsesorPerfilModel
 from datetime import datetime
 from datetime import datetime, timedelta
 
@@ -1552,6 +1555,121 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
 
     bot = OptimizedTelegramBot()
 
+    def _normalize_role_name(role: str | None) -> str | None:
+        if not role:
+            return None
+        r = role.strip().lower()
+        if "admin" in r:
+            return "admin"
+        if "asesor" in r or "advisor" in r:
+            return "advisor"
+        if "docente" in r or "profesor" in r or "teacher" in r:
+            return "teacher"
+        return r
+
+    def _role_allows_confirm(role: str | None) -> bool:
+        return _normalize_role_name(role) == "teacher"
+
+    def _role_allows_cancel(role: str | None) -> bool:
+        normalized = _normalize_role_name(role)
+        return normalized in {"teacher", "advisor", "admin"}
+
+    async def _user_has_profile(session, model, user_id: str) -> bool:
+        if not user_id:
+            return False
+        try:
+            uid = uuidlib.UUID(str(user_id))
+        except Exception:
+            return False
+        try:
+            stmt = sa.select(model.usuario_id).where(model.usuario_id == uid).limit(1)
+            res = await session.execute(stmt)
+            return res.first() is not None
+        except Exception as e:
+            log.debug(f"profile lookup failed for {model.__tablename__}: {e}")
+            return False
+
+    async def _derive_effective_role(session, user_id: str | None, base_role: str | None) -> str | None:
+        normalized = _normalize_role_name(base_role)
+        if not user_id:
+            return normalized
+        if normalized == "admin":
+            return "admin"
+        has_docente = await _user_has_profile(session, DocentePerfilModel, user_id)
+        if has_docente:
+            return "teacher"
+        has_asesor = await _user_has_profile(session, AsesorPerfilModel, user_id)
+        if has_asesor:
+            return "advisor"
+        return normalized
+
+    async def _get_role_cached(*, chat_id: int | None = None, telegram_user_id: int | None = None, user_id: str | None = None) -> str | None:
+        if not cache:
+            return None
+        keys = []
+        if chat_id is not None:
+            keys.append(f"role_by_chat:{chat_id}")
+        if telegram_user_id is not None:
+            keys.append(f"role_by_tgid:{telegram_user_id}")
+        if user_id is not None:
+            keys.append(f"role_by_user:{user_id}")
+        for key in keys:
+            try:
+                value = await cache.get(key)
+                if value:
+                    return value.decode("utf-8")
+            except Exception:
+                pass
+        return None
+
+    async def _ensure_role_cached(session, cache, *, user_id: str | None, chat_id: int | None = None,
+                                  telegram_user_id: int | None = None, force_refresh: bool = False) -> str | None:
+        if not user_id:
+            return None
+        cached_role = None
+        if not force_refresh:
+            cached_role = await _get_role_cached(chat_id=chat_id, telegram_user_id=telegram_user_id, user_id=user_id)
+            if cached_role:
+                if cache:
+                    role_bytes = cached_role.encode("utf-8")
+                    try:
+                        if chat_id is not None:
+                            await cache.set(f"role_by_chat:{chat_id}", role_bytes, ttl_seconds=86400)
+                        if telegram_user_id is not None:
+                            await cache.set(f"role_by_tgid:{telegram_user_id}", role_bytes, ttl_seconds=86400)
+                    except Exception:
+                        pass
+                return cached_role
+        try:
+            from app.interface_adapters.gateways.db.sqlalchemy_user_repo import SqlAlchemyUserRepo
+            user_repo = SqlAlchemyUserRepo(session, default_role_id=None)
+            base_role = await user_repo.get_role_name(user_id)
+        except Exception as e:
+            log.warning(f"Role lookup failed: {e}")
+            base_role = None
+
+        effective_role = await _derive_effective_role(session, user_id, base_role)
+        role_to_store = effective_role or base_role
+        if boost := _normalize_role_name(role_to_store):
+            if boost in {"teacher", "advisor", "admin"}:
+                role_to_store = boost
+
+        if role_to_store and cache:
+            role_bytes = str(role_to_store).encode("utf-8")
+            try:
+                await cache.set(f"role_by_user:{user_id}", role_bytes, ttl_seconds=86400)
+                if chat_id is not None:
+                    await cache.set(f"role_by_chat:{chat_id}", role_bytes, ttl_seconds=86400)
+                if telegram_user_id is not None:
+                    await cache.set(f"role_by_tgid:{telegram_user_id}", role_bytes, ttl_seconds=86400)
+            except Exception:
+                pass
+        try:
+            log.info(f"role_resolved user_id={user_id} base={base_role} effective={effective_role} stored={role_to_store} force={force_refresh}")
+        except Exception:
+            pass
+        return role_to_store
+
     async def _get_user_id_cached(chat_id: int) -> str | None:
         if not cache:
             return None
@@ -1573,7 +1691,9 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
             try:
                 b = await cache.get(f"user_by_chat:{chat_id}")
                 if b:
-                    return b.decode("utf-8")
+                    uid_cached = b.decode("utf-8")
+                    await _ensure_role_cached(session, cache, user_id=uid_cached, chat_id=chat_id, telegram_user_id=telegram_user_id, force_refresh=True)
+                    return uid_cached
             except Exception:
                 pass
 
@@ -1583,6 +1703,7 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                 b = await cache.get(f"user_by_tgid:{telegram_user_id}")
                 if b:
                     uid = b.decode("utf-8")
+                    await _ensure_role_cached(session, cache, user_id=uid, chat_id=chat_id, telegram_user_id=telegram_user_id, force_refresh=True)
             except Exception:
                 pass
 
@@ -1605,6 +1726,18 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                     await cache.set(f"user_by_tgid:{telegram_user_id}", uid.encode("utf-8"), ttl_seconds=86400)
             except Exception:
                 pass
+
+        if uid:
+            try:
+                await _ensure_role_cached(
+                    session, cache,
+                    user_id=uid,
+                    chat_id=chat_id,
+                    telegram_user_id=telegram_user_id,
+                    force_refresh=True
+                )
+            except Exception as e:
+                log.warning(f"ensure role cache failed: {e}")
 
         return uid
 
@@ -1817,31 +1950,8 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
         st = _first(it, "estado", "status", "state")
         return bool(st and str(st).strip() and str(st).strip().lower() != "pendiente")
 
-    def _render_page_text(items: list[dict], page: int, page_size: int, title: str | None = None, kind: str | None = None) -> str:
-        start = page * page_size
-        page_items = items[start:start + page_size]
-        header = (f"*{title}*\n" if title else "")
-        lines = []
-        for i, it in enumerate(page_items, start=1):
-            t  = _title_of(it)
-            st = _subtitle_of(it)
-            estado = _first(it, "estado", "status", "state") 
-            when_str = _format_item_when(it)
-
-            line = f"{i + start}\\) {t}"
-            if st:
-                line += f" — {st}"
-            if when_str:
-                line += f"\n {when_str}"
-            if _should_show_status(kind, it) and estado:
-                line += f"\n Estado: {str(estado).upper()}"
-            lines.append(line)
-
-        body = "\n\n".join(lines) if lines else "_Sin resultados_"
-        return _mdv2_escape((header + body).strip())
-
-
-    def _build_list_keyboard(items: list[dict], key: str, page: int, page_size: int, kind: str | None = None) -> dict:
+    def _build_list_keyboard(items: list[dict], key: str, page: int, page_size: int,
+                             kind: str | None = None, user_role: str | None = None) -> dict:
         start = page * page_size
         page_items = items[start:start + page_size]
         k = (kind or "").lower()
@@ -1850,6 +1960,12 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
             "list_asesorias", "list_my_events", "list_upcoming_events",
             "list_calendar_events", "asesorias", "eventos"
         }
+        allow_confirm = _role_allows_confirm(user_role)
+        allow_cancel = _role_allows_cancel(user_role)
+        try:
+            log.info(f"Inline keyboard role={user_role} confirm={allow_confirm} cancel={allow_cancel} kind={k}")
+        except Exception:
+            pass
 
         rows = []
         for idx, it in enumerate(page_items):
@@ -1859,7 +1975,13 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
             cancel_btn  = {"text": "❌ Cancelar", "callback_data": f"LCANCEL|{key}|{abs_idx}"}
             rows.append([title_btn])
             if can_act:
-                rows.append([confirm_btn, cancel_btn])   # solo si corresponde
+                action_row = []
+                if allow_confirm:
+                    action_row.append(confirm_btn)
+                if allow_cancel:
+                    action_row.append(cancel_btn)
+                if action_row:
+                    rows.append(action_row)   # solo si corresponde
 
         nav = []
         if page > 0:
@@ -1875,7 +1997,40 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
     #  Helper para formatear la respuesta del MCP_DIRECT como CINAP_LIST 
    
 
-    async def _send_list_message(chat_id: int, raw_text: str):
+    def _render_list_item(index: int, item: dict, kind: str | None) -> str:
+        bullet = f"{index:02d}."
+        title = _title_of(item) or "(sin título)"
+        subtitle = _subtitle_of(item)
+        when = _format_item_when(item)
+        estado = _first(item, "estado", "status", "state")
+
+        parts = [f"{bullet} {title}"]
+        if subtitle:
+            parts.append(subtitle)
+        if when:
+            parts.append(when)
+        if _should_show_status(kind, item) and estado:
+            parts.append(f"Estado: {estado}")
+        return "\n".join(parts)
+
+    def _render_page_text(items: list[dict], page: int, page_size: int, *, kind: str | None = None,
+                          title: str | None = None) -> str:
+        start = page * page_size
+        page_items = items[start:start + page_size]
+        lines = []
+        for i, item in enumerate(page_items, start=1 + start):
+            lines.append(_render_list_item(i, item, kind))
+        if not lines:
+            body = "Sin resultados."
+        else:
+            body = "\n\n".join(lines)
+        if title:
+            header = title.strip()
+            if header:
+                return f"{header}\n{body}".strip()
+        return body
+
+    async def _send_list_message(chat_id: int, raw_text: str, *, user_role: str | None = None):
         text_wo_marker, payload = _extract_cinap_list(raw_text)
         if not payload or not isinstance(payload.get("items"), list) or len(payload["items"]) == 0:
             return False  # no hay lista
@@ -1886,9 +2041,12 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
         page = 0
         page_size = PAGE_SIZE_DEFAULT
         title = payload.get("kind") or "Resultados"
-        text = _render_page_text(state["items"], page, page_size, title=title, kind=state["kind"])
-        kb = _build_list_keyboard(state["items"], key, page, page_size, state["kind"])
-        await bot.send_message(chat_id, text, disable_web_page_preview=True, allow_sending_without_reply=True, reply_markup=kb)
+        human_readable = _render_page_text(state["items"], page, page_size, kind=state["kind"], title=title)
+        text_display = _mdv2_escape(human_readable)
+        if user_role is None:
+            user_role = await _get_role_cached(chat_id=chat_id)
+        kb = _build_list_keyboard(state["items"], key, page, page_size, state["kind"], user_role=user_role)
+        await bot.send_message(chat_id, text_display, disable_web_page_preview=True, allow_sending_without_reply=True, reply_markup=kb)
         return True
 
     async def _is_duplicate_update(update_id: int) -> bool:
@@ -1997,75 +2155,126 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
             if not _is_domain_related(transcript) and not _is_ack(transcript):
                 log.info("Transcripción fuera de dominio (permitido por configuración relajada)")
 
-            #  Respuestas rápidas por keywords (UCT / CINAP)
-            tlow = (transcript or "").lower()
-            for a, b in [
-                ("chin up", "cinap"), ("chi nap", "cinap"), ("che nap", "cinap"),
-                ("chinap", "cinap"), ("china p", "cinap"), ("seen app", "cinap"),
-                ("c nap", "cinap"), ("cnap", "cinap"), ("sin up", "cinap"),
-                ("sinop", "cinap"), ("sin ope", "cinap"), ("sin open", "cinap"),
-                ("syrup", "cinap"),
-                ("sinope", "cinap"), ("sinap", "cinap"), ("sin app", "cinap"), ("sin ap", "cinap"),
-                ("u c t", "uct"), ("u c t.", "uct"), ("u c t,", "uct"),
-                ("you c t", "uct"), ("you see t", "uct"), ("you s t", "uct"),
-                ("ucat", "uct"), ("u cat", "uct"), ("u. cat", "uct"),
-                ("usete", "uct"), ("temuco.", "temuco"), ("temuco,", "temuco"),
-                ("temuco)", "temuco"), ("temuco(", "temuco"),
-                ("catolica", "católica"),
-                ("universidad catolica", "universidad católica"),
-                ("universidad católica de temuco", "uct"), ("universidad catolica de temuco", "uct"),
-            ]:
-                tlow = tlow.replace(a, b)
+            text_lower = (transcript or "").lower().strip()
 
-            if ("uct" in tlow) or ("universidad católica" in tlow) or ("católica temuco" in tlow):
-                uct_response = _mdv2_escape(
-                    " UCT - Universidad Católica de Temuco \n\n"
-                    "La Universidad Católica de Temuco es una institución de educación superior tradicional privada, "
-                    "reconocida por su excelencia académica y compromiso con el desarrollo regional."
-                )
-                safe_transcript = _mdv2_escape(transcript)
-                response_text = f" _{safe_transcript}_\n\n{uct_response}"
-                async with astage("telegram.tg_send_fast"):
-                    await _send_direct_message(chat_id, response_text)
+            pending = await _get_pending_action(chat_id, cache)
+            if pending and (_is_confirmation_text(text_lower) or _is_cancellation_text(text_lower)):
+                resolved_user_id = await _get_user_id_cached(chat_id)
+                role_name = await _get_role_cached(chat_id=chat_id, user_id=resolved_user_id)
+                wants_confirm = _is_confirmation_text(text_lower)
+                try:
+                    log.info(f"Pending action audio role={role_name} wants_confirm={wants_confirm} user_id={resolved_user_id}")
+                except Exception:
+                    pass
+                if wants_confirm and not _role_allows_confirm(role_name):
+                    await _send_direct_message(chat_id, _mdv2_escape(" Solo los docentes pueden confirmar esta asesoría."))
+                    return
+                if not wants_confirm and not _role_allows_cancel(role_name):
+                    await _send_direct_message(chat_id, _mdv2_escape(" No tienes permiso para cancelar esta asesoría."))
+                    return
+
+                mcp = mcp_client_getter() if mcp_client_getter else None
+                if not mcp:
+                    await _send_direct_message(chat_id, _mdv2_escape(" No puedo confirmar ahora mismo. Intenta de nuevo."))
+                    return
+
+                tool = pending.get("tool") or "create_calendar_event"
+                args = pending.get("args") or {}
+                args["confirm"] = wants_confirm
+                args["idempotency_key"] = f"tg:{chat_id}:{int(time.time()*1000)}"
+
+                if ("user_id" not in args or not args.get("user_id")) and resolved_user_id and _normalize_role_name(role_name) == "teacher":
+                    args["user_id"] = str(resolved_user_id)
+
+                try:
+                    result = await asyncio.wait_for(
+                        mcp.call_tool(tool, args, thread_id=f"tg:{chat_id}"),
+                        timeout=MCP_TIMEOUT_AGGRESSIVE
+                    )
+                    await _clear_pending_action(chat_id, cache)
+                    text_result = result.get("message") if isinstance(result, dict) else str(result)
+                    safe_transcript = _mdv2_escape(transcript)
+                    safe_result = _mdv2_escape(text_result or " Hecho.")
+                    response_text = f" _{safe_transcript}_\n\n {safe_result}"
+                    async with astage("telegram.tg_send"):
+                        await _send_direct_message(chat_id, response_text)
+                except asyncio.TimeoutError:
+                    await _send_direct_message(chat_id, _mdv2_escape(" No pude confirmar a tiempo. Intenta de nuevo."))
+                except Exception as e:
+                    log.warning(f"Pending action via audio failed: {e}")
+                    await _send_direct_message(chat_id, _mdv2_escape(" No pude completar tu solicitud. Intenta nuevamente."))
                 return
 
-            if ("cinap" in tlow) or ("centro de innovación" in tlow) or ("centro innovación aprendizaje" in tlow) \
-               or ("centro de docencia" in tlow) or ("centro de apoyo docente" in tlow):
-                cinap_response = _mdv2_escape(
-                    " CINAP - Centro de Innovación en Aprendizaje, Docencia y Tecnología Educativa \n\n"
-                    "El CINAP acompaña pedagógicamente a los docentes de la UCT, fortaleciendo la enseñanza mediante "
-                    "asesorías en formación docente, educación digital, innovación en la docencia, investigación aplicada "
-                    "y experimentación pedagógica en entornos de laboratorio."
-                )
-                safe_transcript = _mdv2_escape(transcript)
-                response_text = f" _{safe_transcript}_\n\n{cinap_response}"
-                async with astage("telegram.tg_send_fast"):
-                    await _send_direct_message(chat_id, response_text)
-                return
+            needs_mcp_route = _needs_mcp_tools(text_lower)
 
-            # Detección temprana de eventos calendario
-            calendar_intent = _detect_calendar_event_intent(transcript)
-            if calendar_intent.get("is_calendar_event", False):
-                log.info(f"CALENDAR EVENT DETECTED: {calendar_intent}")
-                calendar_response = (
-                    f" ¡Detecté que quieres agendar una asesoría!\n\n"
-                )
-                if calendar_intent.get("time_mentions"):
-                    calendar_response += f" Horario mencionado: {', '.join(calendar_intent['time_mentions'])}\n"
-                if calendar_intent.get("person_mentions"):
-                    calendar_response += f" Profesor mencionado: {', '.join(calendar_intent['person_mentions'])}\n"
-                calendar_response += (
-                    f"\n Para agendar tu asesoría:\n"
-                    f"1. Usa el sistema web en tu perfil\n"
-                    f"2. O dime más detalles (materia, horario preferido, etc.)\n\n"
-                    f"¿Te ayudo a buscar disponibilidad de profesores?"
-                )
-                safe_transcript = _mdv2_escape(transcript)
-                safe_calendar_response = _mdv2_escape(calendar_response)
-                response_text = f" _{safe_transcript}_\n\n{safe_calendar_response}"
-                async with astage("telegram.tg_send"):
-                    await _send_direct_message(chat_id, response_text)
-                return
+            if not needs_mcp_route:
+                tlow = text_lower
+                for a, b in [
+                    ("chin up", "cinap"), ("chi nap", "cinap"), ("che nap", "cinap"),
+                    ("chinap", "cinap"), ("china p", "cinap"), ("seen app", "cinap"),
+                    ("c nap", "cinap"), ("cnap", "cinap"), ("sin up", "cinap"),
+                    ("sinop", "cinap"), ("sin ope", "cinap"), ("sin open", "cinap"),
+                    ("syrup", "cinap"),
+                    ("sinope", "cinap"), ("sinap", "cinap"), ("sin app", "cinap"), ("sin ap", "cinap"),
+                    ("u c t", "uct"), ("u c t.", "uct"), ("u c t,", "uct"),
+                    ("you c t", "uct"), ("you see t", "uct"), ("you s t", "uct"),
+                    ("ucat", "uct"), ("u cat", "uct"), ("u. cat", "uct"),
+                    ("usete", "uct"), ("temuco.", "temuco"), ("temuco,", "temuco"),
+                    ("temuco)", "temuco"), ("temuco(", "temuco"),
+                    ("catolica", "católica"),
+                    ("universidad catolica", "universidad católica"),
+                    ("universidad católica de temuco", "uct"), ("universidad catolica de temuco", "uct"),
+                ]:
+                    tlow = tlow.replace(a, b)
+
+                if ("uct" in tlow) or ("universidad católica" in tlow) or ("católica temuco" in tlow):
+                    uct_response = _mdv2_escape(
+                        " UCT - Universidad Católica de Temuco \n\n"
+                        "La Universidad Católica de Temuco es una institución de educación superior tradicional privada, "
+                        "reconocida por su excelencia académica y compromiso con el desarrollo regional."
+                    )
+                    safe_transcript = _mdv2_escape(transcript)
+                    response_text = f" _{safe_transcript}_\n\n{uct_response}"
+                    async with astage("telegram.tg_send_fast"):
+                        await _send_direct_message(chat_id, response_text)
+                    return
+
+                if ("cinap" in tlow) or ("centro de innovación" in tlow) or ("centro innovación aprendizaje" in tlow) \
+                   or ("centro de docencia" in tlow) or ("centro de apoyo docente" in tlow):
+                    cinap_response = _mdv2_escape(
+                        " CINAP - Centro de Innovación en Aprendizaje, Docencia y Tecnología Educativa \n\n"
+                        "El CINAP acompaña pedagógicamente a los docentes de la UCT, fortaleciendo la enseñanza mediante "
+                        "asesorías en formación docente, educación digital, innovación en la docencia, investigación aplicada "
+                        "y experimentación pedagógica en entornos de laboratorio."
+                    )
+                    safe_transcript = _mdv2_escape(transcript)
+                    response_text = f" _{safe_transcript}_\n\n{cinap_response}"
+                    async with astage("telegram.tg_send_fast"):
+                        await _send_direct_message(chat_id, response_text)
+                    return
+
+                calendar_intent = _detect_calendar_event_intent(transcript)
+                if calendar_intent.get("is_calendar_event", False):
+                    log.info(f"CALENDAR EVENT DETECTED: {calendar_intent}")
+                    calendar_response = (
+                        f" ¡Detecté que quieres agendar una asesoría!\n\n"
+                    )
+                    if calendar_intent.get("time_mentions"):
+                        calendar_response += f" Horario mencionado: {', '.join(calendar_intent['time_mentions'])}\n"
+                    if calendar_intent.get("person_mentions"):
+                        calendar_response += f" Profesor mencionado: {', '.join(calendar_intent['person_mentions'])}\n"
+                    calendar_response += (
+                        f"\n Para agendar tu asesoría:\n"
+                        f"1. Usa el sistema web en tu perfil\n"
+                        f"2. O dime más detalles (materia, horario preferido, etc.)\n\n"
+                        f"¿Te ayudo a buscar disponibilidad de profesores?"
+                    )
+                    safe_transcript = _mdv2_escape(transcript)
+                    safe_calendar_response = _mdv2_escape(calendar_response)
+                    response_text = f" _{safe_transcript}_\n\n{safe_calendar_response}"
+                    async with astage("telegram.tg_send"):
+                        await _send_direct_message(chat_id, response_text)
+                    return
 
             # Routing inteligente
             async with astage("telegram.intelligent_routing"):
@@ -2073,7 +2282,8 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
 
             #  si la respuesta trae CINAP_LIST, muéstrala con UI y sal
             try:
-                rendered = await _send_list_message(chat_id, response)
+                audio_role = await _get_role_cached(chat_id=chat_id)
+                rendered = await _send_list_message(chat_id, response, user_role=audio_role)
                 if rendered:
                     return
             except Exception as e:
@@ -2149,6 +2359,16 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                                             await cache.set(f"user_by_chat:{chat_id}", uid.encode("utf-8"), ttl_seconds=86400)
                                             # Opcional: mapeo adicional por telegram_user_id 
                                             await cache.set(f"user_by_tgid:{msg['from']['id']}", uid.encode("utf-8"), ttl_seconds=86400)
+                                            try:
+                                                await _ensure_role_cached(
+                                                    session, cache,
+                                                    user_id=str(uid),
+                                                    chat_id=chat_id,
+                                                    telegram_user_id=msg["from"]["id"],
+                                                    force_refresh=True
+                                                )
+                                            except Exception as role_err:
+                                                log.warning(f"no se pudo cachear rol tras /start: {role_err}")
                                     except Exception as e:
                                         log.warning(f"no se pudo cachear user_id tras /start: {e}")
 
@@ -2167,6 +2387,14 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                         file_id = audio_obj.get("file_id")
                         file_unique_id = audio_obj.get("file_unique_id")
                         if chat_id and file_id:
+                            try:
+                                await _resolve_and_cache_user_id(
+                                    session, cache,
+                                    chat_id=chat_id,
+                                    telegram_user_id=msg.get("from", {}).get("id")
+                                )
+                            except Exception as e:
+                                log.warning(f"audio resolve user_id failed: {e}")
                             log.info(f"Iniciando background task audio: chat_id={chat_id}, file_id={file_id[:8]}...")
                             asyncio.create_task(_process_audio_background(chat_id, file_id, file_unique_id, audio_obj))
                         else:
@@ -2192,9 +2420,38 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                         except Exception as e:
                             log.warning(f"resolve user_id failed: {e}")
 
+                        role_name = None
+                        try:
+                            role_name = await _get_role_cached(
+                                chat_id=chat_id,
+                                user_id=str(resolved_user_id) if resolved_user_id else None,
+                                telegram_user_id=msg.get("from", {}).get("id")
+                            )
+                            if not role_name and resolved_user_id:
+                                role_name = await _ensure_role_cached(
+                                    session, cache,
+                                    user_id=str(resolved_user_id),
+                                    chat_id=chat_id,
+                                    telegram_user_id=msg.get("from", {}).get("id")
+                                )
+                        except Exception as role_err:
+                            log.warning(f"role lookup failed: {role_err}")
+
                         #si hay acción pendiente y el usuario dice confirmar/cancelar, ir directo a MCP
                         pending = await _get_pending_action(chat_id, cache)
                         if pending and (_is_confirmation_text(text_lower) or _is_cancellation_text(text_lower)):
+                            wants_confirm = _is_confirmation_text(text_lower)
+                            try:
+                                log.info(f"Pending action text role={role_name} wants_confirm={wants_confirm} user_id={resolved_user_id}")
+                            except Exception:
+                                pass
+                            if wants_confirm and not _role_allows_confirm(role_name):
+                                await bot.send_message(chat_id, _mdv2_escape(" Solo los docentes pueden confirmar esta asesoría."))
+                                return {"ok": True}
+                            if not wants_confirm and not _role_allows_cancel(role_name):
+                                await bot.send_message(chat_id, _mdv2_escape(" No tienes permiso para cancelar esta asesoría."))
+                                return {"ok": True}
+
                             mcp = mcp_client_getter() if mcp_client_getter else None
                             if not mcp:
                                 await bot.send_message(chat_id, _mdv2_escape(" No puedo confirmar ahora mismo. Intenta de nuevo."))
@@ -2202,17 +2459,17 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
 
                             tool = pending.get("tool") or "create_calendar_event"
                             args = pending.get("args") or {}
-                            args["confirm"] = _is_confirmation_text(text_lower)
+                            args["confirm"] = wants_confirm
                             args["idempotency_key"] = f"tg:{chat_id}:{int(time.time()*1000)}"
 
                             #   inyectar user_id si falta 
                             if "user_id" not in args or not args.get("user_id"):
-                                if resolved_user_id:
+                                if resolved_user_id and _normalize_role_name(role_name) == "teacher":
                                     args["user_id"] = str(resolved_user_id)
                                 elif cache:
                                     try:
                                         uid_bytes = await cache.get(f"user_by_chat:{chat_id}")
-                                        if uid_bytes:
+                                        if uid_bytes and _normalize_role_name(role_name) == "teacher":
                                             args["user_id"] = uid_bytes.decode("utf-8")
                                     except Exception:
                                         pass
@@ -2306,6 +2563,16 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                                                 if cache:
                                                     await cache.set(f"user_by_chat:{chat_id}", resolved_user_id.encode("utf-8"), ttl_seconds=86400)
                                                     await cache.set(f"user_by_tgid:{msg['from']['id']}", resolved_user_id.encode("utf-8"), ttl_seconds=86400)
+                                    if resolved_user_id:
+                                        try:
+                                            await _ensure_role_cached(
+                                                session, cache,
+                                                user_id=str(resolved_user_id),
+                                                chat_id=chat_id,
+                                                telegram_user_id=msg.get("from", {}).get("id")
+                                            )
+                                        except Exception as role_err:
+                                            log.warning(f"role cache fallback failed: {role_err}")
 
                                     # Inyecta al agente 
                                     if resolved_user_id:
@@ -2397,7 +2664,7 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                             final_reply = _enforce_domain_reply(text, reply)
                             #  Si hay lista CINAP, la renderizamos con teclado + paginación:
                             try:
-                                rendered = await _send_list_message(chat_id, final_reply)
+                                rendered = await _send_list_message(chat_id, final_reply, user_role=role_name)
                                 if rendered:
                                     return {"ok": True}
                             except Exception as e:
@@ -2437,8 +2704,10 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                             kind  = state.get("kind", "")
                             page  = max(0, int(page_str))
 
-                            text = _render_page_text(items, page, PAGE_SIZE_DEFAULT, kind=kind)
-                            kb   = _build_list_keyboard(items, key, page, PAGE_SIZE_DEFAULT, kind)
+                            human_readable = _render_page_text(items, page, PAGE_SIZE_DEFAULT, kind=kind, title=state.get("kind"))
+                            text = _mdv2_escape(human_readable)
+                            user_role = await _get_role_cached(chat_id=chat_id)
+                            kb   = _build_list_keyboard(items, key, page, PAGE_SIZE_DEFAULT, kind, user_role=user_role)
 
                             await bot.edit_message(int(chat_id), int(msg_id), text, disable_web_page_preview=True, reply_markup=kb)
 
@@ -2462,14 +2731,17 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                             title = _title_of(it)
                             sub   = _subtitle_of(it)
 
-                            detail   = f"*{title}*\n{sub}" if sub else f"*{title}*"
+                            detail_lines = [title] if title else []
+                            if sub:
+                                detail_lines.append(sub)
                             when_str = _format_item_when(it)
                             if when_str:
-                                detail += f"\n🗓 {when_str}"
+                                detail_lines.append(when_str)
+                            detail_text = "\n".join(detail_lines) or "Sin detalles"
 
                             await bot.send_message(
                                 int(chat_id),
-                                _mdv2_escape(detail),
+                                _mdv2_escape(detail_text),
                                 disable_web_page_preview=True,
                                 allow_sending_without_reply=True
                             )
@@ -2522,8 +2794,13 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                                 or meta.get("teacher_email")
                                 or meta.get("usuario_email")
                             )
+                            organizer_usuario_id = (
+                                meta.get("organizer_usuario_id")
+                                or meta.get("organizerUsuarioId")
+                                or meta.get("organizer_user_id")
+                            )
 
-                            if asesoria_id and (not event_id or not attendee_email):
+                            if asesoria_id and (not event_id or not attendee_email or not organizer_usuario_id):
                                 try:
                                     if repo_events is None:
                                         from app.interface_adapters.gateways.db.sqlalchemy_calendar_events_repo import SqlAlchemyCalendarEventsRepo
@@ -2532,6 +2809,7 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                                     if extra_meta:
                                         event_id = event_id or extra_meta.get("calendar_event_id")
                                         attendee_email = attendee_email or extra_meta.get("docente_email")
+                                        organizer_usuario_id = organizer_usuario_id or extra_meta.get("organizer_usuario_id")
                                 except Exception as e:
                                     log.warning(f"calendar payload lookup failed: {e}")
 
@@ -2549,15 +2827,40 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                                 except Exception as e:
                                     log.warning(f"resolve user_id on LCONFIRM failed: {e}")
 
+                            role_name = await _get_role_cached(
+                                chat_id=chat_id,
+                                user_id=str(resolved_user_id) if resolved_user_id else None,
+                                telegram_user_id=(cbq.get("from") or {}).get("id")
+                            )
+                            try:
+                                log.info(f"Callback confirm role={role_name} user_id={resolved_user_id} event_id={event_id}")
+                            except Exception:
+                                pass
+                            if not _role_allows_confirm(role_name):
+                                await bot.send_message(
+                                    int(chat_id),
+                                    _mdv2_escape(" Solo los docentes pueden confirmar esta asesoría desde Telegram."),
+                                    disable_web_page_preview=True,
+                                    allow_sending_without_reply=True
+                                )
+                                if cq_id:
+                                    try:
+                                        await bot.answer_callback(cq_id, text="Sin permisos")
+                                    except Exception:
+                                        pass
+                                return {"ok": True}
+
+                            calendar_user_id = str(resolved_user_id) if resolved_user_id else None
+
                             g_ok = False
-                            if event_id and attendee_email and resolved_user_id:
+                            if event_id and attendee_email and calendar_user_id:
                                 try:
                                     #  Obtener refresh token del usuario para Google
                                     try:
                                         from app.interface_adapters.gateways.db.sqlalchemy_user_repo import SqlAlchemyUserRepo
                                         oauth_repo = SqlAlchemyUserRepo(session, default_role_id=None)
                                         refresh_token = await oauth_repo.get_refresh_token_by_usuario_id(
-                                            str(resolved_user_id), provider="google"
+                                            str(calendar_user_id), provider="google"
                                         )
                                     except Exception as e:
                                         refresh_token = None
@@ -2572,12 +2875,12 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                                             client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
                                             client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
                                             # Este getter se usa internamente por el cliente; devolvemos el token del usuario resuelto
-                                            get_refresh_token_by_usuario_id=lambda uid: refresh_token if str(uid) == str(resolved_user_id) else None,
+                                            get_refresh_token_by_usuario_id=lambda uid: refresh_token if str(uid) == str(calendar_user_id) else None,
                                         )
 
                                         # Marcamos el RSVP en la COPIA del usuario
                                         await gclient.set_attendee_response(
-                                            usuario_id=str(resolved_user_id),   # importante: que el cliente cargue las credenciales de este usuario
+                                            usuario_id=str(calendar_user_id),   # importante: que el cliente cargue las credenciales de este usuario
                                             calendar_id="primary",
                                             event_id=str(event_id),
                                             attendee_email=str(attendee_email),
@@ -2590,12 +2893,12 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
 
                             #  Mensaje al usuario 
                             detalle = it.get("title") or "Asesoría"
-                            msg = f"*{_mdv2_escape(detalle)}*\nEstado: {_mdv2_escape('Confirmada')}"
+                            confirm_lines = [detalle or "Asesoría", "Estado: Confirmada"]
                             if g_ok:
-                                msg += f"\n🗓 {_mdv2_escape('Confirmado también en tu Google Calendar')}"
+                                confirm_lines.append("Confirmado también en tu Google Calendar.")
                             else:
-                                # Si no se pudo Google, damos una pista útil 
-                                msg += f"\n {_mdv2_escape('No pude actualizar tu Google Calendar. Vincula tu cuenta o vuelve a intentarlo.')}"
+                                confirm_lines.append("No pude actualizar tu Google Calendar. Vincula tu cuenta o vuelve a intentarlo.")
+                            msg = _mdv2_escape("\n".join(confirm_lines))
 
                             await bot.send_message(
                                 int(chat_id),
@@ -2623,20 +2926,147 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
 
                             asesoria_id = (it.get("meta") or {}).get("id") or it.get("asesoria_id") or it.get("id")
                             cupo_id     = (it.get("meta") or {}).get("cupo_id") or (it.get("meta") or {}).get("slot_id")
+                            meta        = it.get("meta") or {}
+                            event_id = (
+                                meta.get("google_event_id")
+                                or meta.get("event_id")
+                                or meta.get("eventId")
+                                or meta.get("calendar_event_id")
+                                or meta.get("calendarEventId")
+                                or meta.get("provider_event_id")
+                                or meta.get("providerEventId")
+                            )
+                            attendee_email = (
+                                meta.get("email")
+                                or meta.get("student_email")
+                                or meta.get("attendee_email")
+                                or meta.get("docente_email")
+                                or meta.get("teacher_email")
+                                or meta.get("usuario_email")
+                            )
+                            organizer_usuario_id = (
+                                meta.get("organizer_usuario_id")
+                                or meta.get("organizerUsuarioId")
+                                or meta.get("organizer_user_id")
+                            )
 
                             ok_db = True
+                            repo_events = None
                             try:
                                 from app.interface_adapters.gateways.db.sqlalchemy_calendar_events_repo import SqlAlchemyCalendarEventsRepo
-                                repo = SqlAlchemyCalendarEventsRepo(session, cache)
+                                repo_events = SqlAlchemyCalendarEventsRepo(session, cache)
                                 if asesoria_id and cupo_id:
-                                    await repo.delete_asesoria_and_mark_cancelled(str(asesoria_id), cupo_id=str(cupo_id))
+                                    await repo_events.delete_asesoria_and_mark_cancelled(str(asesoria_id), cupo_id=str(cupo_id))
                                 elif asesoria_id:
-                                    await repo.update_event_state(str(asesoria_id), "CANCELADA")
+                                    await repo_events.update_event_state(str(asesoria_id), "CANCELADA")
                                 else:
                                     ok_db = False
                             except Exception as e:
                                 log.warning(f"cancel failed: {e}")
                                 ok_db = False
+
+                            if asesoria_id and (not event_id or not attendee_email or not organizer_usuario_id):
+                                try:
+                                    repo_for_meta = repo_events or SqlAlchemyCalendarEventsRepo(session, cache)
+                                    extra_meta = await repo_for_meta.get_calendar_payload(str(asesoria_id))
+                                    if extra_meta:
+                                        event_id = event_id or extra_meta.get("calendar_event_id")
+                                        attendee_email = attendee_email or extra_meta.get("docente_email")
+                                        organizer_usuario_id = organizer_usuario_id or extra_meta.get("organizer_usuario_id")
+                                except Exception as e:
+                                    log.warning(f"calendar payload lookup failed (cancel): {e}")
+
+                            resolved_user_id = await _get_user_id_cached(chat_id)
+                            if not resolved_user_id:
+                                try:
+                                    tg_user_id = (cbq.get("from") or {}).get("id")
+                                    resolved_user_id = await _resolve_and_cache_user_id(
+                                        session, cache,
+                                        chat_id=chat_id,
+                                        telegram_user_id=tg_user_id
+                                    )
+                                except Exception as e:
+                                    log.warning(f"resolve user_id on LCANCEL failed: {e}")
+
+                            role_name = await _get_role_cached(
+                                chat_id=chat_id,
+                                user_id=str(resolved_user_id) if resolved_user_id else None,
+                                telegram_user_id=(cbq.get("from") or {}).get("id")
+                            )
+                            try:
+                                log.info(f"Callback cancel role={role_name} user_id={resolved_user_id} event_id={event_id} organizer={organizer_usuario_id}")
+                            except Exception:
+                                pass
+                            if not _role_allows_cancel(role_name):
+                                await bot.send_message(
+                                    int(chat_id),
+                                    _mdv2_escape(" No tienes permiso para cancelar esta asesoría desde Telegram."),
+                                    disable_web_page_preview=True,
+                                    allow_sending_without_reply=True
+                                )
+                                if cq_id:
+                                    try:
+                                        await bot.answer_callback(cq_id, text="Sin permisos")
+                                    except Exception:
+                                        pass
+                                return {"ok": True}
+
+                            norm_role = _normalize_role_name(role_name)
+                            acting_as_organizer = norm_role in {"advisor", "admin"}
+                            calendar_user_id = None
+                            if norm_role == "teacher":
+                                calendar_user_id = str(resolved_user_id) if resolved_user_id else None
+                            elif acting_as_organizer:
+                                calendar_user_id = str(organizer_usuario_id) if organizer_usuario_id else None
+
+                            g_ok = False
+                            if event_id and calendar_user_id:
+                                try:
+                                    from app.interface_adapters.gateways.calendar.google_calendar_client import GoogleCalendarClient
+                                    if acting_as_organizer:
+                                        try:
+                                            from app.interface_adapters.gateways.db.sqlalchemy_user_repo import SqlAlchemyUserRepo
+                                            oauth_repo = SqlAlchemyUserRepo(session, default_role_id=None)
+                                            refresh_token = await oauth_repo.get_refresh_token_by_usuario_id(str(calendar_user_id))
+                                        except Exception as e:
+                                            refresh_token = None
+                                            log.warning(f"get_refresh_token_by_usuario_id (cancel organizer) failed: {e}")
+                                        if refresh_token:
+                                            gclient = GoogleCalendarClient(
+                                                client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
+                                                client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+                                                get_refresh_token_by_usuario_id=lambda uid: refresh_token if str(uid) == str(calendar_user_id) else None,
+                                            )
+                                            await gclient.delete_event(
+                                                organizer_usuario_id=str(calendar_user_id),
+                                                event_id=str(event_id),
+                                            )
+                                            g_ok = True
+                                    else:
+                                        if attendee_email:
+                                            try:
+                                                from app.interface_adapters.gateways.db.sqlalchemy_user_repo import SqlAlchemyUserRepo
+                                                oauth_repo = SqlAlchemyUserRepo(session, default_role_id=None)
+                                                refresh_token = await oauth_repo.get_refresh_token_by_usuario_id(str(calendar_user_id))
+                                            except Exception as e:
+                                                refresh_token = None
+                                                log.warning(f"get_refresh_token_by_usuario_id (cancel) failed: {e}")
+                                            if refresh_token:
+                                                gclient = GoogleCalendarClient(
+                                                    client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
+                                                    client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+                                                    get_refresh_token_by_usuario_id=lambda uid: refresh_token if str(uid) == str(calendar_user_id) else None,
+                                                )
+                                                await gclient.set_attendee_response(
+                                                    usuario_id=str(calendar_user_id),
+                                                    calendar_id="primary",
+                                                    event_id=str(event_id),
+                                                    attendee_email=str(attendee_email),
+                                                    response="declined",
+                                                )
+                                                g_ok = True
+                                except Exception as e:
+                                    log.warning(f"Google cancel operation failed: {e}")
 
                                 # Actualiza el ítem en la lista y re-renderiza
                             if 0 <= idx < len(items):
@@ -2646,8 +3076,9 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                                 await _save_list_state(key, state)
 
                             page = 0  # si no llevas tracking de página
-                            text = _render_page_text(items, page, PAGE_SIZE_DEFAULT, kind=kind) 
-                            kb   = _build_list_keyboard(items, key, page, PAGE_SIZE_DEFAULT, kind)
+                            human_readable = _render_page_text(items, page, PAGE_SIZE_DEFAULT, kind=kind, title=state.get("kind"))
+                            user_role = await _get_role_cached(chat_id=chat_id)
+                            kb   = _build_list_keyboard(items, key, page, PAGE_SIZE_DEFAULT, kind, user_role=user_role)
                                 # feedback rápido al tap
                             if cq_id:
                                 try:
@@ -2656,13 +3087,24 @@ def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=Non
                                     pass
 
                                 # edita el mensaje original (lista)
-                            await bot.edit_message(int(chat_id), int(msg_id), text, disable_web_page_preview=True, reply_markup=kb)
+                            text_display = _mdv2_escape(human_readable)
+                            await bot.edit_message(int(chat_id), int(msg_id), text_display, disable_web_page_preview=True, reply_markup=kb)
 
                                 # y manda un mensaje corto (opcional)
                             detalle = it.get("title") or "Asesoría"
+                            cancel_lines = [detalle or 'Asesoría', 'Estado: Cancelada']
+                            if g_ok:
+                                if acting_as_organizer:
+                                    cancel_lines.append('Evento eliminado de Google Calendar.')
+                                else:
+                                    cancel_lines.append('Actualicé tu asistencia en Google Calendar.')
+                            elif event_id:
+                                cancel_lines.append('No pude actualizar Google Calendar. Vincula tu cuenta o vuelve a intentarlo.')
+                            msg = _mdv2_escape("\n".join(cancel_lines))
+
                             await bot.send_message(
                                 int(chat_id),
-                                _mdv2_escape(f"{detalle}\nEstado: Cancelada"),
+                                msg,
                                 disable_web_page_preview=True,
                                 allow_sending_without_reply=True
                             )
@@ -2785,8 +3227,13 @@ def _validate_transcript_authenticity(transcript: str) -> bool:
         if re.search(pattern, cleaned):
             return False
 
-    if len(cleaned) > 100 and len(words) > 15:
-        return False
+    # Permite transcripciones largas siempre que no parezcan ruido repetitivo
+    if len(words) > 0:
+        unique_ratio = len(set(words)) / len(words)
+        if len(words) > 120 and unique_ratio < 0.2:
+            return False
+        if len(words) > 300 and unique_ratio < 0.3:
+            return False
 
     small_words = ['el', 'la', 'de', 'en', 'fue', 'por', 'con', 'del', 'al']
     small_word_count = sum(1 for w in words if w in small_words)
