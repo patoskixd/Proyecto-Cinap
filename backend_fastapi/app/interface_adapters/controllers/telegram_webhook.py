@@ -125,8 +125,9 @@ PENDING_ACTION_TTL = 20  # 10 minutos para confirmar/cancelar
 LIST_STATE_TTL = 1800  # 30 min
 PAGE_SIZE_DEFAULT = 6
 
-# Marcador que ya emite tu LangGraphAgent (_attach_items_payload)
+# Marcadores que ya emite tu LangGraphAgent (_attach_items_payload, _attach_confirm_marker)
 CINAP_LIST_RE = re.compile(r"<!--CINAP_LIST:([A-Za-z0-9+/=]+)-->")
+CINAP_CONFIRM_RE = re.compile(r"<!--CINAP_CONFIRM:([A-Za-z0-9+/=]+)-->")
 
 #  Dominio (CINAP/UCT): Reglas
 STRICT_DOMAIN_MESSAGE = "Lo siento, solo puedo ayudarte con temas del sistema de asesorías y agendamiento del CINAP."
@@ -295,6 +296,7 @@ def _mdv2_escape(s: str) -> str:
     if not s:
         return s
     s = _fix_mojibake(s)
+    s = CINAP_CONFIRM_RE.sub("", s).rstrip()
     s = s.replace("\\", "\\\\")
     specials = ('_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!')
     for ch in specials:
