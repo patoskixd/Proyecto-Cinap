@@ -1,48 +1,51 @@
-import type { Reservation } from "@/domain/reservation";
 import type { Appointment, AppointmentStatus } from "@/domain/appointment";
 
-/**
- * Convierte una Reservation a Appointment para usar en el dashboard
- */
-export function reservationToAppointment(reservation: Reservation): Appointment {
-  // Crear dateLabel basado en la fecha ISO
-  const reservationDate = new Date(reservation.dateISO);
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  
-  let dateLabel = "Próximo";
-  
-  if (reservationDate.toDateString() === today.toDateString()) {
-    dateLabel = "Hoy";
-  } else if (reservationDate.toDateString() === tomorrow.toDateString()) {
-    dateLabel = "Mañana";
-  } else {
-    // Formatear como "Lun 15"
-    const dayNames = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
-    const dayName = dayNames[reservationDate.getDay()];
-    const dayNumber = reservationDate.getDate();
-    dateLabel = `${dayName} ${dayNumber}`;
-  }
+// Utilidades
+const s = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+const pick = (...vals: unknown[]) => vals.map(s).find(Boolean);
 
-  // Mapear status de Reservation a AppointmentStatus
-  const appointmentStatus: AppointmentStatus = 
-    reservation.status === "confirmada" ? "confirmada" : "pendiente";
+function labelForDate(d: Date): string {
+  const today = new Date();
+  const tomorrow = new Date(); tomorrow.setDate(today.getDate() + 1);
+  const same = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  if (same(d, today)) return "Hoy";
+  if (same(d, tomorrow)) return "Mañana";
+  const days = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+  return `${days[d.getDay()]} ${d.getDate()}`;
+}
+const timeStr = (d?: Date) =>
+  d ? d.toLocaleTimeString("es-CL",{ hour:"2-digit", minute:"2-digit" }) : "";
+
+export function backendAppointmentToApp(apt: any): Appointment {
+  // fechas
+  const start =
+    apt.inicio ? new Date(apt.inicio) :
+    apt.start  ? new Date(apt.start)  :
+    apt.fechaHora ? new Date(apt.fechaHora) : undefined;
+
+  // estado
+  const raw = String(apt.estado ?? apt.status ?? "").toUpperCase();
+  const status: AppointmentStatus =
+    ["CONFIRMADA","CONFIRMADO","RESERVADO"].includes(raw) ? "confirmada" : "pendiente";
+
+  // nombres (cubre varias formas de respuesta)
+  const teacherName = pick(
+    apt.docente, apt.docenteNombre, apt.docente_nombre, apt.teacher, apt.teacherName,
+    apt?.docente?.nombre, apt?.docente?.name
+  );
+  const advisorName = pick(
+    apt.asesor, apt.asesorNombre, apt.asesor_nombre, apt.advisor, apt.advisorName,
+    apt?.asesor?.nombre, apt?.asesor?.usuario?.nombre
+  );
 
   return {
-    id: reservation.id,
-    time: reservation.time,
-    dateLabel,
-    title: reservation.serviceTitle,
-    student: reservation.advisor.name, // En el dashboard, mostramos el asesor como "estudiante"
-    status: appointmentStatus,
-    location: "Por definir", // Las reservas no tienen ubicación específica aún
+    id: String(apt.id ?? crypto.randomUUID()),
+    title: pick(apt.servicio, apt.titulo, apt.title) ?? "Asesoría",
+    time: timeStr(start),
+    dateLabel: start ? labelForDate(start) : "Próximo",
+    teacherName,
+    advisorName,
+    location: pick(apt.ubicacion, apt.recurso, apt.location) ?? "Por definir",
+    status,
   };
-}
-
-/**
- * Convierte un array de Reservations a Appointments
- */
-export function reservationsToAppointments(reservations: Reservation[]): Appointment[] {
-  return reservations.map(reservationToAppointment);
 }

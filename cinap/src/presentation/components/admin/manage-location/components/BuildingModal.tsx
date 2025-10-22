@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import BaseModal from "./BaseModal";
-import { AdminLocationHttpRepo } from "@/infrastructure/admin-location/AdminLocationHttpRepo";
+import { AdminLocationHttpRepo } from "@/infrastructure/admin/location/AdminLocationHttpRepo";
 
-type Values = { name: string; campusId: string };
+type Values = { name: string; campusId: string; code: string };
 
 export default function BuildingModal({
   id,
@@ -15,7 +15,7 @@ export default function BuildingModal({
   onCreate: (payload: Values) => Promise<void> | void;
   onUpdate: (id: string, patch: Partial<Values>) => Promise<void> | void;
 }) {
-  const [values, setValues] = useState<Values>({ name: "", campusId: "" });
+  const [values, setValues] = useState<Values>({ name: "", campusId: "", code: "" });
   const [campus, setCampus] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -31,7 +31,7 @@ export default function BuildingModal({
         try {
           const all = await repo.listBuildings();
           const found = all.find((b) => b.id === id);
-          if (found && alive) setValues({ name: found.name, campusId: found.campusId });
+          if (found && alive) setValues({ name: found.name, campusId: found.campusId, code: found.code || "" });
         } finally {
           if (alive) setLoading(false);
         }
@@ -57,6 +57,17 @@ export default function BuildingModal({
             value={values.name}
             onChange={(e) => setValues((v) => ({ ...v, name: e.target.value }))}
             className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+          />
+        </label>
+  
+        <label className="block text-sm font-medium text-gray-700">
+          <span className="mb-2 block">Código</span>
+          <input
+            required
+            value={values.code}
+            onChange={(e) => setValues((v) => ({ ...v, code: e.target.value }))}
+            placeholder="Ej: CAMP-TEMUCO"
+            className="w-full uppercase tracking-wide rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
           />
         </label>
 

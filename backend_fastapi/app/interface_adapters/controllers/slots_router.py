@@ -1,9 +1,10 @@
-# app/interface_adapters/controllers/slots_router.py
 from __future__ import annotations
 from typing import Callable, Optional, Literal
 from uuid import UUID
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+
+from requests import session
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Request, Body, Query
@@ -16,8 +17,16 @@ from app.use_cases.slots.open_slots import (
 )
 from app.interface_adapters.gateways.db.sqlalchemy_slots_repo import SqlAlchemySlotsRepo
 from app.interface_adapters.orm.models_scheduling import (
-    CupoModel, ServicioModel, CategoriaModel, RecursoModel, EdificioModel, CampusModel, EstadoCupo
+    CupoModel,
+    ServicioModel,
+    CategoriaModel,
+    RecursoModel,
+    EdificioModel,
+    CampusModel,
+    EstadoCupo,
+    AsesoriaModel,
 )
+from app.interface_adapters.orm.models_scheduling import EstadoAsesoria
 
 
 class ResourceOut(BaseModel):
@@ -65,9 +74,10 @@ class MySlotOut(BaseModel):
     duration: int
     location: str
     room: str
-    status: Literal["disponible", "ocupado", "cancelado", "expirado"]
+    status: Literal["disponible", "ocupado", "cancelado", "expirado", "realizado"]
     student: dict | None = None
     notes: str | None = None
+    locked: bool = False
 
 
 class MySlotPatchIn(BaseModel):
@@ -95,6 +105,20 @@ class FindSlotOut(BaseModel):
     resourceAlias: str | None = None
     notas: str | None = None  
 
+class MySlotsStatsOut(BaseModel):
+    total: int
+    disponibles: int
+    ocupadas_min: int
+
+class MySlotsPageOut(BaseModel):
+    items: list[MySlotOut]
+    page: int
+    per_page: int
+    total: int
+    pages: int
+    stats: MySlotsStatsOut
+
+
 
 def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: JwtPort) -> APIRouter:
     r = APIRouter(prefix="/slots", tags=["slots"])
@@ -107,6 +131,7 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
             "RESERVADO": "ocupado",
             "CANCELADO": "cancelado",
             "EXPIRADO": "expirado",
+            "REALIZADO": "realizado",
         }.get(s, "disponible")
 
     def ui_to_db_estado(s: str) -> EstadoCupo:
@@ -115,7 +140,17 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
             "ocupado": EstadoCupo.RESERVADO,
             "cancelado": EstadoCupo.CANCELADO,
             "expirado": EstadoCupo.EXPIRADO,
+            "realizado": EstadoCupo.REALIZADO,
         }[s]
+
+    locked_expr = sa.exists(
+        sa.select(sa.literal(1))
+        .select_from(AsesoriaModel)
+        .where(
+            AsesoriaModel.cupo_id == CupoModel.id,
+            AsesoriaModel.estado == EstadoAsesoria.CANCELADA,
+        )
+    ).label("locked")
 
     def fmt_slot_row_to_out(row) -> MySlotOut:
         ini = row.inicio.astimezone(ZoneInfo("America/Santiago"))
@@ -134,6 +169,7 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
             status=db_to_ui_estado(row.estado),
             student=None,
             notes=row.notas,
+            locked=bool(getattr(row, "locked", False)),
         )
 
     @r.get("/create-data", response_model=CreateDataOut)
@@ -186,6 +222,14 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
         start_dt = start_local
         end_dt = end_local
 
+        repo = SqlAlchemySlotsRepo(session)
+
+        exp = await repo.expire_open_slots()        # ABIERTO -> EXPIRADO
+        done = await repo.complete_reserved_slots()  # RESERVADO -> REALIZADO
+
+        if exp or done:
+            await session.commit()
+
         j = (
             sa.select(
                 CupoModel.id,
@@ -200,6 +244,7 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
                 RecursoModel.nombre.label("recurso_alias"),
                 EdificioModel.nombre.label("edificio"),
                 CampusModel.nombre.label("campus"),
+                locked_expr,
             )
             .join(ServicioModel, ServicioModel.id == CupoModel.servicio_id)
             .join(CategoriaModel, CategoriaModel.id == ServicioModel.categoria_id)
@@ -333,8 +378,19 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
             await session.rollback()
             raise HTTPException(status_code=400, detail=str(e))
 
-    @r.get("/my", response_model=list[MySlotOut])
-    async def my_slots(request: Request, session: AsyncSession = Depends(get_session_dep)):
+    @r.get("/my", response_model=MySlotsPageOut)
+    async def my_slots(
+            request: Request,
+            session: AsyncSession = Depends(get_session_dep),
+            page: int = Query(1, ge=1),
+            limit: int = Query(36, ge=1, le=100),
+            status: Optional[Literal["disponible","ocupado","cancelado","expirado","realizado"]] = Query(None),
+            date: Optional[str] = Query(None),
+            category: Optional[str] = Query(None),
+            service: Optional[str] = Query(None),
+            campus: Optional[str] = Query(None),
+    ):
+        # --- auth ---
         token = request.cookies.get("app_session")
         if not token:
             raise HTTPException(status_code=401, detail="No autenticado")
@@ -343,12 +399,18 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
         except Exception:
             raise HTTPException(status_code=401, detail="Token inválido")
 
+        #  roll de estados antes de consultar 
         repo = SqlAlchemySlotsRepo(session)
+        exp = await repo.expire_open_slots()         # ABIERTO -> EXPIRADO
+        done = await repo.complete_reserved_slots()  # RESERVADO -> REALIZADO
+        if exp or done:
+            await session.commit()
+
         asesor_id = await repo.resolve_asesor_id(str(data.get("sub")))
         if not asesor_id:
-            return []
-
-        j = (
+            return MySlotsPageOut(items=[], page=1, per_page=limit, total=0, pages=1)
+        #  base 
+        base = (
             sa.select(
                 CupoModel.id,
                 CupoModel.inicio,
@@ -362,17 +424,93 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
                 RecursoModel.nombre.label("recurso_alias"),
                 EdificioModel.nombre.label("edificio"),
                 CampusModel.nombre.label("campus"),
+                locked_expr,
             )
             .join(ServicioModel, ServicioModel.id == CupoModel.servicio_id)
             .join(CategoriaModel, CategoriaModel.id == ServicioModel.categoria_id)
             .join(RecursoModel, RecursoModel.id == CupoModel.recurso_id)
-            .join(EdificioModel, EdificioModel.id == RecursoModel.edificio_id)
-            .join(CampusModel, CampusModel.id == EdificioModel.campus_id)
+            .join(EdificioModel, EdificioModel.id == RecursoModel.edificio_id, isouter=True)
+            .join(CampusModel, CampusModel.id == EdificioModel.campus_id, isouter=True)
             .where(CupoModel.asesor_id == UUID(asesor_id))
-            .order_by(CupoModel.inicio.asc())
         )
-        rows = (await session.execute(j)).all()
-        return [fmt_slot_row_to_out(r) for r in rows]
+
+        # estado 
+        if status is None:
+            base = base.where(CupoModel.estado.in_([EstadoCupo.ABIERTO, EstadoCupo.RESERVADO]))
+        else:
+            map_status = {
+                "disponible": EstadoCupo.ABIERTO,
+                "ocupado": EstadoCupo.RESERVADO,
+                "cancelado": EstadoCupo.CANCELADO,
+                "expirado": EstadoCupo.EXPIRADO,
+                "realizado": EstadoCupo.REALIZADO,
+            }
+            base = base.where(CupoModel.estado == map_status[status])
+
+        # fecha (YYYY-MM-DD) -> rango [start, end)
+        if date:
+            try:
+                d = datetime.strptime(date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(status_code=422, detail="Fecha inválida (YYYY-MM-DD)")
+            tz = ZoneInfo("America/Santiago")
+            start_dt = datetime(d.year, d.month, d.day, tzinfo=tz)
+            end_dt = start_dt + timedelta(days=1)
+            base = base.where(CupoModel.inicio >= start_dt, CupoModel.inicio < end_dt)
+
+        # filtros por textos (coincidencia exacta case-insensitive)
+        if category:
+            base = base.where(sa.func.lower(CategoriaModel.nombre) == category.lower())
+        if service:
+            base = base.where(sa.func.lower(ServicioModel.nombre) == service.lower())
+        if campus:
+            base = base.where(sa.func.lower(CampusModel.nombre) == campus.lower())
+
+        # --- total / pages ---
+        total = (await session.execute(
+            sa.select(sa.func.count()).select_from(base.subquery())
+        )).scalar_one()
+        pages = max(1, (total + limit - 1) // limit)
+        offset = (page - 1) * limit
+
+        # --- page rows ---
+        q = base.order_by(CupoModel.inicio.asc()).offset(offset).limit(limit)
+        rows = (await session.execute(q)).all()
+        items = [fmt_slot_row_to_out(r) for r in rows]
+
+        # --- stats globales del conjunto filtrado ---
+        s = base.subquery()
+        # total ya lo tenemos (arriba). Calculamos disponibles y minutos ocupados.
+        disponibles = (await session.execute(
+            sa.select(sa.func.coalesce(sa.func.sum(
+                sa.case((s.c.estado == EstadoCupo.ABIERTO, 1), else_=0)
+            ), 0))
+        )).scalar_one()
+
+        ocupadas_min = (await session.execute(
+            sa.select(sa.func.coalesce(sa.func.sum(
+                sa.case(
+                    (s.c.estado == EstadoCupo.RESERVADO,
+                    sa.func.extract('epoch', s.c.fin - s.c.inicio) / 60.0),
+                    else_=0.0
+                )
+            ), 0.0))
+        )).scalar_one()
+
+        return MySlotsPageOut(
+            items=items,
+            page=page,
+            per_page=limit,
+            total=total,
+            pages=pages,
+            stats=MySlotsStatsOut(
+                total=int(total),
+                disponibles=int(disponibles or 0),
+                ocupadas_min=int(round(ocupadas_min or 0)),
+            ),
+        )
+
+
 
     @r.patch("/{slot_id}", response_model=MySlotOut)
     async def update_slot(
@@ -401,8 +539,11 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
         slot = (await session.execute(q)).scalar_one_or_none()
         if not slot:
             raise HTTPException(status_code=404, detail="Cupo no encontrado")
-        if slot.estado == "RESERVADO":
+        if slot.estado == EstadoCupo.RESERVADO:
             raise HTTPException(status_code=409, detail="No puedes editar un cupo reservado")
+        
+        if slot.estado in (EstadoCupo.RESERVADO, EstadoCupo.REALIZADO):
+            raise HTTPException(status_code=409, detail="No puedes reactivar un reservado/realizado")
 
         if payload.date or payload.time or payload.duration:
             tz = slot.inicio.tzinfo or ZoneInfo(payload.tz or "America/Santiago")
@@ -463,9 +604,9 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
 
         if payload.status:
             target = ui_to_db_estado(payload.status)
-            if target == "RESERVADO":
+            if target == EstadoCupo.RESERVADO:
                 raise HTTPException(status_code=400, detail="Estado RESERVADO solo mediante flujo de reserva")
-            if slot.estado == "RESERVADO":
+            if slot.estado == EstadoCupo.RESERVADO:
                 raise HTTPException(status_code=409, detail="No puedes cambiar estado de un cupo reservado")
             slot.estado = target
 
@@ -485,6 +626,7 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
                 RecursoModel.nombre.label("recurso_alias"),
                 EdificioModel.nombre.label("edificio"),
                 CampusModel.nombre.label("campus"),
+                locked_expr,
             )
             .join(ServicioModel, ServicioModel.id == CupoModel.servicio_id)
             .join(CategoriaModel, CategoriaModel.id == ServicioModel.categoria_id)
@@ -518,8 +660,25 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
         slot = (await session.execute(q)).scalar_one_or_none()
         if not slot:
             raise HTTPException(status_code=404, detail="Cupo no encontrado")
-        if slot.estado == "RESERVADO":
+        if slot.estado == EstadoCupo.RESERVADO:
             raise HTTPException(status_code=409, detail="No puedes eliminar un cupo reservado")
+
+        has_cancelled_asesoria = (
+            await session.execute(
+                sa.select(sa.literal(True))
+                .select_from(AsesoriaModel)
+                .where(
+                    AsesoriaModel.cupo_id == slot.id,
+                    AsesoriaModel.estado == EstadoAsesoria.CANCELADA,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if has_cancelled_asesoria:
+            raise HTTPException(
+                status_code=409,
+                detail="No puedes eliminar un cupo asociado a una asesoria cancelada",
+            )
 
         await session.delete(slot)
         await session.commit()
@@ -546,10 +705,34 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
         slot = (await session.execute(q)).scalar_one_or_none()
         if not slot:
             raise HTTPException(status_code=404, detail="Cupo no encontrado")
-        if slot.estado == "RESERVADO":
+        if slot.estado == EstadoCupo.RESERVADO:
             raise HTTPException(status_code=409, detail="No puedes reactivar un reservado")
 
-        slot.estado = "ABIERTO"
+        has_cancelled_asesoria = (
+            await session.execute(
+                sa.select(sa.literal(True))
+                .select_from(AsesoriaModel)
+                .where(
+                    AsesoriaModel.cupo_id == slot.id,
+                    AsesoriaModel.estado == EstadoAsesoria.CANCELADA,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if has_cancelled_asesoria:
+            raise HTTPException(
+                status_code=409,
+                detail="No puedes reactivar un cupo asociado a una asesoria cancelada",
+            )
+
+        now_q = sa.func.now()
+        too_late = (await session.execute(
+            sa.select(sa.literal(True)).where(CupoModel.id == slot.id, CupoModel.fin < now_q)
+        )).scalar_one_or_none()
+        if too_late:
+            raise HTTPException(status_code=409, detail="No puedes reactivar un cupo cuya hora ya pasó")
+
+        slot.estado = EstadoCupo.ABIERTO
         await session.flush()
 
         j = (

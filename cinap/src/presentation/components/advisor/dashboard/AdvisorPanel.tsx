@@ -9,7 +9,7 @@ type Stats = {
 export default function AdvisorPanel({ stats }: { stats?: Stats }) {
   const items = [
     {
-      href: "/asesorias/mis-cupos",
+      href: "/asesor/mis-cupos",
       title: "Mis Cupos",
       description:
         typeof stats?.slotsSelected === "number"
@@ -18,7 +18,7 @@ export default function AdvisorPanel({ stats }: { stats?: Stats }) {
       iconType: "slots",
     },
     {
-      href: "/asesorias/pendientes",
+      href: "/asesor/pendientes",
       title: "Por Confirmar",
       description:
         typeof stats?.pending === "number"
@@ -27,7 +27,7 @@ export default function AdvisorPanel({ stats }: { stats?: Stats }) {
       iconType: "pending",
     },
     {
-      href: "/asesorias/gestionar-categorias",
+      href: "/asesor/gestionar-categorias",
       title: "Ver Categorías y servicios",
       description: "Categorías y servicios disponibles",
       iconType: "categories",

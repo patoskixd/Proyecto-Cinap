@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional, List, Union
 from entities.event import Event
 from dateutil import parser as dtparser
 
@@ -41,8 +41,7 @@ def from_google_event(item: Dict[str, Any], *, calendar_id: str) -> Event:
         description=item.get("description"),
         location=item.get("location"),
         attendees=emails,
-        requested_by_role=None,
-        requested_by_email=None,
+        html_link=item.get("htmlLink"),
     )
 
 def to_google_patch_body(
@@ -52,7 +51,7 @@ def to_google_patch_body(
     end_iso: Optional[str] = None,
     description: Optional[str] = None,
     location: Optional[str] = None,
-    attendees: Optional[List[str]] = None,
+    attendees: Optional[Union[List[str], List[Dict[str, Any]]]] = None,
     timezone: Optional[str] = None,
 ) -> Dict[str, Any]:
     body: Dict[str, Any] = {}
@@ -70,6 +69,11 @@ def to_google_patch_body(
         body["description"] = description
     if location is not None:
         body["location"] = location
+
     if attendees is not None:
-        body["attendees"] = [{"email": e} for e in attendees]
+        if attendees and isinstance(attendees[0], dict):
+            body["attendees"] = attendees
+        else:
+            body["attendees"] = [{"email": str(e)} for e in (attendees or [])]
+
     return body

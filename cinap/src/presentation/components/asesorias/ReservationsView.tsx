@@ -1,131 +1,136 @@
-"use client";
+﻿"use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+
+import type { Role } from "@/domain/auth";
 import type { Reservation } from "@/domain/reservation";
 import ReservationCard from "./ReservationCard";
+import CancelReservationModal from "./CancelReservationModal";
+import type { ReservationsFilters, ReservationsState } from "./hooks/useReservations";
+import { notify } from "../shared/Toast/ToastProvider";
 
-type Filters = {
-  category: string;
-  service: string;
-  advisor: string;
-  status: string;
-  dateFrom: string;
-};
+interface Props {
+  role: Role | null;
+  state: ReservationsState;
+}
 
-const initialFilters: Filters = {
-  category: "",
-  service: "",
-  advisor: "",
-  status: "",
-  dateFrom: "",
-};
+const STATUS_OPTIONS = [
+  { value: "", label: "Todos los estados" },
+  { value: "confirmada", label: "Confirmadas" },
+  { value: "pendiente", label: "Pendientes" },
+  { value: "cancelada", label: "Canceladas" },
+  { value: "completada", label: "Completadas" },
+];
 
-export default function ReservationsView({
-  upcoming,
-  past,
-}: {
-  upcoming: Reservation[];
-  past: Reservation[];
-}) {
-  const [activeTab, setActiveTab] = useState<"proximas" | "pasadas">("proximas");
-  const [filters, setFilters] = useState<Filters>(initialFilters);
+export default function ReservationsView({ role, state }: Props) {
+  const {
+    tab,
+    setPage,
+    page,
+    pages,
+    filters,
+    setFilters,
+    items,
+    loading,
+    error,
+    capabilities,
+    cancelReservation,
+    confirmReservation,
+    actionState,
+  } = state;
 
-  const onClear = () => setFilters(initialFilters);
+  const [cancelTarget, setCancelTarget] = useState<Reservation | null>(null);
+  const [selectOptions, setSelectOptions] = useState<{ categories: string[]; services: string[] }>({
+    categories: [],
+    services: [],
+  });
 
-  const applyFilters = (items: Reservation[]) => {
-    return items.filter((r) => {
-      if (filters.category && r.category !== filters.category) return false;
-      if (filters.service && r.service !== filters.service) return false;
-      if (filters.advisor && !r.advisor.name.toLowerCase().includes(filters.advisor.toLowerCase()))
-        return false;
-      if (filters.status && r.status !== filters.status) return false;
-      if (filters.dateFrom && r.dateISO) {
-        const from = new Date(filters.dateFrom);
-        const date = new Date(r.dateISO);
-        if (date < from) return false;
+  useEffect(() => {
+    setSelectOptions((prev) => {
+      const categories = new Set(prev.categories);
+      const services = new Set(prev.services);
+
+      for (const item of items) {
+        const categoryLabel = item.categoryLabel ?? item.category;
+        if (categoryLabel) categories.add(categoryLabel);
+
+        const serviceLabel = item.serviceTitle ?? item.service;
+        if (serviceLabel) services.add(serviceLabel);
       }
-      return true;
+
+      return {
+        categories: Array.from(categories).sort((a, b) => a.localeCompare(b, "es")),
+        services: Array.from(services).sort((a, b) => a.localeCompare(b, "es")),
+      };
     });
+  }, [items]);
+
+  useEffect(() => {
+    setSelectOptions({ categories: [], services: [] });
+  }, [tab]);
+
+  const hasPrev = page > 1;
+  const hasNext = page < pages;
+  const prevPage = () => setPage((p) => Math.max(1, p - 1));
+  const nextPage = () => setPage((p) => Math.min(pages, p + 1));
+
+  const updateFilter = (updater: (prev: ReservationsFilters) => ReservationsFilters) => {
+    setFilters(updater);
   };
 
-  const filteredUpcoming = useMemo(() => applyFilters(upcoming), [upcoming, filters]);
-  const filteredPast = useMemo(() => applyFilters(past), [past, filters]);
+  const requestCancel = (reservation: Reservation) => {
+    setCancelTarget(reservation);
+  };
 
-  const upcomingCount = filteredUpcoming.length;
-  const pastCount = filteredPast.length;
+  const handleCancel = async () => {
+    if (!cancelTarget) return;
+    try {
+      await cancelReservation(cancelTarget.id);
+      notify("Asesoria cancelada", "info");
+      setCancelTarget(null);
+    } catch (e: any) {
+      notify(e?.message ?? "No se pudo cancelar la asesoria", "error");
+    }
+  };
+
+  const handleConfirm = async (id: string) => {
+    try {
+      await confirmReservation(id);
+      notify("Asesoria confirmada", "success");
+    } catch (e: any) {
+      notify(e?.message ?? "No se pudo confirmar la asesoria", "error");
+    }
+  };
+
+  const isCancellingCurrent =
+    !!(cancelTarget && actionState.type === "cancel" && actionState.id === cancelTarget.id);
+
+  const showPagination = !loading && pages > 1;
 
   return (
     <div>
-      {/* Tabs */}
-      <div className="mb-6">
-        <div className="inline-flex w-full overflow-x-auto rounded-xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-yellow-50/20 p-1 shadow-lg backdrop-blur-sm sm:w-auto">
-          <button
-            onClick={() => setActiveTab("proximas")}
-            className={[
-              "inline-flex items-center gap-3 rounded-lg px-6 py-3 text-sm font-semibold transition-all",
-              activeTab === "proximas"
-                ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg"
-                : "text-blue-700 hover:bg-white/50",
-            ].join(" ")}
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            Próximas
-            <span
-              className={[
-                "rounded-full px-2.5 py-0.5 text-xs font-bold",
-                activeTab === "proximas" ? "bg-white/20 text-white" : "bg-blue-200 text-blue-800",
-              ].join(" ")}
-            >
-              {upcomingCount}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("pasadas")}
-            className={[
-              "ml-1 inline-flex items-center gap-3 rounded-lg px-6 py-3 text-sm font-semibold transition-all",
-              activeTab === "pasadas"
-                ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg"
-                : "text-blue-700 hover:bg-white/50",
-            ].join(" ")}
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Pasadas
-            <span
-              className={[
-                "rounded-full px-2.5 py-0.5 text-xs font-bold",
-                activeTab === "pasadas" ? "bg-white/20 text-white" : "bg-blue-200 text-blue-800",
-              ].join(" ")}
-            >
-              {pastCount}
-            </span>
-          </button>
-        </div>
-      </div>
-
-      {/* Filtros */}
       <div className="mb-6 rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-yellow-50/20 p-6 shadow-lg backdrop-blur-sm">
         <div className="mb-4">
-          <h3 className="text-lg font-semibold text-blue-900 mb-1">Filtros de búsqueda</h3>
-          <p className="text-sm text-blue-700">Utiliza los filtros para encontrar las asesorías que necesitas</p>
+          <h3 className="mb-1 text-lg font-semibold text-blue-900">Filtros de busqueda</h3>
+          <p className="text-sm text-blue-700">
+            Ajusta los filtros para encontrar asesorias especificas por categoria, servicio o estado.
+          </p>
         </div>
-        
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <label className="mb-2 block text-sm font-semibold text-blue-900">Categoría</label>
+            <label className="mb-2 block text-sm font-semibold text-blue-900">Categoria</label>
             <select
               value={filters.category}
-              onChange={(e) => setFilters((f) => ({ ...f, category: e.target.value }))}
-              className="w-full rounded-lg border-2 border-blue-200 bg-white/80 backdrop-blur-sm p-2.5 text-sm text-blue-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200"
+              onChange={(e) => updateFilter((prev) => ({ ...prev, category: e.target.value }))}
+              className="w-full rounded-lg border-2 border-blue-200 bg-white/80 p-2.5 text-sm text-blue-900 transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
             >
-              <option value="">Todas las categorías</option>
-              <option value="academica">Académica</option>
-              <option value="psicologica">Psicológica</option>
-              <option value="vocacional">Vocacional</option>
+              <option value="">Todas</option>
+              {selectOptions.categories.map((label) => (
+                <option key={label} value={label}>
+                  {label}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -133,24 +138,16 @@ export default function ReservationsView({
             <label className="mb-2 block text-sm font-semibold text-blue-900">Servicio</label>
             <select
               value={filters.service}
-              onChange={(e) => setFilters((f) => ({ ...f, service: e.target.value }))}
-              className="w-full rounded-lg border-2 border-blue-200 bg-white/80 backdrop-blur-sm p-2.5 text-sm text-blue-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200"
+              onChange={(e) => updateFilter((prev) => ({ ...prev, service: e.target.value }))}
+              className="w-full rounded-lg border-2 border-blue-200 bg-white/80 p-2.5 text-sm text-blue-900 transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
             >
-              <option value="">Todos los servicios</option>
-              <option value="tutoria">Tutoría Individual</option>
-              <option value="orientacion">Orientación Vocacional</option>
-              <option value="apoyo">Apoyo Psicológico</option>
+              <option value="">Todos</option>
+              {selectOptions.services.map((label) => (
+                <option key={label} value={label}>
+                  {label}
+                </option>
+              ))}
             </select>
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-semibold text-blue-900">Asesor</label>
-            <input
-              value={filters.advisor}
-              onChange={(e) => setFilters((f) => ({ ...f, advisor: e.target.value }))}
-              placeholder="Nombre del asesor"
-              className="w-full rounded-lg border-2 border-blue-200 bg-white/80 backdrop-blur-sm p-2.5 text-sm text-blue-900 placeholder:text-blue-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200"
-            />
           </div>
 
           <div>
@@ -158,8 +155,8 @@ export default function ReservationsView({
             <input
               type="date"
               value={filters.dateFrom}
-              onChange={(e) => setFilters((f) => ({ ...f, dateFrom: e.target.value }))}
-              className="w-full rounded-lg border-2 border-blue-200 bg-white/80 backdrop-blur-sm p-2.5 text-sm text-blue-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200"
+              onChange={(e) => updateFilter((prev) => ({ ...prev, dateFrom: e.target.value }))}
+              className="w-full rounded-lg border-2 border-blue-200 bg-white/80 p-2.5 text-sm text-blue-900 transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
             />
           </div>
 
@@ -167,74 +164,88 @@ export default function ReservationsView({
             <label className="mb-2 block text-sm font-semibold text-blue-900">Estado</label>
             <select
               value={filters.status}
-              onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
-              className="w-full rounded-lg border-2 border-blue-200 bg-white/80 backdrop-blur-sm p-2.5 text-sm text-blue-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200"
+              onChange={(e) => updateFilter((prev) => ({ ...prev, status: e.target.value }))}
+              className="w-full rounded-lg border-2 border-blue-200 bg-white/80 p-2.5 text-sm text-blue-900 transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
             >
-              <option value="">Todos los estados</option>
-              <option value="confirmada">Confirmada</option>
-              <option value="pendiente">Pendiente</option>
-              <option value="cancelada">Cancelada</option>
+              {STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value || "all"} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
-
-        <div className="flex justify-end gap-3 mt-6">
-          <button
-            onClick={onClear}
-            className="inline-flex items-center gap-2 rounded-lg bg-white/80 backdrop-blur-sm px-6 py-2.5 text-sm font-semibold text-blue-700 border border-blue-200 transition-all hover:bg-white hover:border-blue-300"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-            Limpiar filtros
-          </button>
-        </div>
       </div>
 
-      {/* Contenido */}
-      {activeTab === "proximas" ? (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {filteredUpcoming.map((r) => (
-            <ReservationCard key={r.id} r={r} />
-          ))}
-          {filteredUpcoming.length === 0 && (
-            <div className="col-span-full rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-yellow-50/20 p-10 text-center shadow-lg backdrop-blur-sm">
-              <div className="mx-auto max-w-xl">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-100">
-                  <svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-semibold text-blue-900">Sin resultados</h3>
-                <p className="mt-1 text-blue-700">Prueba cambiando los filtros de búsqueda.</p>
-              </div>
-            </div>
-          )}
+      {error ? (
+        <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-6 py-4 text-sm text-rose-700 shadow-sm">
+          {error}
         </div>
-      ) : (
-        <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-yellow-50/20 p-10 text-center shadow-lg backdrop-blur-sm">
-          <div className="mx-auto max-w-lg">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-100">
-              <svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-semibold text-blue-900">No tienes asesorías pasadas</h3>
-            <p className="mt-1 text-blue-700">
-              Cuando completes tus primeras asesorías, aparecerán aquí para que puedas revisarlas.
-            </p>
-            <a
-              href="/asesorias/agendar"
-              className="mt-6 inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl hover:scale-105"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-              Programar Primera Asesoría
-            </a>
+      ) : null}
+
+      {loading ? (
+        <div className="rounded-2xl bg-white p-8 text-center border border-gray-200">
+          <div className="flex items-center justify-center gap-3">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
+            <span className="text-blue-700 font-medium">Cargando asesorias...</span>
           </div>
         </div>
+      ) : items.length === 0 ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
+          <h3 className="mb-1 text-lg font-semibold text-neutral-900">No hay asesorias para mostrar</h3>
+          <p className="text-neutral-600">Ajusta los filtros o cambia de pestana para explorar otras fechas.</p>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 items-start">
+            {items.map((r) => (
+              <ReservationCard
+                key={r.id}
+                reservation={r}
+                role={role}
+                canCancel={capabilities.canCancel}
+                canConfirm={capabilities.canConfirm}
+                onCancel={() => requestCancel(r)}
+                onConfirm={() => handleConfirm(r.id)}
+                actionState={actionState}
+              />
+            ))}
+          </div>
+
+          {showPagination ? (
+            <div className="mt-6 flex flex-col items-center justify-between gap-3 sm:flex-row">
+              <div className="text-sm text-neutral-600">
+                Pagina <span className="font-semibold">{page}</span> de <span className="font-semibold">{pages}</span>
+              </div>
+              <div className="inline-flex overflow-hidden rounded-full border border-slate-200 bg-white shadow-sm text-black">
+                <button
+                  onClick={prevPage}
+                  disabled={!hasPrev}
+                  className="px-4 py-2 text-sm font-semibold text-black hover:bg-slate-50 disabled:opacity-50 disabled:text-black/40"
+                >
+                  Anterior
+                </button>
+                <div className="px-4 py-2 text-sm font-semibold bg-slate-50 border-x border-slate-200">{page}</div>
+                <button
+                  onClick={nextPage}
+                  disabled={!hasNext}
+                  className="px-4 py-2 text-sm font-semibold text-black hover:bg-slate-50 disabled:opacity-50 disabled:text-black/40"
+                >
+                  Siguiente 
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </>
       )}
+      {cancelTarget ? (
+        <CancelReservationModal
+          reservation={cancelTarget}
+          onKeep={() => setCancelTarget(null)}
+          onConfirmCancel={handleCancel}
+          loading={isCancellingCurrent}
+        />
+      ) : null}
     </div>
   );
 }

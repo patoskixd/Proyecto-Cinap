@@ -6,11 +6,13 @@ type ChatDTO = { reply?: string; thread_id?: string };
 export class AssistantBackendAgent implements ChatAgent {
   private lastSetCookies: string[] = [];
   private lastThreadId: string | undefined;
+  private readonly baseUrl: string;
+  private readonly cookie: string;
 
-  constructor(
-    private readonly baseUrl: string,
-    private readonly cookie: string,
-  ) {}
+  constructor(cookie: string) {
+    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.cookie = cookie;
+  }
 
   getSetCookies(): string[] {
     return this.lastSetCookies;

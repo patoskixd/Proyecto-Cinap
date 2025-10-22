@@ -3,21 +3,24 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
-import { AdvisorCatalogHttpRepo } from "@infrastructure/advisor-catalog/AdvisorCatalogHttpRepo";
-import { GetAdvisorCatalog } from "@application/advisor-catalog/usecases/GetAdvisorCatalog";
-import type { AdvisorCatalog } from "@domain/advisorCatalog";
-
-import type { AdvisorBasicInfo, AdvisorServiceRef, CategoryId } from "@domain/advisors";
-import { InMemoryAdvisorsRepo } from "@infrastructure/advisors/InMemoryAdvisorsRepo";
-import { RegisterAdvisor } from "@application/advisors/usecases/RegisterAdvisor";
+import type { AdminCategory } from "@/domain/admin/catalog";
+import type { 
+  AdvisorBasicInfo, 
+  AdvisorServiceRef, 
+  CategoryId, 
+  Advisor,
+  RegisterAdvisorRequest 
+} from "@/domain/admin/advisors";
+import { RegisterAdvisor } from "@/application/admin/advisors/usecases/RegisterAdvisor";
+import { AdminAdvisorsHttpRepo } from "@/infrastructure/admin/advisors/AdminAdvisorsHttpRepo";
+import { AdminCatalogHttpRepo } from "@/infrastructure/admin/catalog/AdminCatalogHttpRepo";
 
 type Step = 1 | 2 | 3 | 4;
-
-const catalogRepo = new AdvisorCatalogHttpRepo();
-const ucGetCatalog = new GetAdvisorCatalog(catalogRepo);
-
-const advisorsRepo = new InMemoryAdvisorsRepo();
-const ucRegister = new RegisterAdvisor(advisorsRepo);
+const createRepos = () => {
+  const advisorsRepo = new AdminAdvisorsHttpRepo();
+  const catalogRepo = new AdminCatalogHttpRepo();
+  return { advisorsRepo, catalogRepo };
+};
 
 type CatalogService = {
   id: string;
@@ -30,7 +33,7 @@ type CatalogService = {
 
 export default function RegisterAdvisorForm() {
   const [step, setStep] = useState<Step>(1);
-  const [catalog, setCatalog] = useState<AdvisorCatalog | null>(null);
+  const [categories, setCategories] = useState<AdminCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [successOpen, setSuccessOpen] = useState(false);
 
@@ -41,28 +44,37 @@ export default function RegisterAdvisorForm() {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const data = await ucGetCatalog.exec();
-      setCatalog(data);
-      setLoading(false);
+      try {
+        const { catalogRepo } = createRepos();
+        const data = await catalogRepo.listCategories();
+        setCategories(data);
+      } catch (error) {
+        console.error("Error loading categories:", error);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, []);
 
   const allCategories = useMemo(() => {
-    if (!catalog) return [];
-    const seen = new Set<string>();
-    return [...catalog.active, ...catalog.available]
-      .map((c) => c.category)
-      .filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true)));
-  }, [catalog]);
+    return categories.filter((c) => c.active);
+  }, [categories]);
 
   const servicesByCategory = useMemo(() => {
     const m = new Map<string, CatalogService[]>();
-    if (!catalog) return m;
-    [...catalog.active, ...catalog.available].forEach(({ category, services }) => {
-      m.set(category.id, services as CatalogService[]);
+    categories.forEach((category) => {
+      const activeServices = category.services
+        .filter((s) => s.active)
+        .map((s) => ({
+          id: s.id,
+          name: s.name,
+          description: `Duración: ${s.durationMinutes} minutos`,
+          duration: `${s.durationMinutes} min`,
+        }));
+      m.set(category.id, activeServices);
     });
     return m;
-  }, [catalog]);
+  }, [categories]);
 
   const stepValid = useMemo(() => {
     switch (step) {
@@ -99,8 +111,20 @@ export default function RegisterAdvisorForm() {
   };
 
   const handleRegister = async () => {
-    await ucRegister.exec({ basic, categories: selectedCategories, services: selectedServices });
-    setSuccessOpen(true);
+    const request: RegisterAdvisorRequest = {
+      basic,
+      categories: selectedCategories,
+      services: selectedServices.map(s => s.id) 
+    };
+    
+    try {
+      const { advisorsRepo } = createRepos();
+      const ucRegister = new RegisterAdvisor(advisorsRepo);
+      await ucRegister.exec(request);
+      setSuccessOpen(true);
+    } catch (error) {
+      console.error("Error registering advisor:", error);
+    }
   };
 
   const resetAll = () => {
@@ -113,10 +137,10 @@ export default function RegisterAdvisorForm() {
 
   if (loading) {
     return (
-      <div className="mx-auto mt-4 max-w-[900px] rounded-2xl bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 p-8 text-center shadow-lg">
+      <div className="mx-auto mt-4 max-w-[900px] rounded-2xl bg-white p-8 text-center shadow-lg border">
         <div className="flex flex-col items-center gap-4">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-white border-t-transparent"></div>
-          <span className="text-white font-semibold">Cargando datos del catálogo…</span>
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
+          <span className="text-gray-900 font-semibold">Cargando datos del catálogo…</span>
         </div>
       </div>
     );

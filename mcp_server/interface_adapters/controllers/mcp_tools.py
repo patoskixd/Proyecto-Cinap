@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from datetime import date, datetime, time
-from typing import Optional, List, Union
+from typing import Any, Dict, Optional, List, Union
 
 class EventCreateIn(BaseModel):
     calendar_id: Optional[str] = Field(None, description="Opcional; por defecto primary")
@@ -40,7 +40,7 @@ class UpdatePatch(BaseModel):
     title: Optional[str] = None
     start: Optional[datetime] = None
     end: Optional[datetime] = None
-    attendees: Optional[List[str]] = None
+    attendees: Optional[Union[List[str], List[Dict[str, Any]]]] = None
     location: Optional[str] = None
     description: Optional[str] = None
     shift_minutes: Optional[int] = None
@@ -49,6 +49,12 @@ class UpdatePatch(BaseModel):
     new_start_time: Optional[time] = None
     new_end_time: Optional[time] = None
     keep_duration: bool = True
+
+class EventUpdateAbsoluteIn(BaseModel):
+    calendar_id: Optional[str] = Field(None, description="Opcional; por defecto primary")
+    event_id: str
+    absolute_patch: Dict[str, Any] = Field(..., description="events.patch")
+    send_updates: Optional[str] = Field("all", description="'all', 'externalOnly', 'none'")
 
 class EventUpdateFlexibleIn(BaseModel):
     selector: Union[UpdateSelectorById, UpdateSelectorByTitle]

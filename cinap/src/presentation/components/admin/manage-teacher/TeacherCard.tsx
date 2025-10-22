@@ -1,6 +1,6 @@
 "use client";
 
-import type { Teacher } from "@domain/teachers";
+import type { Teacher } from "@/domain/admin/teachers";
 
 type Props = {
   teacher: Teacher;

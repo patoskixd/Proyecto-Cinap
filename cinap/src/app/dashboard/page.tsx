@@ -8,16 +8,10 @@ import { RoleSections } from "@presentation/components/dashboard/RoleSections";
 import { useDashboardData } from "@/presentation/components/dashboard/hooks/useDashboardData";
 
 import type { Role } from "@domain/auth";
+import { normalizeRole } from "@domain/auth";
 import { useAuth } from "@/presentation/components/auth/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-
-function normalizeRoleName(raw: string): Role {
-  const r = (raw || "").toLowerCase();
-  if (r.includes("admin") || r === "administrador") return "admin" as Role;
-  if (r.includes("advisor") || r.includes("asesor") || r.includes("tutor")) return "advisor" as Role;
-  return "teacher" as Role;
-}
 
 
 export default function DashboardPage() {
@@ -26,7 +20,9 @@ export default function DashboardPage() {
 
   const isAuthed = me.authenticated === true;
   const user = isAuthed ? me.user : undefined;
-  const role = normalizeRoleName(user?.role || "");
+
+  const hasValidRole = user?.role && user.role.trim() !== "";
+  const role = hasValidRole ? normalizeRole(user.role) as Role : null;
 
   // Usar el hook para obtener datos del dashboard
   const { data, loading, error } = useDashboardData(role, user?.id);
@@ -39,39 +35,40 @@ export default function DashboardPage() {
 
   if (!mounted) return null;
   if (!isAuthed) return null;
-  if (loading) return <div className="flex justify-center items-center min-h-screen">Cargando...</div>;
+  if (!hasValidRole) return <div className="flex justify-center items-center min-h-screen">Cargando...</div>;
   if (error) return <div className="flex justify-center items-center min-h-screen text-red-600">{error}</div>;
 
+  // En este punto, role está garantizado como válido por la validación hasValidRole
+  const validRole = role as Role;
+
   const headers = {
-    teacher: { title: "Panel Docente",      subtitle: "Tus próximas asesorías y recomendaciones", ctaHref: "/asesorias/agendar", ctaLabel: "Agendar asesoría" },
-    advisor: { title: "Panel Asesor",       subtitle: "Gestiona cupos y solicitudes",             ctaHref: "/asesorias/crear-cupos",     ctaLabel: "Abrir cupo" },
+    teacher: { title: "Panel Docente",      subtitle: "Tus próximas asesorías y recomendaciones", ctaHref: "/profesor/asesorias/agendar", ctaLabel: "Agendar asesoría" },
+    advisor: { title: "Panel Asesor",       subtitle: "Gestiona cupos y solicitudes",             ctaHref: "/asesor/crear-cupos",     ctaLabel: "Abrir cupo" },
     admin:   { title: "Panel Administrador", subtitle: "Visión general del sistema",              ctaHref: "/admin/registrar-asesor",  ctaLabel: "Registrar asesor" },
   } as const;
 
   return (
     <div className="mx-auto max-w-[1200px] px-6 py-8">
       <DashboardHeader
-        title={headers[role].title}
-        subtitle={headers[role].subtitle}
-        ctaHref={headers[role].ctaHref}
-        ctaLabel={headers[role].ctaLabel}
+        title={headers[validRole].title}
+        subtitle={headers[validRole].subtitle}
+        ctaHref={headers[validRole].ctaHref}
+        ctaLabel={headers[validRole].ctaLabel}
       />
 
       <StatusCards
-        role={role}
+        role={validRole}
         isCalendarConnected={data.isCalendarConnected}
         monthCount={data.monthCount}
         pendingCount={data.pendingCount}
         adminMetrics={data.adminMetrics}
       />
 
-      <RoleSections role={role} data={data} />
+      <RoleSections role={validRole} data={data} />
 
-      {role !== "admin" && <ChatWidget />}
+      {validRole !== "admin" && <ChatWidget />}
 
-      {data.upcoming.length === 0 && data.drafts.length === 0 && (
-        <EmptyState icon="👋" title="Sin datos por ahora" description="Vuelve más tarde o crea tu primera solicitud." />
-      )}
+
     </div>
   );
 }

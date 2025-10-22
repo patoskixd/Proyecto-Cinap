@@ -1,18 +1,17 @@
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple, Dict, Any
-import os
+import os, httpx, json
 from mcp.server.fastmcp import FastMCP
 from dateutil import parser as dtparser
 
+from interface_adapters.gateways.google.google_auth import GoogleOAuthAdapter
 from interface_adapters.gateways.google.google_event_repo import GoogleCalendarEventRepository
-
-# from interface_adapters.gateways.in_memory_event_repo import InMemoryEventRepository
 
 from interface_adapters.presenters.event_presenter import EventOut, present_event, present_list
 from interface_adapters.controllers.mcp_tools import (
     EventCreateIn, ListEventsIn, EventKeyIn,
     EventUpdateFlexibleIn, FindEventIn, DeleteIn,
-    UpdatePatch, UpdateSelectorById, UpdateSelectorByTitle
+    UpdateSelectorByTitle
 )
 
 from usecases.interactors import CreateEvent, ListEvents, GetEvent, DeleteEvent, UpdateEvent
@@ -29,108 +28,196 @@ from frameworks_and_drivers.mcp.tool_descriptions import (
 
 def build_mcp() -> FastMCP:
     mcp = FastMCP("event-mcp")
-    
-    repo = GoogleCalendarEventRepository(
-        credentials_file=os.getenv("GOOGLE_CREDENTIALS_FILE", "credentials.json"),
-        token_file=os.getenv("GOOGLE_TOKEN_FILE", "token.json"),
-        default_timezone=os.getenv("DEFAULT_TZ", "America/Santiago"),
-        headless=os.getenv("GOOGLE_HEADLESS", "0"),
-    )
 
-    # repo = InMemoryEventRepository()
+    GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+    GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+    DEFAULT_TZ = os.getenv("DEFAULT_TZ", "America/Santiago")
 
+    oauth_adapter = GoogleOAuthAdapter()
+    repo = GoogleCalendarEventRepository(default_timezone="America/Santiago")
     create_uc = CreateEvent(repo)
     list_uc   = ListEvents(repo)
     get_uc    = GetEvent(repo)
     delete_uc = DeleteEvent(repo)
     update_uc = UpdateEvent(repo)
 
-    @mcp.tool(description=EVENT_CREATE_DESC)
+    def _rfc3339(dt: datetime) -> Dict[str, Any]:
+        if dt.tzinfo is None:
+            from dateutil import tz as dt_tz
+            dt = dt.replace(tzinfo=dt_tz.gettz(DEFAULT_TZ))
+        return {"dateTime": dt.isoformat(), "timeZone": DEFAULT_TZ}
+
+    def _exchange_refresh_sync(refresh_token: str) -> str:
+        with httpx.Client(timeout=20) as client:
+            r = client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "client_id": GOOGLE_CLIENT_ID,
+                    "client_secret": GOOGLE_CLIENT_SECRET,
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh_token,
+                },
+            )
+            r.raise_for_status()
+            return r.json()["access_token"]
+
+    @mcp.tool(description="Crea un evento en Google Calendar")
     def event_create(
-        input: Optional[EventCreateIn] = None,
-        title: Optional[str] = None,
-        start: Optional[datetime] = None,
-        end: Optional[datetime] = None,
+        title: str,
+        start: datetime | str,
+        end: datetime | str,
         attendees: Optional[List[str]] = None,
         location: Optional[str] = None,
         description: Optional[str] = None,
         calendar_id: Optional[str] = None,
-        confirm: Optional[bool] = False,
-        allow_duplicates: Optional[bool] = False,
-        dedupe_window_minutes: Optional[int] = 10,
+        send_updates: Optional[str] = "all",
+        refresh_token: Optional[str] = None,
+        asesoria_id: Optional[str] = None,
+        organizer_usuario_id: Optional[str] = None,
     ) -> EventOut | Dict[str, Any]:
-        if input is None:
-            try:
-                input = EventCreateIn(
-                    title=title, start=start, end=end,
-                    attendees=attendees, location=location, description=description,
-                    calendar_id=calendar_id,
-                )
-            except Exception as e:
-                return err_msg("VALIDATION", f"Argumentos inválidos: {e}")
-
-        payload = input.model_dump()
-        payload["calendar_id"] = with_default_calendar_id(payload.get("calendar_id"))
-
         try:
-            if isinstance(payload["start"], str): payload["start"] = dtparser.isoparse(payload["start"])
-            if isinstance(payload["end"], str):   payload["end"]   = dtparser.isoparse(payload["end"])
-            if payload["start"] >= payload["end"]:
+            if isinstance(start, str):
+                start = dtparser.isoparse(start)
+            if isinstance(end, str):
+                end = dtparser.isoparse(end)
+            if start >= end:
                 return err_msg("VALIDATION", "start debe ser anterior a end")
         except Exception as e:
             return err_msg("VALIDATION", f"Fechas inválidas: {e}")
 
-        norm_atts, seen = [], set()
-        for a in payload.get("attendees") or []:
-            if not a: continue
-            email = str(a).strip().lower()
-            if email and email not in seen:
-                seen.add(email); norm_atts.append(email)
-        payload["attendees"] = norm_atts
+        norm_atts = []
+        seen = set()
+        for a in (attendees or []):
+            if a and (email := str(a).strip().lower()) and email not in seen:
+                seen.add(email)
+                norm_atts.append(email)
 
-        near_from = payload["start"] - timedelta(minutes=int(dedupe_window_minutes or 10))
-        near_to   = payload["start"] + timedelta(minutes=int(dedupe_window_minutes or 10))
-        resp = list_uc.execute(ListEventsRequest(
-            calendar_id=payload["calendar_id"],
-            time_min=near_from, time_max=near_to,
-            q=None, max_results=50
-        ))
-        candidates = as_items(resp)
-        duplicates = [
-            event_brief(ev) for ev in candidates
-            if title_matches(payload["title"], getattr(ev, "title", None))
-        ]
+        if not refresh_token:
+            return err_msg("OAUTH_REQUIRED", "Debe enviarse el refresh_token del asesor.")
 
-        if not confirm:
-            preview = {
-                "title": payload["title"],
-                "calendar_id": payload["calendar_id"],
-                "start": payload["start"],
-                "end": payload["end"],
-                "duration_minutes": int((payload["end"] - payload["start"]).total_seconds() // 60),
-                "attendees": payload["attendees"],
-                "location": payload.get("location"),
-                "description": payload.get("description"),
-                "possible_duplicates": duplicates,
-                "dedupe_window_minutes": dedupe_window_minutes,
-            }
-            msg = f"¿Confirmas la creación de la reunión?"
-            if duplicates and not allow_duplicates:
-                msg += " Se detectaron posibles duplicados cercanos."
-            return ok_msg(msg, preview=preview)
+        try:
+            access_token = oauth_adapter.exchange_refresh(refresh_token)
+        except Exception as e:
+            return err_msg("OAUTH_EXCHANGE", f"No pude refrescar el token del asesor: {e}")
 
-        if duplicates and not allow_duplicates:
-            return err_msg(
-                "POSSIBLE_DUPLICATE",
-                "Se detectaron posibles duplicados cercanos. Vuelve a llamar con allow_duplicates=True para continuar.",
-                candidates=duplicates
-            )
+        cal_id = with_default_calendar_id(calendar_id)
+        req = CreateEventRequest(
+            calendar_id=cal_id,
+            title=title,
+            start=start,
+            end=end,
+            oauth_access_token=access_token,
+            description=description,
+            location=location,
+            attendees=norm_atts,
+            send_updates=(send_updates or "all"),
+        )
+        resp = create_uc.execute(req)
 
-        resp = create_uc.execute(CreateEventRequest(**payload))
         presented = present_event(resp)
-        say = f"Evento creado: “{presented.title}” el {presented.start}–{presented.end}."
-        return ok_msg(say, event=presented)
+        say = f"Evento creado en tu calendario."
 
+        provider_event_id = presented.id
+        html_link = presented.html_link
+
+        data = {"event": presented, "calendar_event_id": provider_event_id, "html_link": html_link}
+
+        if asesoria_id and organizer_usuario_id and provider_event_id:
+            data["next_hint"] = {
+                "next_tool": "calendar_event_upsert",
+                "suggested_args": {
+                    "input": {
+                        "asesoria_id": asesoria_id,
+                        "organizer_usuario_id": organizer_usuario_id,
+                        "calendar_event_id": provider_event_id,
+                        "html_link": html_link,
+                    }
+                }
+            }
+
+        return ok_msg(say, **data)
+    
+    @mcp.tool(description="Elimina un evento en Google Calendar por su event_id (Google) usando OAuth del asesor.")
+    def event_delete_by_id(
+        calendar_id: Optional[str] = None,
+        event_id: Optional[str] = None,
+        refresh_token: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        if not event_id:
+            return err_msg("VALIDATION", "Debes indicar event_id (Google).")
+        if not refresh_token:
+            return err_msg("OAUTH_REQUIRED", "Debe enviarse el refresh_token del asesor.")
+
+        try:
+            access_token = oauth_adapter.exchange_refresh(refresh_token)
+        except Exception as e:
+            return err_msg("OAUTH_EXCHANGE", f"No pude refrescar el token del asesor: {e}")
+
+        cal_id = with_default_calendar_id(calendar_id)
+
+        try:
+            delete_uc.execute(calendar_id=cal_id, event_id=event_id, oauth_access_token=access_token)
+            return ok_msg(
+                "Evento eliminado en tu calendario.",
+                deleted_event_id=event_id,
+                calendar_id=cal_id,
+            )
+        except Exception as e:
+            return err_msg("GOOGLE_DELETE_FAILED", f"No se pudo eliminar en Google: {e}")
+        
+    @mcp.tool(description="Parchea asistentes de un evento por event_id (marca asistencia del docente).")
+    def event_patch_attendees(
+        event_id: str,
+        attendees_patch: List[Dict[str, Any]],
+        calendar_id: Optional[str] = None,
+        send_updates: Optional[str] = "all",
+        refresh_token: Optional[str] = None,
+    ) -> EventOut | Dict[str, Any]:
+        if not event_id:
+            return err_msg("VALIDATION", "Debes indicar event_id (Google).")
+        if not isinstance(attendees_patch, list) or not attendees_patch:
+            return err_msg("VALIDATION", "attendees_patch debe ser una lista no vacía.")
+        if not refresh_token:
+            return err_msg("OAUTH_REQUIRED", "Debe enviarse el refresh_token del usuario que marca asistencia (docente).")
+        
+        norm_atts: List[Dict[str, Any]] = []
+        seen = set()
+        for a in attendees_patch:
+            if not isinstance(a, dict):
+                continue
+            email = (a.get("email") or "").strip().lower()
+            if not email or email in seen:
+                continue
+            seen.add(email)
+            rs = (a.get("responseStatus") or "").strip() or "accepted"
+            norm_atts.append({"email": email, "responseStatus": rs})
+
+        if not norm_atts:
+            return err_msg("VALIDATION", "attendees_patch no contiene emails válidos.")
+
+        try:
+            access_token = oauth_adapter.exchange_refresh(refresh_token)
+        except Exception as e:
+            return err_msg("OAUTH_EXCHANGE", f"No pude refrescar el token del usuario: {e}")
+
+        cal_id = with_default_calendar_id(calendar_id)
+
+        try:
+            req = UpdateEventRequest(
+                calendar_id=cal_id,
+                event_id=event_id,
+                oauth_access_token=access_token,
+                send_updates=(send_updates or "all"),
+                absolute_patch={"attendees": norm_atts},
+            )
+            updated = update_uc.execute(req)
+            presented = present_event(updated)
+            say = f"Asistencia actualizada en tu calendario."
+            return ok_msg(say, event=presented)
+        except Exception as e:
+            return err_msg("GOOGLE_UPDATE_FAILED", f"No se pudo actualizar el evento: {e}")
+
+    """
     @mcp.tool(description=EVENT_LIST_DESC)
     def event_list(
         input: Optional[ListEventsIn] = None,
@@ -400,5 +487,6 @@ def build_mcp() -> FastMCP:
             f"Eliminado(s): {len(deleted)} evento(s).",
             deleted=deleted, calendar_id=cal_id
         )
+    """
 
     return mcp

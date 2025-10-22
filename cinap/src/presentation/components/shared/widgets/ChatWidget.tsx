@@ -124,6 +124,18 @@ export default function ChatWidget() {
   const closeChat = () => setIsOpen(false);
   const toggleChat = () => (isOpen ? closeChat() : openChat());
 
+  const sendQuick = async (text: string) => {
+    if (!text || isLoading) return;
+    addMessage("user", text);
+    setIsLoading(true);
+    try {
+      const reply = await sendChatMessage({ message: text, sessionId: session.id });
+      addMessage("assistant", reply);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isOpenRef.current) {
@@ -276,7 +288,9 @@ export default function ChatWidget() {
 
             {/* Mensajes */}
             <div ref={listRef} className="flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-blue-50/30 to-white p-6">
-              {messages.map((m) => (<MessageBubble key={m.id} message={m} />))}
+              {messages.map((m) => (
+                <MessageBubble key={m.id} message={m} onQuickSend={sendQuick} />
+              ))}
               {isLoading && (
                 <div className="flex items-start gap-3">
                   <Avatar role="assistant" />
@@ -351,23 +365,159 @@ function Avatar({ role }: { role: Role }) {
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function PaginatedList({
+  items,
+  pageSize = 2,
+  cardMinH = 90,
+}: { items: any[]; pageSize?: number; cardMinH?: number }) {
+  const [page, setPage] = useState(0);
+  const total = items.length;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const start = page * pageSize;
+  const slice = items.slice(start, start + pageSize);
+  const missing = Math.max(0, pageSize - slice.length);
+
+  return (
+    <div className={classNames("mt-2 text-left mx-auto", "w-[min(220px,80vw)]")}>
+      <ul className={classNames("flex flex-col gap-2", "w-full")}>
+        {slice.map((it, idx) => (
+          <li
+            key={`it-${start + idx}`}
+            className="w-full rounded-xl border border-blue-100 bg-white/80 p-3
+                       flex flex-col justify-center text-center shadow-sm
+                       transition-all duration-200"
+            style={{ minHeight: cardMinH }}
+          >
+            <div className="font-medium text-blue-900 leading-snug text-balance break-words">
+              {it.title || "(sin título)"}
+            </div>
+            {it.subtitle && <div className="text-xs text-blue-500 mt-0.5">{it.subtitle}</div>}
+            {(it.start || it.end) && (
+              <div className="text-xs text-blue-500 mt-0.5">
+                {it.start || ""}{(it.start || it.end) ? " — " : ""}{it.end || ""}
+              </div>
+            )}
+          </li>
+        ))}
+
+        {/* Placeholders */}
+        {Array.from({ length: missing }).map((_, i) => (
+          <li
+            key={`ph-${i}`}
+            aria-hidden
+            className="w-full rounded-xl border border-transparent p-3 opacity-0 pointer-events-none"
+            style={{ minHeight: cardMinH }}
+          />
+        ))}
+      </ul>
+
+      {/* Paginador */}
+      {pages > 1 && (
+        <div className={classNames("mt-3 flex items-center justify-center gap-3", "w-full")}>
+          <button
+            onClick={() => setPage(p => Math.max(0, p - 1))}
+            disabled={page === 0}
+            className="rounded-full border border-blue-200 bg-white px-3 py-1.5 
+                       text-sm text-blue-700 disabled:opacity-40"
+          >
+            ◀
+          </button>
+          <span className="text-xs text-blue-600">
+            Página {page + 1} de {pages}
+          </span>
+          <button
+            onClick={() => setPage(p => Math.min(pages - 1, p + 1))}
+            disabled={page >= pages - 1}
+            className="rounded-full border border-blue-200 bg-white px-3 py-1.5 
+                       text-sm text-blue-700 disabled:opacity-40"
+          >
+            ▶
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function parseCinapListMarker(content: string): { clean: string; list: null | { kind: string; items: any[] } } {
+  const re = /<!--CINAP_LIST:([A-Za-z0-9+/=]+)-->/g;
+  let match: RegExpExecArray | null;
+  let lastList: any = null;
+  let clean = content;
+
+  while ((match = re.exec(content)) !== null) {
+    try {
+      const b64 = match[1];
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const jsonStr = new TextDecoder("utf-8").decode(bytes);
+      lastList = JSON.parse(jsonStr);
+    } catch { /* ignore */ }
+    clean = clean.replace(match[0], "").trim();
+  }
+  return { clean, list: lastList };
+}
+
+function parseCinapConfirmMarker(content: string): { clean: string; confirm: null | { idempotency?: string; ttl_sec?: number } } {
+  const re = /<!--CINAP_CONFIRM:([A-Za-z0-9+/=]+)-->/g;
+  let match: RegExpExecArray | null;
+  let last: any = null;
+  let clean = content;
+
+  while ((match = re.exec(content)) !== null) {
+    try {
+      const b64 = match[1];
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const jsonStr = new TextDecoder("utf-8").decode(bytes);
+      last = JSON.parse(jsonStr);
+    } catch { /* ignore */ }
+    clean = clean.replace(match[0], "").trim();
+  }
+  return { clean, confirm: last };
+}
+
+function MessageBubble({ message, onQuickSend }: { message: ChatMessage; onQuickSend?: (text: string) => void }) {
   const time = useMemo(
     () => new Date(message.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
     [message.createdAt]
   );
   const isUser = message.role === "user";
+
+  const { clean: afterList, list } = useMemo(() => parseCinapListMarker(message.content), [message.content]);
+  const { clean, confirm } = useMemo(() => parseCinapConfirmMarker(afterList), [afterList]);
+
   return (
     <div className={classNames("flex items-start gap-3", isUser && "flex-row-reverse")}>
       <Avatar role={message.role} />
       <div className={classNames("max-w-[80%] space-y-2", isUser && "items-end text-right")}>
-        <div className={classNames(
-          "rounded-2xl px-4 py-3 text-sm shadow-lg backdrop-blur-sm",
-          isUser 
-            ? "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white ring-1 ring-emerald-400" 
-            : "border border-blue-200 bg-white/90 text-blue-900 ring-1 ring-blue-100"
-        )}>
-          {message.content}
+        <div
+          className={classNames(
+            "rounded-2xl px-4 py-3 text-sm shadow-lg backdrop-blur-sm",
+            isUser
+              ? "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white ring-1 ring-emerald-400"
+              : "border border-blue-200 bg-white/90 text-blue-900 ring-1 ring-blue-100"
+          )}
+          style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+        >
+          {clean}
+          {(!isUser && list?.items?.length) ? <PaginatedList items={list.items} /> : null}
+
+          {/* Botones de confirmación */}
+          {!isUser && confirm ? (
+            <div className="mt-3 flex items-center gap-2 justify-center">
+              <button
+                onClick={() => onQuickSend?.("sí")}
+                className="rounded-xl px-3 py-1.5 text-sm text-white bg-blue-600 hover:bg-blue-700 shadow-sm"
+              >
+                Sí
+              </button>
+              <button
+                onClick={() => onQuickSend?.("no")}
+                className="rounded-xl px-3 py-1.5 text-sm text-blue-700 border border-blue-200 bg-white hover:bg-blue-50 shadow-sm"
+              >
+                No
+              </button>
+            </div>
+          ) : null}
         </div>
         <div className={classNames("px-1 text-xs", isUser ? "text-emerald-600" : "text-blue-500")}>{time}</div>
       </div>

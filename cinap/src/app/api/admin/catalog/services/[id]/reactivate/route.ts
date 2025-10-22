@@ -1,20 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import ReactivateService from "@application/admin-catalog/usecases/Service/ReactivateService";
+import ReactivateService from "@/application/admin/catalog/usecases/Service/ReactivateService";
 import { AdminCatalogBackendRepo } from "@infrastructure/http/bff/admin/catalog/AdminCatalogBackendRepo";
 import { appendSetCookies } from "@/app/api/_utils/cookies";
 
-const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.BACKEND_URL ?? "http://localhost:8000";
-export const dynamic = "force-dynamic"; export const revalidate = 0;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+const getCookieString = (req: NextRequest) => req.headers.get("cookie") ?? "";
+
+export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
   try {
-    const { id } = await ctx.params;
-    const repo = new AdminCatalogBackendRepo(BACKEND, req.headers.get("cookie") ?? "");
+    const { id } = ctx.params;
+    const repo = new AdminCatalogBackendRepo(getCookieString(req));
     const data = await new ReactivateService(repo).exec(id);
     const resp = NextResponse.json(data, { status: 200 });
     appendSetCookies(repo.getSetCookies?.() ?? [], resp);
     return resp;
   } catch (e: any) {
-    return NextResponse.json({ detail: e.message }, { status: 400 });
+    const status = e?.status ?? 400;
+    return NextResponse.json({ detail: e?.detail || e?.message || "No se pudo reactivar el servicio" }, { status });
   }
 }

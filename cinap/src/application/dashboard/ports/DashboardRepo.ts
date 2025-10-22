@@ -1,21 +1,22 @@
-import type { Appointment, Draft } from "@domain/appointment";
+import type { Appointment,  } from "@domain/appointment";
 import type { Role } from "@domain/auth";
 
 export type AdminMetrics = {
   advisorsTotal: number;
-  advisorsAvailable: number;
   teachersTotal: number;
   appointmentsThisMonth: number;
-  approvalsPending: number;
+  pendingCount: number;
+  activeCategories: number;
+  activeServices: number;
 };
 
 export type DashboardData = {
   upcoming: Appointment[];
-  drafts: Draft[];
   monthCount: number;         
   pendingCount: number;       
   isCalendarConnected: boolean;
   adminMetrics?: AdminMetrics;
+  upcomingTotal: number; 
 };
 
 export type DashboardInput = {
@@ -26,3 +27,4 @@ export type DashboardInput = {
 export interface DashboardRepo {
   getDashboard(input: DashboardInput): Promise<DashboardData>;
 }
+

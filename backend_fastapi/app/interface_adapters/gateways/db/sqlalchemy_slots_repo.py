@@ -4,24 +4,17 @@ from typing import Optional, Iterable, Tuple
 from datetime import datetime
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from fastapi import Query
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import uuid as uuidlib
-
-
 from app.use_cases.ports.slots_port import SlotsRepo
 from app.interface_adapters.orm.models_scheduling import (
     AsesorPerfilModel, ServicioModel, CategoriaModel, AsesorServicioModel,
-    CupoModel, RecursoModel, EdificioModel, CampusModel
+    CupoModel, RecursoModel, EdificioModel, CampusModel, EstadoCupo
 )
-
-
-
-
-
 
 class SqlAlchemySlotsRepo(SlotsRepo):
     def __init__(self, session: AsyncSession):
@@ -61,7 +54,9 @@ class SqlAlchemySlotsRepo(SlotsRepo):
             select(CupoModel.id, CupoModel.inicio, CupoModel.fin)
             .where(
                 CupoModel.recurso_id == uuid.UUID(recurso_id),
-                sa.or_(*conds)
+                # Solo chocan cupos activos (ABIERTO/RESERVADO); ignoramos CANCELADO/EXPIRADO
+                CupoModel.estado.in_([EstadoCupo.ABIERTO, EstadoCupo.RESERVADO]),
+                sa.or_(*conds),
             )
             .order_by(CupoModel.inicio.asc(), CupoModel.fin.asc())
         )
@@ -85,7 +80,8 @@ class SqlAlchemySlotsRepo(SlotsRepo):
             select(CupoModel.id, CupoModel.inicio, CupoModel.fin)
             .where(
                 CupoModel.asesor_id == uuid.UUID(asesor_id),
-                sa.or_(*conds)
+                CupoModel.estado.in_([EstadoCupo.ABIERTO, EstadoCupo.RESERVADO]),
+                sa.or_(*conds),
             )
             .order_by(CupoModel.inicio.asc(), CupoModel.fin.asc())
         )
@@ -176,6 +172,38 @@ class SqlAlchemySlotsRepo(SlotsRepo):
                     skipped += 1 
 
         return created, skipped
+    
+    async def complete_reserved_slots(self) -> int:
+        """
+        Marca como REALIZADO todos los cupos RESERVADO cuyo fin < now().
+        """
+        upd = (
+            sa.update(CupoModel)
+            .where(
+                CupoModel.estado == EstadoCupo.RESERVADO,
+                CupoModel.fin < sa.func.now(),
+            )
+            .values(estado=EstadoCupo.REALIZADO)
+        )
+        res = await self.s.execute(upd)
+        return int(res.rowcount or 0)
+    
+    #  expirar cupos cuya hora ya paso
+    async def expire_open_slots(self) -> int:
+        """
+        Marca como EXPIRADO todos los cupos ABIERTO con fin < now().
+        Retorna cuántas filas se actualizaron.
+        """
+        upd = (
+            sa.update(CupoModel)
+            .where(
+                CupoModel.estado == EstadoCupo.ABIERTO,
+                CupoModel.fin < sa.func.now(),
+            )
+            .values(estado=EstadoCupo.EXPIRADO)
+        )
+        res = await self.s.execute(upd)
+        return int(res.rowcount or 0)
     
     async def get_common_times_and_resources(self) -> dict:
         j = (
@@ -269,5 +297,22 @@ class SqlAlchemySlotsRepo(SlotsRepo):
             "resources": base["resources"],
         }
     
-
+    async def sweep_cupos_vencidos(self, batch: int = 1000) -> dict:
+        """
+        Ejecuta el barrido en BD:
+        - ABIERTO -> EXPIRADO si ya pasó la hora de inicio
+        - RESERVADO -> REALIZADO si ya pasó la hora de fin
+        - Asesorías vinculadas a esos cupos -> COMPLETADA
+        """
+        q = text("SELECT * FROM sweep_cupos_vencidos(:batch)")
+        row = (await self.s.execute(q, {"batch": batch})).first()
+        # La función retorna: (expirados, realizados, asesorias_completadas)
+        expirados = row[0] if row else 0
+        realizados = row[1] if row else 0
+        asesorias = row[2] if row else 0
+        return {
+            "expirados": expirados,
+            "realizados": realizados,
+            "asesorias_completadas": asesorias,
+        }
     

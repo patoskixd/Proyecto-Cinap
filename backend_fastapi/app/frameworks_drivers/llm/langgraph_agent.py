@@ -1,5 +1,9 @@
 from __future__ import annotations
+import base64
+from collections import deque
+import copy
 from datetime import datetime
+import time
 from zoneinfo import ZoneInfo
 import json, sqlite3, asyncio, re
 from typing import Any, Dict, List
@@ -10,6 +14,7 @@ from langchain.tools import StructuredTool
 from pydantic import BaseModel, create_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
+from langchain_core.messages.utils import trim_messages
 from app.frameworks_drivers.mcp.stdio_client import MCPStdioClient
 from app.observability.confirm_store import is_confirmation
 from app.observability.metrics import set_meta, stage, astage, measure_stage
@@ -32,6 +37,8 @@ _TOOL_JSON_RE = re.compile(
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 CURRENT_THREAD_ID: ContextVar[str | None] = ContextVar("CURRENT_THREAD_ID", default=None)
+
+CONFIRM_TOOLS = {"schedule_asesoria", "cancel_asesoria", "confirm_asesoria"}
 
 def _normalize_event_update_args(kwargs: dict) -> dict:
     if not isinstance(kwargs, dict):
@@ -98,6 +105,73 @@ def _normalize_event_delete_by_title_args(kwargs: dict) -> dict:
 
     return out
 
+def _attach_items_payload(text: str, items: list[dict], kind: str) -> str:
+    from datetime import datetime
+
+    def _first(d: dict, *keys):
+        for k in keys:
+            v = d.get(k)
+            if isinstance(v, dict):
+                v = v.get("iso") or v.get("at") or v.get("value") or v.get("utc")
+            if v not in (None, "", []):
+                return v
+        return None
+
+    def _compose_start(d: dict):
+        # 1) Directos comunes
+        v = _first(
+            d,
+            "start", "start_time", "inicio",
+            "fechaHoraInicio", "startAt", "start_at",
+            "startTime", "startTimeIso", "when"
+        )
+        if v:
+            return v
+        # 2) Composición fecha + hora (muy común en tu backend)
+        fecha = _first(d, "fecha", "date", "dia", "day")
+        hora  = _first(d, "hora", "time", "hora_inicio", "horaInicio", "slot")
+        if fecha and hora:
+            try:
+                # Deja que el webhook lo parsee; basta concatenar
+                return f"{fecha} {hora}"
+            except Exception:
+                pass
+        # 3) Solo fecha (el webhook igual la muestra)
+        if fecha:
+            return fecha
+        return None
+
+    def _compose_end(d: dict):
+        v = _first(
+            d,
+            "end", "end_time", "fin",
+            "fechaHoraFin", "endAt", "end_at",
+            "endTime", "endTimeIso"
+        )
+        return v
+
+    ui_items = []
+    for it in (items or []):
+        ui_items.append({
+            "title": it.get("title") or it.get("nombre") or "",
+            "subtitle": it.get("subtitle") or it.get("email") or it.get("asesor") or "",
+            "start": _compose_start(it),
+            "end":   _compose_end(it),
+            # ⬇⬇⬇ Conserva todo el item original
+            "meta": it,
+        })
+
+    payload = {"kind": kind, "items": ui_items}
+    blob = base64.b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
+    return ((text or "").strip() + ("\n\n" if text else "") + f"<!--CINAP_LIST:{blob}-->").strip()
+
+def _attach_confirm_marker(text: str, *, idem: str | None, expires_in_sec: int = 120) -> str:
+    payload = {"idempotency": idem, "kind": "confirm", "ttl_sec": expires_in_sec}
+    blob = base64.b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
+    marker = f"<!--CINAP_CONFIRM:{blob}-->"
+    base = (text or "").strip()
+    return (f"{base}\n\n{marker}" if base else marker)
+
 def _strip_think(text: str | None) -> str:
     if not isinstance(text, str):
         return ""
@@ -110,17 +184,18 @@ def _strip_code_fences(s: str) -> str:
         s = re.sub(r"\s*```$", "", s)
     return s.strip()
 
-def _fmt_event_line(ev: dict) -> str:
-    t = ev.get("title") or "(sin título)"
-    s = str(ev.get("start") or "")
-    e = str(ev.get("end") or "")
-    return f"{t} — {s}–{e}"
+def _fmt_list_item(it: dict) -> str:
+    title = str(it.get("title") or "(sin título)").strip()
+    sub = str(it.get("subtitle") or it.get("email") or "").strip()
+    return f"{title}\n{sub}" if sub else title
 
 def _render_numbered(items: list[dict], limit: int = 10) -> str:
     shown = items[:limit]
-    lines = [f"{idx+1}) {_fmt_event_line(ev)}" for idx, ev in enumerate(shown)]
+    lines = [f"{idx+1}) {_fmt_list_item(ev)}" for idx, ev in enumerate(shown)]
+
     if len(items) > limit:
-        lines.append(f"... y {len(items)-limit} más")
+        lines.append(f"... y {len(items) - limit} más")
+
     return "\n".join(lines)
 
 def _format_mcp_result(res: dict, tool_name: str) -> str:
@@ -128,14 +203,14 @@ def _format_mcp_result(res: dict, tool_name: str) -> str:
         data = res.get("data") or {}
         items = data.get("items") or data.get("events")
         if isinstance(items, list) and items:
-            header = res.get("say") or f"{len(items)} evento(s) encontrados."
-            return header + "\n" + _render_numbered(items)
+            header = (res.get("say") or "").strip()
+            return _attach_items_payload(header, items, kind=tool_name)
+
         ev = data.get("event")
         if isinstance(ev, dict):
             say = (res.get("say") or "").strip()
-            if say:
-                return say
-            return _fmt_event_line(ev)
+            return say or _fmt_list_item(ev)
+
         if res.get("say"):
             return str(res["say"])
         return "Operación completada."
@@ -216,6 +291,81 @@ def _parse_tool_json(s: str) -> tuple[str, dict] | None:
         pass
     return None
 
+try:
+    import tiktoken
+except Exception:
+    tiktoken = None
+
+def _make_token_counter(model_name: str):
+    if tiktoken:
+        try:
+            enc = tiktoken.encoding_for_model(model_name)
+        except Exception:
+            enc = tiktoken.get_encoding("cl100k_base")
+
+        def counter(text: str) -> int:
+            return len(enc.encode(text or ""))
+
+        return counter
+    def counter(text: str) -> int:
+        return max(1, len(text or "") // 4)
+
+    return counter
+
+class TokenTrimCheckpointer:
+    def __init__(
+        self,
+        base,
+        *,
+        model_name: str,
+        max_tokens: int = 3000,
+        strategy: str = "recency",
+        include_system: bool = True,
+        allow_partial: bool = True,
+    ):
+        self._base = base
+        self._max_tokens = int(max_tokens)
+        self._strategy = strategy
+        self._include_system = include_system
+        self._allow_partial = allow_partial
+        self._token_counter = _make_token_counter(model_name)
+
+    def __getattr__(self, name):
+        return getattr(self._base, name)
+
+    def _trim_cp(self, cp: dict) -> dict:
+        if not isinstance(cp, dict):
+            return cp
+        cp2 = copy.deepcopy(cp)
+        vals = cp2.get("values")
+        if isinstance(vals, dict) and isinstance(vals.get("messages"), list):
+            messages = vals["messages"]
+
+            trimmed = trim_messages(
+                messages=messages,
+                token_counter=self._token_counter,
+                max_tokens=self._max_tokens,
+                strategy=self._strategy,
+                include_system=self._include_system,
+                allow_partial=self._allow_partial,
+            )
+            vals["messages"] = trimmed
+        return cp2
+
+    def put(self, *args, **kwargs):
+        args = list(args)
+        if len(args) >= 2 and isinstance(args[1], dict):
+            args[1] = self._trim_cp(args[1])
+        return self._base.put(*tuple(args), **kwargs)
+
+    async def aput(self, *args, **kwargs):
+        args = list(args)
+        if len(args) >= 2 and isinstance(args[1], dict):
+            args[1] = self._trim_cp(args[1])
+        if hasattr(self._base, "aput"):
+            return await self._base.aput(*tuple(args), **kwargs)
+        return self._base.put(*tuple(args), **kwargs)
+
 class LangGraphRunner:
     def __init__(self, app, system_text: str | None = None):
         self._app = app
@@ -255,62 +405,89 @@ class LangGraphAgent:
     def set_confirm_store(self, store) -> None:
         self._confirm_store = store
 
-    def set_current_user(self, user: dict | None):
-        self._current_user = user or {}
-
     def _make_tool(self, name: str, description: str, ModelIn: type[BaseModel]) -> StructuredTool:
         async def caller_async(**kwargs) -> str:
             set_meta(route="inline_tool")
             client = self._client_for_tool(name)
 
-            async with astage("agent.mcp.total", extra={"tool": name}):
-                async with astage("agent.mcp.normalize"):
-                    if name == "event_delete_by_title":
-                        args = _normalize_event_delete_by_title_args(kwargs)
-                    elif name == "event_update":
-                        args = _normalize_event_update_args(kwargs)
-                    elif name == "book_asesoria" and "docente_id" not in args:
+            try:
+                async with astage("agent.mcp.total", extra={"tool": name}):
+                    async with astage("agent.mcp.normalize"):
+                        if name == "event_delete_by_title":
+                            args = _normalize_event_delete_by_title_args(kwargs)
+                        elif name == "event_update":
+                            args = _normalize_event_update_args(kwargs)
+                        else:
+                            args = kwargs
+
+                    thread_id = CURRENT_THREAD_ID.get()
+                    args = dict(args)
+
+                    if name in ("schedule_asesoria", "cancel_asesoria", "list_asesorias", "confirm_asesoria"):
                         user = getattr(self, "_current_user", {}) or {}
-                        sub = user.get("sub")
-                        if sub:
-                            args["docente_id"] = sub
-                    else:
-                        args = kwargs
+                        uid = user.get("sub") or user.get("user_id")
+                        if not uid:
+                            import re
+                            tid = CURRENT_THREAD_ID.get()
+                            if thread_id and re.fullmatch(r"[0-9a-fA-F-]{36}", thread_id):
+                                uid = thread_id
+                        if "input" in args and isinstance(args["input"], dict):
+                            if uid and not args["input"].get("user_id"):
+                                args["input"]["user_id"] = uid
+                        else:
+                            payload = dict(args.get("input") or {})
+                            if uid and not payload.get("user_id"):
+                                payload["user_id"] = uid
+                            args["input"] = payload
 
-                thread_id = CURRENT_THREAD_ID.get()
+                    if getattr(self, "_confirm_store", None) and thread_id and name in CONFIRM_TOOLS:
+                        pending_exists = await self._confirm_store.peek(thread_id)
 
-                if getattr(self, "_confirm_store", None) and thread_id:
-                    pending_exists = await self._confirm_store.peek(thread_id)
+                        if args.get("confirm") is True and not pending_exists:
+                            args["confirm"] = False
+                            set_meta(enforced_preview=True)
 
-                    # Forzar preview
-                    if args.get("confirm") is True and not pending_exists:
-                        args["confirm"] = False
-                        set_meta(enforced_preview=True)
+                        if not bool(args.get("confirm")):
+                            async with astage("confirm.store.put", extra={"tool": name}):
+                                idem = await self._confirm_store.put(thread_id, name, args)
 
-                    # Guardar preview
-                    if not bool(args.get("confirm")):
-                        async with astage("confirm.store.put", extra={"tool": name}):
-                            pending_id = await self._confirm_store.put(thread_id, name, args)
-                        async with astage("confirm.store.verify", extra={"tool": name, "pending_id": pending_id}):
-                            exists = await self._confirm_store.peek(thread_id)
-                            if not exists:
-                                set_meta(confirm_store_verify="miss")
-                        async with astage("agent.mcp.total", extra={"tool": name}):
-                            res = await client.call_tool(name, {**args, "confirm": False})
+                            async with astage("mcp.rpc", extra={"tool": name, "phase": "preview"}):
+                                preview_res = await client.call_tool(name, {**args, "confirm": False})
 
-                    # Ejecutar
-                    async with astage("mcp.serialize", extra={"tool": name}):
-                        pass
-                    async with astage("mcp.rpc", extra={"tool": name}):
+                            try:
+                                if isinstance(preview_res, dict):
+                                    next_hint = None
+                                    data = preview_res.get("data") or {}
+                                    if isinstance(data, dict):
+                                        next_hint = data.get("next_hint")
+                                    if not next_hint:
+                                        next_hint = preview_res.get("next_hint")
+
+                                    if next_hint:
+                                        post = [{
+                                            "tool": next_hint.get("next_tool"),
+                                            "args": next_hint.get("suggested_args")
+                                        }]
+                                        await self._confirm_store.patch(thread_id, {"post_confirm": post})
+                            except Exception:
+                                pass
+
+                            preview_text = _format_mcp_result(preview_res, name)
+                            if isinstance(preview_res, dict) and preview_res.get("ok") is False:
+                                await self._confirm_store.pop(thread_id)
+                                return preview_text
+
+                            return _attach_confirm_marker(preview_text, idem=idem, expires_in_sec=120)
+
+                        set_meta(confirm_requested_inline=True)
+                        return "Necesito tu confirmación primero. Responde con “sí” para continuar."
+
+                    async with astage("mcp.rpc", extra={"tool": name, "phase": "direct"}):
                         res = await client.call_tool(name, args)
-                    async with astage("mcp.deserialize", extra={"tool": name}):
-                        pass
                     return _format_mcp_result(res, name)
 
-                # Llamar tool
-                async with astage("agent.mcp.total", extra={"tool": name}):
-                    res = await client.call_tool(name, args)
-                return _format_mcp_result(res, name)
+            except Exception as e:
+                return f"Ocurrió un error ejecutando {name}: {e!s}"
 
         def caller_sync(**kwargs) -> str:
             fut = asyncio.run_coroutine_threadsafe(caller_async(**kwargs), self._main_loop)
@@ -380,7 +557,16 @@ class LangGraphAgent:
 
         tools = await self._build_tools_from_mcp()
         conn = sqlite3.connect(self._db_path, check_same_thread=False)
-        checkpointer = SqliteSaver(conn)
+        base_cp = SqliteSaver(conn)
+        token_budget = 10000
+        checkpointer = TokenTrimCheckpointer(
+            base_cp,
+            model_name=self._model_name,
+            max_tokens=token_budget,
+            strategy="recency",
+            include_system=True,
+            allow_partial=True,
+        )
         app_or_graph = create_react_agent(llm, tools, checkpointer=checkpointer)
         app = app_or_graph.compile(checkpointer=checkpointer) if hasattr(app_or_graph, "compile") else app_or_graph
 
@@ -389,52 +575,183 @@ class LangGraphAgent:
         Your answers must always be in Spanish. 
 
         TOOL HINTS (Cinap)
-        - See advisers: use the tool `list_advisors`.
-        - See services: use the tool `list_services`.
-        - For booking:
-        1) `resolve_advisor` and `resolve_service` if the user gave text.
-        2) `detect_overlaps(include_calendar=true)` to avoid overlaps.
-        3) `check_availability` to obtain slot (id).
-        4) `book_asesoria` with confirmation (preview → confirm).
-        5) Next `event_create` with confirmation (preview → confirm).
-        - Never create a calendar event without reserving first in the DB
-
-        TOOL USE POLICY (Calendar)
-        - Never perform destructive or state-changing actions without an explicit two-step confirmation.
-        - Two-step workflow for create/update/delete:
+        - For "schedule_asesoria", "cancel_asesoria" and "confirm_asesoria", arguments must be inside an input payload.
+        - Two-step workflow for schedule:
           1) First produce a PREVIEW by calling the tool with confirm=false.
           2) Only if the user explicitly confirms in their next message, call the tool again with confirm=true to execute.
         - A confirmation applies only to the immediately preceding action and cannot be reused.
-        - An imperative (“Delete…”, “Create…”, “Update…”) is not a confirmation.
-        - If no time range is provided, use the default window: today−30 days to today+365 days.
-        - For destructive intent, do not “find first”; build a selector from the user’s message and call the delete tool with confirm=false (preview), then wait for confirmation.
+        - Do not re-execute a completed action when the user repeats “sí” or similar.
+        - For tools that require user_id, don't insert it since it will be injected automatically
 
         TOOL CALL FORMAT
         - When you decide to use a tool, respond with a single JSON object only (no extra text, no code fences):
           {"name":"<tool_name>","arguments":{...}}
         - Use snake_case parameter names exactly as defined by the tool. Omit null/unknown fields.
-        - After executing a confirmed tool, you may add a short Spanish summary for the user.
+
+        RAG HINTS
+        - If the question is informative about CINAP (what is it, services, politics, how it works, etc.), use the tool "semantic_search" with { "q": "<user question>" } to gain context before responding.
+        - If there's no results, say it clearly.
         """
-        today = datetime.now(ZoneInfo("America/Santiago")).strftime("%d-%m-%Y")
-        system_msg = SYSTEM_STATIC_EN + f"\nContext: TZ=America/Santiago, today={today}\n /no_think"
+        now_cl = datetime.now(ZoneInfo("America/Santiago"))
+        offset = now_cl.utcoffset()
+        offset_h = int(offset.total_seconds() // 3600)
+        offset_sign = "+" if offset_h >= 0 else "-"
+        offset_txt = f"UTC{offset_sign}{abs(offset_h):02d}:00"
+        system_msg = SYSTEM_STATIC_EN + f"\nContext: TZ=America/Santiago ({offset_txt}), today={now_cl:%d-%m-%Y}\n /no_think"
         self._runner = LangGraphRunner(app, system_text=system_msg)
 
     async def invoke(self, message: str, *, thread_id: str) -> str:
         if not self._runner:
             raise RuntimeError("LangGraphAgent no inicializado")
+        
+        if getattr(self, "_confirm_store", None) and not is_confirmation(message):
+            pending = await self._confirm_store.get(thread_id)
+            if pending:
+                await self._confirm_store.pop(thread_id)
+                return "Acción cancelada"
 
         if getattr(self, "_confirm_store", None) and is_confirmation(message):
             async with astage("confirm.fastpath.pop"):
                 pending = await self._confirm_store.pop(thread_id)
+
+            if not pending:
+                return "No hay ninguna acción pendiente de confirmación"
+
             if pending:
-                tool = pending.get("tool")
+                tool = (pending.get("tool") or "").strip()
                 args = dict(pending.get("args") or {})
-                args["confirm"] = True
-                set_meta(route="confirm_fastpath", tool=tool)
-                async with astage("confirm.fastpath.mcp", extra={"tool": tool}):
+                created_at = pending.get("created_at") or 0
+                if not isinstance(created_at, int) or (time.time() - created_at) > 120:
+                    return "La confirmación caducó. Vuelve a intentarlo, por favor"
+
+                if tool not in CONFIRM_TOOLS:
+                    return "No hay ninguna acción pendiente de confirmación"
+                else:
+                    def _fallback_user_id():
+                        user = getattr(self, "_current_user", {}) or {}
+                        uid = user.get("sub") or user.get("user_id")
+                        if not uid:
+                            import re
+                            tid = CURRENT_THREAD_ID.get()
+                            if tid and re.fullmatch(r"[0-9a-fA-F-]{8}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{12}", tid):
+                                uid = tid
+                        return uid
+
+                    def _put_confirm_and_user_id_in_input(a: dict) -> dict:
+                        out = dict(a or {})
+                        if "input" not in out or not isinstance(out["input"], dict):
+                            out["input"] = {}
+                        out["input"] = {**out["input"], "confirm": True}
+                        uid = out["input"].get("user_id") or _fallback_user_id()
+                        if uid:
+                            out["input"]["user_id"] = uid
+                        return out
+
+                    if tool in ("schedule_asesoria", "cancel_asesoria"):
+                        args = _put_confirm_and_user_id_in_input(args)
+                    else:
+                        if "input" in args and isinstance(args["input"], dict):
+                            args["input"]["confirm"] = True
+                        else:
+                            args["confirm"] = True
+
+                    set_meta(route="confirm_fastpath", tool=tool)
                     client = self._client_for_tool(tool)
-                    res = await client.call_tool(tool, args)
-                return _strip_think(_format_mcp_result(res, tool))
+
+                    msgs: list[str] = []
+                    try:
+                        async with astage("confirm.fastpath.mcp", extra={"tool": tool, "phase": "confirm"}):
+                            res = await client.call_tool(tool, args)
+                        msgs.append(_strip_think(_format_mcp_result(res, tool)))
+                    except Exception as e:
+                        msgs.append(f"Ocurrió un error confirmando {tool}: {e!s}")
+
+                    post_ops = []
+                    try:
+                        post_ops = (pending.get("post_confirm") or []) if isinstance(pending, dict) else []
+                    except Exception:
+                        post_ops = []
+
+                    try:
+                        confirm_hint = None
+                        if isinstance(res, dict):
+                            data = res.get("data") or {}
+                            nh = data.get("next_hint") or res.get("next_hint")
+                            if isinstance(nh, dict) and nh.get("next_tool") and nh.get("suggested_args"):
+                                confirm_hint = {"tool": nh["next_tool"], "args": dict(nh["suggested_args"] or {})}
+
+                        def _deep_merge(dst: dict, src: dict) -> dict:
+                            out = dict(dst or {})
+                            for k, v in (src or {}).items():
+                                if isinstance(v, dict) and isinstance(out.get(k), dict):
+                                    out[k] = _deep_merge(out[k], v)
+                                else:
+                                    out[k] = v
+                            return out
+
+                        if confirm_hint:
+                            if post_ops:
+                                for op in post_ops:
+                                    if op.get("tool") == confirm_hint["tool"]:
+                                        op["args"] = _deep_merge(op.get("args") or {}, confirm_hint["args"])
+                                        break
+                                else:
+                                    post_ops.append(confirm_hint)
+                            else:
+                                post_ops = [confirm_hint]
+                    except Exception:
+                        pass
+
+                    def _deep_merge(dst: dict, src: dict) -> dict:
+                        out = dict(dst or {})
+                        for k, v in (src or {}).items():
+                            if isinstance(v, dict) and isinstance(out.get(k), dict):
+                                out[k] = _deep_merge(out[k], v)
+                            else:
+                                out[k] = v
+                        return out
+
+                    queue = deque(post_ops or [])
+
+                    while queue:
+                        op = queue.popleft()
+                        tname = (op.get("tool") or "").strip()
+                        targs = dict(op.get("args") or {})
+                        if not tname:
+                            continue
+
+                        if tname == "event_create":
+                            if isinstance(targs.get("attendees"), list):
+                                seen = set(); atts = []
+                                for a in targs["attendees"]:
+                                    a = (a or "").strip().lower()
+                                    if a and a not in seen:
+                                        seen.add(a); atts.append(a)
+                                targs["attendees"] = atts
+
+                        try:
+                            c2 = self._client_for_tool(tname)
+                            async with astage("confirm.fastpath.mcp", extra={"tool": tname, "phase": "post"}):
+                                r2 = await c2.call_tool(tname, targs)
+                            msgs.append(_strip_think(_format_mcp_result(r2, tname)))
+                        except Exception as e:
+                            msgs.append(f"Ocurrió un error encadenando {tname}: {e}")
+                            continue
+
+                        try:
+                            if isinstance(r2, dict):
+                                data2 = r2.get("data") or {}
+                                nh2 = data2.get("next_hint") or r2.get("next_hint")
+                                if isinstance(nh2, dict) and nh2.get("next_tool") and nh2.get("suggested_args"):
+                                    queue.append({
+                                        "tool": nh2["next_tool"],
+                                        "args": dict(nh2["suggested_args"] or {}),
+                                    })
+                        except Exception:
+                            pass
+
+                    return "\n".join([m for m in msgs if m]).strip()
+
             set_meta(fastpath="miss_no_pending")
 
         token = CURRENT_THREAD_ID.set(thread_id)

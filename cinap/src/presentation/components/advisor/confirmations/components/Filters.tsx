@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import type { PendingConfirmation } from "@domain/confirmations";
+import type { PendingConfirmation } from "@/domain/advisor/confirmations";
 
 export type DateFilter = "" | "today" | "tomorrow" | "week" | "month";
 export type Filters = {

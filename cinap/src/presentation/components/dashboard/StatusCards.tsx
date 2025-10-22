@@ -23,10 +23,11 @@ export default function StatusCards({
     return (
       <AdminStatusCards
         advisorsCount={adminMetrics.advisorsTotal}
-        availableAdvisors={adminMetrics.advisorsAvailable}
         teachersCount={adminMetrics.teachersTotal}
         monthCount={adminMetrics.appointmentsThisMonth}
-        pendingCount={adminMetrics.approvalsPending}
+        pendingCount={adminMetrics.pendingCount}
+        activeCategories={adminMetrics.activeCategories}
+        activeServices={adminMetrics.activeServices}
       />
     );
   }

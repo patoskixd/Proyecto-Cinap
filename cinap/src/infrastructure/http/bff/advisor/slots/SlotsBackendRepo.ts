@@ -1,11 +1,19 @@
-import type { SlotsRepo } from "@application/slots/ports/SlotsRepo";
-import type { CreateSlotsData, CreateSlotsInput, CreateSlotsResult } from "@domain/slots";
+import type { SlotsRepo } from "@/application/advisor/slots/ports/SlotsRepo";
+import type { CreateSlotsData, CreateSlotsInput, CreateSlotsResult } from "@/domain/advisor/slots";
 
 export class SlotsBackendRepo implements SlotsRepo {
-  constructor(
-    private readonly baseUrl: string,
-    private readonly cookie: string,
-  ) {}
+  private readonly baseUrl: string;
+  private readonly cookie: string;
+  private lastSetCookies: string[] = [];
+
+  getSetCookies(): string[] {
+    return this.lastSetCookies;
+  }
+
+  constructor(cookie: string) {
+    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.cookie = cookie;
+  }
 
   private async parse<T>(res: Response): Promise<T> {
     const txt = await res.text();

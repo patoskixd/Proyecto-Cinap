@@ -80,6 +80,7 @@ export default function FiltersBar({ value, onChange, options }: Props) {
             <option value="ocupado">Ocupado</option>
             <option value="cancelado">Cancelado</option>
             <option value="expirado">Expirado</option>
+            <option value="realizado">Realizado</option>
           </select>
         </div>
 

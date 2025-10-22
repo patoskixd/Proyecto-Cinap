@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type {FoundSlot } from "@/domain/scheduling";
+import type { FoundSlot } from "@/domain/teacher/scheduling";
 import type { Advisor, Category, CategoryId, Service, WizardState } from "../types";
-import { SchedulingHttpRepo } from "@/infrastructure/asesorias/agendar/SchedulingHttpRepo";
+import { SchedulingHttpRepo } from "@/infrastructure/teachers/asesorias/agendar/SchedulingHttpRepo";
 import { isPastDate, startOfDay } from "../utils/date";
+import { notify } from "@/presentation/components/shared/Toast/ToastProvider";
 
 export function useScheduleWizard({
   categories,
@@ -73,9 +74,23 @@ export function useScheduleWizard({
           dateFrom: dateStr,
           dateTo: dateStr,
         });
-        setOpenSlots(Array.isArray(slots) ? slots : []);
+        const now = new Date();
+        const sanitized = (Array.isArray(slots) ? slots : []).filter((slot) => {
+          if (!slot?.date || !slot?.time) return true;
+          const slotDate = new Date(`${slot.date}T${slot.time}`);
+          if (Number.isNaN(slotDate.getTime())) return true;
+          return slotDate.getTime() > now.getTime();
+        });
+        setOpenSlots(sanitized);
+        setState((prev) => {
+          if (!prev.slot) return prev;
+          const exists = sanitized.some((slot) => slot.cupoId === prev.slot?.cupoId);
+          return exists ? prev : { ...prev, slot: null };
+        });
       } catch (e: any) {
-        setSlotsError(e?.message || "Error consultando cupos");
+        const message = e?.message || "Error consultando cupos";
+        setSlotsError(message);
+        notify(message, "error");
       } finally {
         setLoadingSlots(false);
       }

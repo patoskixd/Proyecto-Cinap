@@ -66,7 +66,6 @@ export default function ScheduleWizard(props: {
             state={state}
             openSlots={openSlots}
             defaultTimezone={defaultTimezone}
-            error={error}
           />
         )}
 

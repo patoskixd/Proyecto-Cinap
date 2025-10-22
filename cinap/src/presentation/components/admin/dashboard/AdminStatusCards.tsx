@@ -5,20 +5,19 @@ export default function AdminStatusCards(props: {
   teachersCount: number;
   monthCount: number;
   pendingCount: number;
-  availableAdvisors: number;
+  activeCategories: number;
+  activeServices: number;
 }) {
-  const { advisorsCount, teachersCount, monthCount, pendingCount, availableAdvisors } = props;
+  const { advisorsCount, teachersCount, monthCount, pendingCount, activeCategories, activeServices } = props;
 
   const Card = ({
     title,
     value,
     iconType,
-    tone = "blue",
   }: {
     title: string;
     value: string | number;
     iconType: string;
-    tone?: "blue" | "emerald" | "violet" | "amber" | "rose";
   }) => {
     const getIcon = (type: string) => {
       switch (type) {
@@ -46,10 +45,16 @@ export default function AdminStatusCards(props: {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           );
-        case "available":
+        case "categories":
           return (
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+          );
+        case "services":
+          return (
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0H8m8 0v2a2 2 0 01-2 2H10a2 2 0 01-2-2V6m8 0H8M6 18h12a2 2 0 002-2v-6H4v6a2 2 0 002 2z" />
             </svg>
           );
         default:
@@ -60,16 +65,9 @@ export default function AdminStatusCards(props: {
           );
       }
     };
-    const tones: Record<string, string> = {
-      blue: "bg-gradient-to-r from-blue-600 to-blue-700 text-white",
-      emerald: "bg-gradient-to-r from-emerald-600 to-emerald-700 text-white",
-      violet: "bg-gradient-to-r from-violet-600 to-violet-700 text-white",
-      amber: "bg-gradient-to-r from-amber-600 to-amber-700 text-white",
-      rose: "bg-gradient-to-r from-rose-600 to-rose-700 text-white",
-    };
     return (
       <div className="flex items-center gap-4 rounded-2xl border border-blue-100 bg-white p-5 ring-1 ring-blue-100 shadow-lg">
-        <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${tones[tone]} shadow-sm`}>
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 via-blue-600 to-blue-700 text-white shadow-sm">
           {getIcon(iconType)}
         </div>
         <div>
@@ -81,12 +79,13 @@ export default function AdminStatusCards(props: {
   };
 
   return (
-    <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+    <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
       <Card title="Asesores" value={advisorsCount} iconType="advisors" />
-      <Card title="Docentes" value={teachersCount} iconType="teachers" tone="violet" />
-      <Card title="Asesorías del mes" value={monthCount} iconType="appointments" tone="amber" />
-      <Card title="Pendientes" value={pendingCount} iconType="pending" tone="rose" />
-      <Card title="Asesores disponibles" value={availableAdvisors} iconType="available" tone="emerald" />
+      <Card title="Docentes" value={teachersCount} iconType="teachers" />
+      <Card title="Asesorías del mes" value={monthCount} iconType="appointments" />
+      <Card title="Por confirmar" value={pendingCount} iconType="pending" />
+      <Card title="Categorías activas" value={activeCategories} iconType="categories" />
+      <Card title="Servicios activos" value={activeServices} iconType="services" />
     </section>
   );
 }

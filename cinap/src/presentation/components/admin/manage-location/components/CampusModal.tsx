@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import BaseModal from "./BaseModal";
-import { AdminLocationHttpRepo } from "@/infrastructure/admin-location/AdminLocationHttpRepo";
+import { AdminLocationHttpRepo } from "@/infrastructure/admin/location/AdminLocationHttpRepo";
 
-type Values = { name: string; address: string };
+type Values = { name: string; address: string; code: string };
 
 export default function CampusModal({
   id,
@@ -15,7 +15,7 @@ export default function CampusModal({
   onCreate: (payload: Values) => Promise<void> | void;
   onUpdate: (id: string, patch: Partial<Values>) => Promise<void> | void;
 }) {
-  const [values, setValues] = useState<Values>({ name: "", address: "" });
+  const [values, setValues] = useState<Values>({ name: "", address: "", code: "" });
   const [loading, setLoading] = useState(false);
 
   // precargar si viene id
@@ -29,7 +29,7 @@ export default function CampusModal({
         const repo = new AdminLocationHttpRepo();
         const all = await repo.listCampus();
         const found = all.find((c) => c.id === id);
-        if (found && alive) setValues({ name: found.name, address: found.address || "" });
+        if (found && alive) setValues({ name: found.name, address: found.address || "", code: found.code || "" });
       } finally {
         if (alive) setLoading(false);
       }
@@ -54,6 +54,17 @@ export default function CampusModal({
             value={values.name}
             onChange={(e) => setValues((v) => ({ ...v, name: e.target.value }))}
             className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+          />
+        </label>
+
+        <label className="block text-sm font-medium text-gray-700">
+          <span className="mb-2 block">Código</span>
+          <input
+            required
+            value={values.code}
+            onChange={(e) => setValues((v) => ({ ...v, code: e.target.value }))}
+            placeholder="CPJ-01"
+            className="w-full uppercase tracking-wide rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
           />
         </label>
 

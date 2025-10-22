@@ -41,10 +41,6 @@ export default function Step1Service({
                 "font-semibold text-lg mb-2",
                 categoryId === c.id ? "text-blue-900" : "text-neutral-900"
               )}>{c.name}</h4>
-              <p className={cx(
-                "text-sm",
-                categoryId === c.id ? "text-blue-700" : "text-neutral-600"
-              )}>{c.description}</p>
             </button>
           ))}
         </div>

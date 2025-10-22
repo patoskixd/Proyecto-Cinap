@@ -1,7 +1,7 @@
 "use client";
 
 import type { Advisor, Category, Service,  WizardState } from "../types";
-import type { FoundSlot } from "@/domain/scheduling";
+import type { FoundSlot } from "@/domain/teacher/scheduling";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -19,7 +19,6 @@ export function Step3Confirm({
   state,
   openSlots,
   defaultTimezone,
-  error,
 }: {
   categories: Category[];
   services: Service[];
@@ -27,7 +26,6 @@ export function Step3Confirm({
   state: WizardState;
   openSlots: FoundSlot[];
   defaultTimezone: string;
-  error: string | null;
 }) {
   const categoryName = categories.find((c) => c.id === state.categoryId)?.name ?? "-";
   const service = services.find((s) => s.id === state.serviceId);
@@ -37,6 +35,8 @@ export function Step3Confirm({
   const dayName = slotData
     ? new Date(`${slotData.date}T${slotData.time}`).toLocaleDateString("es-ES", { weekday: "long" })
     : "-";
+  const formattedDay = dayName && dayName !== "-" ? dayName.charAt(0).toUpperCase() + dayName.slice(1) : null;
+  const timezoneLabel = defaultTimezone ? ` (${defaultTimezone})` : "";
   const start = slotData?.time ?? "-";
   let end = "-";
   if (slotData) {
@@ -58,12 +58,6 @@ export function Step3Confirm({
         <p className="text-blue-700">Revisa los detalles antes de confirmar tu cita</p>
       </div>
 
-      {error && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">
-          {error}
-        </div>
-      )}
-
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="w-full max-w-xl mx-auto lg:col-span-2 rounded-2xl border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-white p-6 shadow-md">
           <h3 className="mb-4 border-b-2 border-blue-200 pb-2 text-lg font-semibold text-blue-900">
@@ -77,14 +71,9 @@ export function Step3Confirm({
             <Row label="Asesor" value={advisor ? `${advisor.name} ` : "-"} />
             <Row
               label="Fecha y hora"
-            // value={
-            // slotData
-            //     ? `${slotData.date} ${dayName.charAt(0).toUpperCase() + dayName.slice(1)},  ${start} - ${end}`
-            //    : "-"
-            // }
               value={
                 slotData
-                  ? `${slotData.date}   ${start} - ${end}`
+                  ? `${slotData.date}${formattedDay ? ` (${formattedDay})` : ""} · ${start} - ${end}${timezoneLabel}`
                   : "-"
               }
             />

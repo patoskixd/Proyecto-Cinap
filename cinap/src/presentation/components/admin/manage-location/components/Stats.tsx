@@ -6,14 +6,15 @@ export default function Stats({
   totalCampus: number;
   totalBuildings: number;
   totalRooms: number;
-  totalCapacity: number;
+  totalCapacity: number;   // <- capacidad activa total
 }) {
   const items = [
     { label: "Campus totales", value: totalCampus },
     { label: "Edificios totales", value: totalBuildings },
     { label: "Salas totales", value: totalRooms },
-    { label: "Capacidad total", value: totalCapacity },
+    { label: "Capacidad activa total", value: totalCapacity },
   ];
+
   return (
     <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {items.map((s, i) => (

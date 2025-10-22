@@ -1,75 +1,70 @@
 from __future__ import annotations
 import uuid
-from typing import Optional
+from typing import Sequence
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
-from app.interface_adapters.orm.models_scheduling import CategoriaModel, ServicioModel
+from app.use_cases.ports.teacher_confirmations_repo import PendingConfirmation, TeacherConfirmationsRepo
+from app.interface_adapters.orm.models_scheduling import EstadoCupo
 
-class SqlAlchemyAdminCatalogRepo:
+PENDING_ASESORIA_STATES = ("PENDIENTE", "SOLICITADA", "PENDIENTE_DOCENTE")
+
+class SqlAlchemyTeacherConfirmationsRepo(TeacherConfirmationsRepo):
     def __init__(self, session: AsyncSession):
-        self.s = session
+        self.session = session
 
-    async def _cat_row_to_out(self, c: CategoriaModel) -> dict:
-        # carga servicios de la categoría
-        q = select(ServicioModel).where(ServicioModel.categoria_id == c.id).order_by(ServicioModel.nombre.asc())
-        svcs = (await self.s.execute(q)).scalars().all()
-        return {
-            "id": str(c.id),
-            "name": c.nombre,
-            "description": c.descripcion or "",
-            "status": "active" if c.activo else "inactive",
-            "services": [
-                {
-                    "id": str(s.id),
-                    "name": s.nombre,
-                    "duration": int(s.duracion_minutos),
-                    "status": "active" if s.activo else "inactive",
-                } for s in svcs
-            ],
+    async def get_pending_for_usuario(self, usuario_id: uuid.UUID) -> Sequence[PendingConfirmation]:
+        sql = sa.text("""
+            SELECT
+                a.id                         AS asesoria_id,
+                s.nombre                     AS servicio,
+                cat.nombre                   AS categoria,
+                c.inicio                     AS inicio,
+                c.fin                        AS fin,
+                a.creado_en                  AS solicitado_en,
+                COALESCE(ca.nombre, '')      AS campus,
+                COALESCE(e.nombre, '')       AS edificio,
+                COALESCE(r.sala_numero, '')  AS sala
+            FROM asesoria a
+            JOIN cupo c            ON c.id = a.cupo_id
+            JOIN servicio s        ON s.id = c.servicio_id
+            JOIN categoria cat     ON cat.id = s.categoria_id
+            JOIN docente_perfil dp ON dp.id = a.docente_id
+            JOIN recurso r         ON r.id = c.recurso_id
+            LEFT JOIN edificio e   ON e.id = r.edificio_id
+            LEFT JOIN campus ca    ON ca.id = e.campus_id
+            WHERE dp.usuario_id = :usuario_id
+              AND a.estado IN :pending_states
+              AND c.estado = CAST(:estado_reservado AS estado_cupo)
+            ORDER BY a.creado_en DESC
+        """).bindparams(sa.bindparam("pending_states", expanding=True))
+
+        params = {
+            "usuario_id": usuario_id,
+            "pending_states": list(PENDING_ASESORIA_STATES),
+            "estado_reservado": EstadoCupo.RESERVADO.value,
         }
 
-    async def list_categories(self) -> list[dict]:
-        rows = (await self.s.execute(select(CategoriaModel).order_by(CategoriaModel.nombre.asc()))).scalars().all()
-        out: list[dict] = []
-        for c in rows:
-            out.append(await self._cat_row_to_out(c))
-        return out
+        rows = (await self.session.execute(sql, params)).mappings().all()
 
-    async def create_category(self, name: str, description: str) -> dict:
-        c = CategoriaModel(nombre=name.strip(), descripcion=(description or "").strip() or None)
-        self.s.add(c)
-        await self.s.flush()
-        return await self._cat_row_to_out(c)
+        def _ubi(row):
+            parts = [p for p in [
+                row["campus"] or None,
+                row["edificio"] or None,
+                f"Sala {row['sala']}" if row["sala"] else None
+            ] if p]
+            return " · ".join(parts) if parts else None
 
-    async def update_category(self, cat_id: str, patch: dict) -> dict:
-        q = select(CategoriaModel).where(CategoriaModel.id == uuid.UUID(cat_id))
-        c = (await self.s.execute(q)).scalar_one_or_none()
-        if not c:
-            raise ValueError("Categoría no encontrada")
-        if "name" in patch and patch["name"] is not None:
-            c.nombre = patch["name"].strip()
-        if "description" in patch:
-            v = (patch["description"] or "").strip()
-            c.descripcion = v or None
-        await self.s.flush()
-        return await self._cat_row_to_out(c)
-
-    async def delete_category(self, cat_id: str) -> None:
-        q = select(CategoriaModel).where(CategoriaModel.id == uuid.UUID(cat_id))
-        c = (await self.s.execute(q)).scalar_one_or_none()
-        if not c:
-            raise ValueError("Categoría no encontrada")
-        # opcional: validar que no tenga servicios activos/reservas
-        await self.s.delete(c)
-        await self.s.flush()
-
-    async def set_category_status(self, cat_id: str, active: bool) -> dict:
-        q = select(CategoriaModel).where(CategoriaModel.id == uuid.UUID(cat_id))
-        c = (await self.s.execute(q)).scalar_one_or_none()
-        if not c:
-            raise ValueError("Categoría no encontrada")
-        c.activo = bool(active)
-        await self.s.flush()
-        return await self._cat_row_to_out(c)
+        return [
+            PendingConfirmation(
+                id=row["asesoria_id"],
+                categoria=row["categoria"] or "",
+                servicio=row["servicio"] or "",
+                inicio=row["inicio"],
+                fin=row["fin"],
+                solicitado_en=row["solicitado_en"],
+                ubicacion=_ubi(row),
+                solicitante=None,
+            )
+            for row in rows
+        ]

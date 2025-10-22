@@ -1,13 +1,26 @@
-import type { AdminCatalogRepo } from "@application/admin-catalog/ports/AdminCatalogRepo";
-import type { AdminCategory, AdminService } from "@domain/adminCatalog";
+// infrastructure/http/bff/admin/catalog/AdminCatalogBackendRepo.ts
+import type { AdminCatalogRepo } from "@/application/admin/catalog/ports/AdminCatalogRepo";
+import type { AdminCategory, AdminService } from "@/domain/admin/catalog";
+
+export class HttpError extends Error {
+  status: number;
+  detail?: string;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+    this.detail = message;
+  }
+}
 
 export class AdminCatalogBackendRepo implements AdminCatalogRepo {
   private lastSetCookies: string[] = [];
+  private readonly baseUrl: string;
+  private readonly cookie: string;
 
-  constructor(
-    private readonly baseUrl: string,
-    private readonly cookie: string,
-  ) {}
+  constructor(cookie: string) {
+    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.cookie = cookie;
+  }
 
   getSetCookies(): string[] {
     return this.lastSetCookies;
@@ -25,10 +38,28 @@ export class AdminCatalogBackendRepo implements AdminCatalogRepo {
     this.lastSetCookies.push(...rawList);
   }
 
-  private async parse<T>(res: Response): Promise<T> {
-    const txt = await res.text();
-    try { return JSON.parse(txt) as T; } catch { throw new Error(txt || `HTTP ${res.status}`); }
+  // ===== Helpers (mismo patrón de locations) =====
+  private async parseOrThrow<T>(res: Response): Promise<T> {
+  const raw = await res.text();
+  let data: any = null;
+  try { data = raw ? JSON.parse(raw) : null; } catch { data = raw; }
+
+  if (!res.ok) {
+    // Normalizar detalle: si viene como objeto, tomar su .message
+    let msg: string = `HTTP ${res.status}`;
+    if (data) {
+      const d = (data.detail ?? data.message ?? data);
+      if (typeof d === "string") {
+        msg = d;
+      } else if (d && typeof d === "object") {
+        msg = d.message ?? JSON.stringify(d);
+      }
+    }
+    throw new Error(msg);
   }
+  return data as T;
+}
+
 
   // ---------- Categorías
   async listCategories(): Promise<AdminCategory[]> {
@@ -39,8 +70,7 @@ export class AdminCatalogBackendRepo implements AdminCatalogRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    if (!res.ok) throw new Error(await res.text() || "No se pudieron cargar las categorías");
-    return this.parse<AdminCategory[]>(res);
+    return this.parseOrThrow<AdminCategory[]>(res);
   }
 
   async createCategory(payload: { name: string; description: string }): Promise<AdminCategory> {
@@ -52,16 +82,14 @@ export class AdminCatalogBackendRepo implements AdminCatalogRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    const data = await this.parse<any>(res);
-    if (!res.ok) throw new Error(data?.detail || data?.message || "No se pudo crear la categoría");
-    return data as AdminCategory;
+    return this.parseOrThrow<AdminCategory>(res);
   }
 
   async updateCategory(
     id: string,
     patch: { name?: string; description?: string; active?: boolean }
   ): Promise<AdminCategory> {
-    const res = await fetch(`${this.baseUrl}/admin/catalog/categories/${id}`, {
+    const res = await fetch(`${this.baseUrl}/admin/catalog/categories/${encodeURIComponent(id)}`, {
       method: "PATCH",
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
       credentials: "include",
@@ -69,33 +97,29 @@ export class AdminCatalogBackendRepo implements AdminCatalogRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    const data = await this.parse<any>(res);
-    if (!res.ok) throw new Error(data?.detail || data?.message || "No se pudo actualizar la categoría");
-    return data as AdminCategory;
+    return this.parseOrThrow<AdminCategory>(res);
   }
 
   async deleteCategory(id: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/admin/catalog/categories/${id}`, {
+    const res = await fetch(`${this.baseUrl}/admin/catalog/categories/${encodeURIComponent(id)}`, {
       method: "DELETE",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    if (!res.ok) throw new Error(await res.text() || "No se pudo eliminar la categoría");
+    return this.parseOrThrow<void>(res);
   }
 
   async reactivateCategory(id: string): Promise<AdminCategory> {
-    const res = await fetch(`${this.baseUrl}/admin/catalog/categories/${id}/reactivate`, {
+    const res = await fetch(`${this.baseUrl}/admin/catalog/categories/${encodeURIComponent(id)}/reactivate`, {
       method: "POST",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    const data = await this.parse<any>(res);
-    if (!res.ok) throw new Error(data?.detail || data?.message || "No se pudo reactivar la categoría");
-    return data as AdminCategory;
+    return this.parseOrThrow<AdminCategory>(res);
   }
 
   // ---------- Servicios
@@ -103,7 +127,7 @@ export class AdminCatalogBackendRepo implements AdminCatalogRepo {
     categoryId: string,
     payload: { name: string; durationMinutes: number; active?: boolean }
   ): Promise<AdminService> {
-    const res = await fetch(`${this.baseUrl}/admin/catalog/categories/${categoryId}/services`, {
+    const res = await fetch(`${this.baseUrl}/admin/catalog/categories/${encodeURIComponent(categoryId)}/services`, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
       credentials: "include",
@@ -111,16 +135,14 @@ export class AdminCatalogBackendRepo implements AdminCatalogRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    const data = await this.parse<any>(res);
-    if (!res.ok) throw new Error(data?.detail || data?.message || "No se pudo crear el servicio");
-    return data as AdminService;
+    return this.parseOrThrow<AdminService>(res);
   }
 
   async updateService(
     id: string,
     patch: { name?: string; durationMinutes?: number; active?: boolean }
   ): Promise<AdminService> {
-    const res = await fetch(`${this.baseUrl}/admin/catalog/services/${id}`, {
+    const res = await fetch(`${this.baseUrl}/admin/catalog/services/${encodeURIComponent(id)}`, {
       method: "PATCH",
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
       credentials: "include",
@@ -128,32 +150,28 @@ export class AdminCatalogBackendRepo implements AdminCatalogRepo {
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    const data = await this.parse<any>(res);
-    if (!res.ok) throw new Error(data?.detail || data?.message || "No se pudo actualizar el servicio");
-    return data as AdminService;
+    return this.parseOrThrow<AdminService>(res);
   }
 
   async deleteService(id: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/admin/catalog/services/${id}`, {
+    const res = await fetch(`${this.baseUrl}/admin/catalog/services/${encodeURIComponent(id)}`, {
       method: "DELETE",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    if (!res.ok) throw new Error(await res.text() || "No se pudo eliminar el servicio");
+    return this.parseOrThrow<void>(res);
   }
 
   async reactivateService(id: string): Promise<AdminService> {
-    const res = await fetch(`${this.baseUrl}/admin/catalog/services/${id}/reactivate`, {
+    const res = await fetch(`${this.baseUrl}/admin/catalog/services/${encodeURIComponent(id)}/reactivate`, {
       method: "POST",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
       cache: "no-store",
     });
     this.collectSetCookies(res);
-    const data = await this.parse<any>(res);
-    if (!res.ok) throw new Error(data?.detail || data?.message || "No se pudo reactivar el servicio");
-    return data as AdminService;
+    return this.parseOrThrow<AdminService>(res);
   }
 }
