@@ -115,7 +115,7 @@ def build_mcp() -> FastMCP:
         resp = create_uc.execute(req)
 
         presented = present_event(resp)
-        say = f"Evento creado: “{presented.title}” el {presented.start}–{presented.end}."
+        say = f"Evento creado en tu calendario."
 
         provider_event_id = presented.id
         html_link = presented.html_link
@@ -158,7 +158,7 @@ def build_mcp() -> FastMCP:
         try:
             delete_uc.execute(calendar_id=cal_id, event_id=event_id, oauth_access_token=access_token)
             return ok_msg(
-                "Evento eliminado en Google Calendar.",
+                "Evento eliminado en tu calendario.",
                 deleted_event_id=event_id,
                 calendar_id=cal_id,
             )
@@ -212,7 +212,7 @@ def build_mcp() -> FastMCP:
             )
             updated = update_uc.execute(req)
             presented = present_event(updated)
-            say = f"Asistencia actualizada en tu calendario"
+            say = f"Asistencia actualizada en tu calendario."
             return ok_msg(say, event=presented)
         except Exception as e:
             return err_msg("GOOGLE_UPDATE_FAILED", f"No se pudo actualizar el evento: {e}")

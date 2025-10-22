@@ -124,6 +124,18 @@ export default function ChatWidget() {
   const closeChat = () => setIsOpen(false);
   const toggleChat = () => (isOpen ? closeChat() : openChat());
 
+  const sendQuick = async (text: string) => {
+    if (!text || isLoading) return;
+    addMessage("user", text);
+    setIsLoading(true);
+    try {
+      const reply = await sendChatMessage({ message: text, sessionId: session.id });
+      addMessage("assistant", reply);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isOpenRef.current) {
@@ -276,7 +288,9 @@ export default function ChatWidget() {
 
             {/* Mensajes */}
             <div ref={listRef} className="flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-blue-50/30 to-white p-6">
-              {messages.map((m) => (<MessageBubble key={m.id} message={m} />))}
+              {messages.map((m) => (
+                <MessageBubble key={m.id} message={m} onQuickSend={sendQuick} />
+              ))}
               {isLoading && (
                 <div className="flex items-start gap-3">
                   <Avatar role="assistant" />
@@ -443,14 +457,33 @@ function parseCinapListMarker(content: string): { clean: string; list: null | { 
   return { clean, list: lastList };
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function parseCinapConfirmMarker(content: string): { clean: string; confirm: null | { idempotency?: string; ttl_sec?: number } } {
+  const re = /<!--CINAP_CONFIRM:([A-Za-z0-9+/=]+)-->/g;
+  let match: RegExpExecArray | null;
+  let last: any = null;
+  let clean = content;
+
+  while ((match = re.exec(content)) !== null) {
+    try {
+      const b64 = match[1];
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const jsonStr = new TextDecoder("utf-8").decode(bytes);
+      last = JSON.parse(jsonStr);
+    } catch { /* ignore */ }
+    clean = clean.replace(match[0], "").trim();
+  }
+  return { clean, confirm: last };
+}
+
+function MessageBubble({ message, onQuickSend }: { message: ChatMessage; onQuickSend?: (text: string) => void }) {
   const time = useMemo(
     () => new Date(message.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
     [message.createdAt]
   );
   const isUser = message.role === "user";
 
-  const { clean, list } = useMemo(() => parseCinapListMarker(message.content), [message.content]);
+  const { clean: afterList, list } = useMemo(() => parseCinapListMarker(message.content), [message.content]);
+  const { clean, confirm } = useMemo(() => parseCinapConfirmMarker(afterList), [afterList]);
 
   return (
     <div className={classNames("flex items-start gap-3", isUser && "flex-row-reverse")}>
@@ -467,6 +500,24 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         >
           {clean}
           {(!isUser && list?.items?.length) ? <PaginatedList items={list.items} /> : null}
+
+          {/* Botones de confirmación */}
+          {!isUser && confirm ? (
+            <div className="mt-3 flex items-center gap-2 justify-center">
+              <button
+                onClick={() => onQuickSend?.("sí")}
+                className="rounded-xl px-3 py-1.5 text-sm text-white bg-blue-600 hover:bg-blue-700 shadow-sm"
+              >
+                Sí
+              </button>
+              <button
+                onClick={() => onQuickSend?.("no")}
+                className="rounded-xl px-3 py-1.5 text-sm text-blue-700 border border-blue-200 bg-white hover:bg-blue-50 shadow-sm"
+              >
+                No
+              </button>
+            </div>
+          ) : null}
         </div>
         <div className={classNames("px-1 text-xs", isUser ? "text-emerald-600" : "text-blue-500")}>{time}</div>
       </div>

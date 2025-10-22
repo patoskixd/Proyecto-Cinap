@@ -14,6 +14,7 @@ from langchain.tools import StructuredTool
 from pydantic import BaseModel, create_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
+from langchain_core.messages.utils import trim_messages
 from app.frameworks_drivers.mcp.stdio_client import MCPStdioClient
 from app.observability.confirm_store import is_confirmation
 from app.observability.metrics import set_meta, stage, astage, measure_stage
@@ -164,6 +165,12 @@ def _attach_items_payload(text: str, items: list[dict], kind: str) -> str:
     blob = base64.b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
     return ((text or "").strip() + ("\n\n" if text else "") + f"<!--CINAP_LIST:{blob}-->").strip()
 
+def _attach_confirm_marker(text: str, *, idem: str | None, expires_in_sec: int = 120) -> str:
+    payload = {"idempotency": idem, "kind": "confirm", "ttl_sec": expires_in_sec}
+    blob = base64.b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
+    marker = f"<!--CINAP_CONFIRM:{blob}-->"
+    base = (text or "").strip()
+    return (f"{base}\n\n{marker}" if base else marker)
 
 def _strip_think(text: str | None) -> str:
     if not isinstance(text, str):
@@ -197,8 +204,7 @@ def _format_mcp_result(res: dict, tool_name: str) -> str:
         items = data.get("items") or data.get("events")
         if isinstance(items, list) and items:
             header = (res.get("say") or "").strip()
-            text = (header + "\n" + _render_numbered(items)) if header else ""
-            return _attach_items_payload(text, items, kind=tool_name)
+            return _attach_items_payload(header, items, kind=tool_name)
 
         ev = data.get("event")
         if isinstance(ev, dict):
@@ -285,48 +291,80 @@ def _parse_tool_json(s: str) -> tuple[str, dict] | None:
         pass
     return None
 
-class CappedCheckpointer:
-    def __init__(self, base, max_messages: int = 10, keys=("messages",)):
+try:
+    import tiktoken
+except Exception:
+    tiktoken = None
+
+def _make_token_counter(model_name: str):
+    if tiktoken:
+        try:
+            enc = tiktoken.encoding_for_model(model_name)
+        except Exception:
+            enc = tiktoken.get_encoding("cl100k_base")
+
+        def counter(text: str) -> int:
+            return len(enc.encode(text or ""))
+
+        return counter
+    def counter(text: str) -> int:
+        return max(1, len(text or "") // 4)
+
+    return counter
+
+class TokenTrimCheckpointer:
+    def __init__(
+        self,
+        base,
+        *,
+        model_name: str,
+        max_tokens: int = 3000,
+        strategy: str = "recency",
+        include_system: bool = True,
+        allow_partial: bool = True,
+    ):
         self._base = base
-        self._max = int(max_messages)
-        self._keys = tuple(keys)
+        self._max_tokens = int(max_tokens)
+        self._strategy = strategy
+        self._include_system = include_system
+        self._allow_partial = allow_partial
+        self._token_counter = _make_token_counter(model_name)
 
     def __getattr__(self, name):
         return getattr(self._base, name)
 
-    def _cap_checkpoint(self, cp):
+    def _trim_cp(self, cp: dict) -> dict:
         if not isinstance(cp, dict):
             return cp
         cp2 = copy.deepcopy(cp)
-        for k in self._keys:
-            try:
-                seq = cp2.get(k)
-                if isinstance(seq, list) and len(seq) > self._max:
-                    cp2[k] = seq[-self._max:]
-            except Exception:
-                pass
+        vals = cp2.get("values")
+        if isinstance(vals, dict) and isinstance(vals.get("messages"), list):
+            messages = vals["messages"]
+
+            trimmed = trim_messages(
+                messages=messages,
+                token_counter=self._token_counter,
+                max_tokens=self._max_tokens,
+                strategy=self._strategy,
+                include_system=self._include_system,
+                allow_partial=self._allow_partial,
+            )
+            vals["messages"] = trimmed
         return cp2
 
-    def _cap_in_args(self, args, kwargs):
-        if "checkpoint" in kwargs:
-            kwargs = dict(kwargs)
-            kwargs["checkpoint"] = self._cap_checkpoint(kwargs["checkpoint"])
-            return args, kwargs
-        if len(args) >= 2:
-            args = list(args)
-            args[1] = self._cap_checkpoint(args[1])
-            return tuple(args), kwargs
-        return args, kwargs
-
     def put(self, *args, **kwargs):
-        args, kwargs = self._cap_in_args(args, kwargs)
-        return self._base.put(*args, **kwargs)
+        args = list(args)
+        if len(args) >= 2 and isinstance(args[1], dict):
+            args[1] = self._trim_cp(args[1])
+        return self._base.put(*tuple(args), **kwargs)
 
     async def aput(self, *args, **kwargs):
-        args, kwargs = self._cap_in_args(args, kwargs)
+        args = list(args)
+        if len(args) >= 2 and isinstance(args[1], dict):
+            args[1] = self._trim_cp(args[1])
         if hasattr(self._base, "aput"):
-            return await self._base.aput(*args, **kwargs)
-        return self._base.put(*args, **kwargs)
+            return await self._base.aput(*tuple(args), **kwargs)
+        return self._base.put(*tuple(args), **kwargs)
 
 class LangGraphRunner:
     def __init__(self, app, system_text: str | None = None):
@@ -411,7 +449,7 @@ class LangGraphAgent:
 
                         if not bool(args.get("confirm")):
                             async with astage("confirm.store.put", extra={"tool": name}):
-                                await self._confirm_store.put(thread_id, name, args)
+                                idem = await self._confirm_store.put(thread_id, name, args)
 
                             async with astage("mcp.rpc", extra={"tool": name, "phase": "preview"}):
                                 preview_res = await client.call_tool(name, {**args, "confirm": False})
@@ -434,7 +472,12 @@ class LangGraphAgent:
                             except Exception:
                                 pass
 
-                            return _format_mcp_result(preview_res, name)
+                            preview_text = _format_mcp_result(preview_res, name)
+                            if isinstance(preview_res, dict) and preview_res.get("ok") is False:
+                                await self._confirm_store.pop(thread_id)
+                                return preview_text
+
+                            return _attach_confirm_marker(preview_text, idem=idem, expires_in_sec=120)
 
                         set_meta(confirm_requested_inline=True)
                         return "Necesito tu confirmación primero. Responde con “sí” para continuar."
@@ -515,7 +558,15 @@ class LangGraphAgent:
         tools = await self._build_tools_from_mcp()
         conn = sqlite3.connect(self._db_path, check_same_thread=False)
         base_cp = SqliteSaver(conn)
-        checkpointer = CappedCheckpointer(base_cp, max_messages=10)
+        token_budget = 10000
+        checkpointer = TokenTrimCheckpointer(
+            base_cp,
+            model_name=self._model_name,
+            max_tokens=token_budget,
+            strategy="recency",
+            include_system=True,
+            allow_partial=True,
+        )
         app_or_graph = create_react_agent(llm, tools, checkpointer=checkpointer)
         app = app_or_graph.compile(checkpointer=checkpointer) if hasattr(app_or_graph, "compile") else app_or_graph
 
@@ -552,13 +603,19 @@ class LangGraphAgent:
     async def invoke(self, message: str, *, thread_id: str) -> str:
         if not self._runner:
             raise RuntimeError("LangGraphAgent no inicializado")
+        
+        if getattr(self, "_confirm_store", None) and not is_confirmation(message):
+            pending = await self._confirm_store.get(thread_id)
+            if pending:
+                await self._confirm_store.pop(thread_id)
+                return "Acción cancelada"
 
         if getattr(self, "_confirm_store", None) and is_confirmation(message):
             async with astage("confirm.fastpath.pop"):
                 pending = await self._confirm_store.pop(thread_id)
 
             if not pending:
-                return "No hay ninguna acción pendiente de confirmación."
+                return "No hay ninguna acción pendiente de confirmación"
 
             if pending:
                 tool = (pending.get("tool") or "").strip()
