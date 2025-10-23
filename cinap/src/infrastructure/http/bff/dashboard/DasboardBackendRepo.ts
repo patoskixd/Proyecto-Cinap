@@ -22,7 +22,7 @@ export class DashboardBackendRepo implements DashboardRepo {
     this.baseUrl =
       process.env.NEXT_PUBLIC_BACKEND_URL ??
       process.env.BACKEND_URL ??
-      "http://localhost:8000";
+      "";
     this.cookie = cookie ?? "";
   }
 
@@ -83,7 +83,7 @@ export class DashboardBackendRepo implements DashboardRepo {
   }
 
   async getDashboard({ role }: DashboardInput): Promise<DashboardData> {
-    const res = await fetch(`${this.baseUrl}/dashboard`, {
+    const res = await fetch(`${this.baseUrl}/api/dashboard`, {
       method: "GET",
       headers: {
         cookie: this.cookie,

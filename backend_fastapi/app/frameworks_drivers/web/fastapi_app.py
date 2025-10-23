@@ -226,7 +226,7 @@ async def health_db(session = Depends(get_session)):
     except Exception as e:
         return {"db": "error", "status": "unhealthy", "error": str(e)}
 
-graph_router = APIRouter(prefix="/assistant", tags=["assistant"])
+graph_router = APIRouter(prefix="/api/assistant", tags=["assistant"])
 
 class GraphChatRequest(BaseModel):
     message: str
@@ -240,7 +240,7 @@ async def graph_chat(req: GraphChatRequest, request: Request):
         raise HTTPException(status_code=503, detail="LangGraph agent no disponible")
 
     set_meta(
-        endpoint="/assistant/chat",
+        endpoint="/api/assistant/chat",
         thread_id=req.thread_id,
         model=getattr(container.graph_agent, "_model_name", None),
         user_id=(getattr(getattr(request, "state", None), "user", {}) or {}).get("sub"),

@@ -21,7 +21,7 @@ export class ProfileBackendRepo {
     this.baseUrl =
       process.env.NEXT_PUBLIC_BACKEND_URL ??
       process.env.BACKEND_URL ??
-      "http://localhost:8000";
+      "";
     this.cookie = cookie ?? "";
   }
 
@@ -50,7 +50,7 @@ export class ProfileBackendRepo {
   }
 
   async getSummary(): Promise<ProfileBackendResponse["data"]> {
-    const res = await fetch(`${this.baseUrl}/profile/summary`, {
+    const res = await fetch(`${this.baseUrl}/api/profile/summary`, {
       method: "GET",
       headers: {
         cookie: this.cookie,

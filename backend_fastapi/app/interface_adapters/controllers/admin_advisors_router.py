@@ -58,7 +58,7 @@ class UpdateAdvisorIn(BaseModel):
     active: bool | None = None
 
 def make_admin_advisors_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: JwtPort) -> APIRouter:
-    r = APIRouter(prefix="/admin/advisors", tags=["admin-advisors"])
+    r = APIRouter(prefix="/api/admin/advisors", tags=["admin-advisors"])
 
     async def require_user(req: Request):
         token = req.cookies.get("app_session")

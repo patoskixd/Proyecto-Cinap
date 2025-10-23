@@ -12,7 +12,7 @@ from app.use_cases.ports.token_port import JwtPort
 
 
 def make_profile_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: JwtPort) -> APIRouter:
-    router = APIRouter(prefix="/profile", tags=["profile"])
+    router = APIRouter(prefix="/api/profile", tags=["profile"])
 
     def ensure_user(request: Request) -> Dict[str, Any]:
         cached = getattr(request.state, "user", None)

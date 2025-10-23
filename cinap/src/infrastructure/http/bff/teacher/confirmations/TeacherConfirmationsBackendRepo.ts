@@ -10,7 +10,7 @@ export class TeacherConfirmationsBackendRepo implements TeacherConfirmationsRepo
     this.baseUrl =
       process.env.NEXT_PUBLIC_BACKEND_URL ??
       process.env.BACKEND_URL ??
-      "http://localhost:8000";
+      "";
     this.cookie = cookieHeader ?? "";
   }
 
@@ -34,7 +34,7 @@ export class TeacherConfirmationsBackendRepo implements TeacherConfirmationsRepo
   }
 
   async getPending(): Promise<PendingTeacherConfirmation[]> {
-    const res = await fetch(`${this.baseUrl}/teacher/confirmations/pending`, {
+    const res = await fetch(`${this.baseUrl}/api/teacher/confirmations/pending`, {
       method: "GET",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",

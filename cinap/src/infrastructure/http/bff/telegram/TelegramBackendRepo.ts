@@ -6,7 +6,9 @@ export class TelegramBackendRepo implements TelegramRepo {
   private readonly cookie: string;
 
   constructor(cookie: string) {
-    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.baseUrl = process.env.BACKEND_URL??
+      process.env.NEXT_PUBLIC_BACKEND_URL ??
+      "";
     this.cookie = cookie;
   }
 
@@ -32,7 +34,7 @@ export class TelegramBackendRepo implements TelegramRepo {
   }
 
   async link(): Promise<{ url: string }> {
-    const res = await fetch(`${this.baseUrl}/telegram/link`, {
+    const res = await fetch(`${this.baseUrl}/api/telegram/link`, {
       method: "POST",
       headers: { cookie: this.cookie, accept: "application/json", "content-type": "application/json" },
       credentials: "include",
@@ -45,7 +47,7 @@ export class TelegramBackendRepo implements TelegramRepo {
   }
 
   async me(): Promise<TelegramMe> {
-    const res = await fetch(`${this.baseUrl}/telegram/me`, {
+    const res = await fetch(`${this.baseUrl}/api/telegram/me`, {
       method: "GET",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
@@ -63,7 +65,7 @@ export class TelegramBackendRepo implements TelegramRepo {
   }
 
   async unlink(): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/telegram/link`, {
+    const res = await fetch(`${this.baseUrl}/api/telegram/link`, {
       method: "DELETE",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",

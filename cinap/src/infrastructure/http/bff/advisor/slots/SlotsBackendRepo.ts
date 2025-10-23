@@ -11,7 +11,9 @@ export class SlotsBackendRepo implements SlotsRepo {
   }
 
   constructor(cookie: string) {
-    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.baseUrl = process.env.BACKEND_URL ??
+      process.env.NEXT_PUBLIC_BACKEND_URL ??
+      "";
     this.cookie = cookie;
   }
 
@@ -21,7 +23,7 @@ export class SlotsBackendRepo implements SlotsRepo {
   }
 
   async getCreateSlotsData(): Promise<CreateSlotsData> {
-    const res = await fetch(`${this.baseUrl}/slots/create-data`, {
+    const res = await fetch(`${this.baseUrl}/api/slots/create-data`, {
       method: "GET",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
@@ -43,7 +45,7 @@ async createSlots(input: CreateSlotsInput): Promise<CreateSlotsResult> {
     })),
   };
 
-  const res = await fetch(`${this.baseUrl}/slots/open`, {
+  const res = await fetch(`${this.baseUrl}/api/slots/open`, {
     method: "POST",
     headers: {
       "content-type": "application/json",

@@ -54,7 +54,7 @@ class StatusPatchIn(BaseModel):
     active: bool
 
 def make_admin_catalog_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: JwtPort) -> APIRouter:
-    r = APIRouter(prefix="/admin/catalog", tags=["admin-catalog"])
+    r = APIRouter(prefix="/api/admin/catalog", tags=["admin-catalog"])
 
     async def require_user(req: Request):
         token = req.cookies.get("app_session")

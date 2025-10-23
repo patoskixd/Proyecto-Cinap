@@ -36,7 +36,7 @@ class AdvisorCatalogVM(BaseModel):
 def make_advisor_catalog_router(
     *, get_session_dep: Callable[[], AsyncSession], jwt_port: JwtPort
 ) -> APIRouter:
-    r = APIRouter(prefix="/advisor-catalog", tags=["advisor-catalog"])
+    r = APIRouter(prefix="/api/advisor-catalog", tags=["advisor-catalog"])
 
     def ensure_auth(req: Request) -> dict[str, Any]:
         token = req.cookies.get("app_session")

@@ -18,7 +18,9 @@ export class AdminCatalogBackendRepo implements AdminCatalogRepo {
   private readonly cookie: string;
 
   constructor(cookie: string) {
-    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.baseUrl = process.env.BACKEND_URL ??
+      process.env.NEXT_PUBLIC_BACKEND_URL ??
+      "";
     this.cookie = cookie;
   }
 
@@ -63,7 +65,7 @@ export class AdminCatalogBackendRepo implements AdminCatalogRepo {
 
   // ---------- Categorías
   async listCategories(): Promise<AdminCategory[]> {
-    const res = await fetch(`${this.baseUrl}/admin/catalog/categories`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/catalog/categories`, {
       method: "GET",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
@@ -74,7 +76,7 @@ export class AdminCatalogBackendRepo implements AdminCatalogRepo {
   }
 
   async createCategory(payload: { name: string; description: string }): Promise<AdminCategory> {
-    const res = await fetch(`${this.baseUrl}/admin/catalog/categories`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/catalog/categories`, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
       credentials: "include",
@@ -89,7 +91,7 @@ export class AdminCatalogBackendRepo implements AdminCatalogRepo {
     id: string,
     patch: { name?: string; description?: string; active?: boolean }
   ): Promise<AdminCategory> {
-    const res = await fetch(`${this.baseUrl}/admin/catalog/categories/${encodeURIComponent(id)}`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/catalog/categories/${encodeURIComponent(id)}`, {
       method: "PATCH",
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
       credentials: "include",
@@ -101,7 +103,7 @@ export class AdminCatalogBackendRepo implements AdminCatalogRepo {
   }
 
   async deleteCategory(id: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/admin/catalog/categories/${encodeURIComponent(id)}`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/catalog/categories/${encodeURIComponent(id)}`, {
       method: "DELETE",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
@@ -112,7 +114,7 @@ export class AdminCatalogBackendRepo implements AdminCatalogRepo {
   }
 
   async reactivateCategory(id: string): Promise<AdminCategory> {
-    const res = await fetch(`${this.baseUrl}/admin/catalog/categories/${encodeURIComponent(id)}/reactivate`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/catalog/categories/${encodeURIComponent(id)}/reactivate`, {
       method: "POST",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
@@ -127,7 +129,7 @@ export class AdminCatalogBackendRepo implements AdminCatalogRepo {
     categoryId: string,
     payload: { name: string; durationMinutes: number; active?: boolean }
   ): Promise<AdminService> {
-    const res = await fetch(`${this.baseUrl}/admin/catalog/categories/${encodeURIComponent(categoryId)}/services`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/catalog/categories/${encodeURIComponent(categoryId)}/services`, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
       credentials: "include",
@@ -142,7 +144,7 @@ export class AdminCatalogBackendRepo implements AdminCatalogRepo {
     id: string,
     patch: { name?: string; durationMinutes?: number; active?: boolean }
   ): Promise<AdminService> {
-    const res = await fetch(`${this.baseUrl}/admin/catalog/services/${encodeURIComponent(id)}`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/catalog/services/${encodeURIComponent(id)}`, {
       method: "PATCH",
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
       credentials: "include",
@@ -154,7 +156,7 @@ export class AdminCatalogBackendRepo implements AdminCatalogRepo {
   }
 
   async deleteService(id: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/admin/catalog/services/${encodeURIComponent(id)}`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/catalog/services/${encodeURIComponent(id)}`, {
       method: "DELETE",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
@@ -165,7 +167,7 @@ export class AdminCatalogBackendRepo implements AdminCatalogRepo {
   }
 
   async reactivateService(id: string): Promise<AdminService> {
-    const res = await fetch(`${this.baseUrl}/admin/catalog/services/${encodeURIComponent(id)}/reactivate`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/catalog/services/${encodeURIComponent(id)}/reactivate`, {
       method: "POST",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",

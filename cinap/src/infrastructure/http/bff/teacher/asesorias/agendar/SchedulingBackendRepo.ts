@@ -71,7 +71,8 @@ export class AsesoriasBackendRepo implements SchedulingRepo {
   private readonly cookie: string;
 
   constructor(cookie: string) {
-    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.baseUrl = process.env.BACKEND_URL ?? 
+    process.env.NEXT_PUBLIC_BACKEND_URL ?? "";
     this.cookie = cookie;
   }
 

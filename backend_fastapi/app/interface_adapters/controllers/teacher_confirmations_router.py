@@ -17,7 +17,7 @@ class PendingTeacherConfirmationOut(BaseModel):
     estudiante: str | None = None
 
 def make_teacher_confirmations_router(*, get_session_dep, jwt_port: JwtPort) -> APIRouter:
-    r = APIRouter(prefix="/teacher/confirmations", tags=["teacher-confirmations"])
+    r = APIRouter(prefix="/api/teacher/confirmations", tags=["teacher-confirmations"])
 
     @r.get("/pending", response_model=list[PendingTeacherConfirmationOut])
     async def pending(request: Request, session: AsyncSession = Depends(get_session_dep)):

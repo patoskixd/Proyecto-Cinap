@@ -10,7 +10,9 @@ export class AssistantBackendAgent implements ChatAgent {
   private readonly cookie: string;
 
   constructor(cookie: string) {
-    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.baseUrl = process.env.BACKEND_URL ??
+      process.env.NEXT_PUBLIC_BACKEND_URL ??
+      "";
     this.cookie = cookie;
   }
 
@@ -41,7 +43,7 @@ export class AssistantBackendAgent implements ChatAgent {
   }
 
   async send(message: string, sessionId?: string): Promise<string> {
-    const res = await fetch(`${this.baseUrl}/assistant/chat`, {
+    const res = await fetch(`${this.baseUrl}/api/assistant/chat`, {
       method: "POST",
       headers: {
         cookie: this.cookie,

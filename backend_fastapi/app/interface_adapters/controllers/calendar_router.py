@@ -10,7 +10,7 @@ from app.frameworks_drivers.config.settings import FRONTEND_ORIGIN, GOOGLE_CLIEN
 from app.interface_adapters.gateways.db.sqlalchemy_user_repo import SqlAlchemyUserRepo
 
 def make_calendar_router(*, get_session_dep, jwt_port: JwtPort, cache, webhook_public_url: str) -> APIRouter:
-    r = APIRouter(prefix="/calendar", tags=["calendar"])
+    r = APIRouter(prefix="/api/calendar", tags=["calendar"])
 
     def ensure_user(req: Request) -> dict:
         token = req.cookies.get("app_session")

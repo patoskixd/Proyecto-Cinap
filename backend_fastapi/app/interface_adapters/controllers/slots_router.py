@@ -121,7 +121,7 @@ class MySlotsPageOut(BaseModel):
 
 
 def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: JwtPort) -> APIRouter:
-    r = APIRouter(prefix="/slots", tags=["slots"])
+    r = APIRouter(prefix="/api/slots", tags=["slots"])
 
     def db_to_ui_estado(s) -> str:
         if isinstance(s, EstadoCupo):
