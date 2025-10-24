@@ -8,7 +8,6 @@ export class AdvisorCatalogBackendRepo implements AdvisorCatalogQueryRepo {
 
   constructor(cookie: string) {
     this.baseUrl =
-      process.env.NEXT_PUBLIC_BACKEND_URL ??
       process.env.BACKEND_URL ??
       "";
     this.cookie = cookie ?? "";
@@ -36,7 +35,7 @@ export class AdvisorCatalogBackendRepo implements AdvisorCatalogQueryRepo {
   }
 
   async list(): Promise<AdvisorCatalog> {
-    const res = await fetch(`${this.baseUrl}/api/advisor-catalog`, {
+    const res = await fetch(`${this.baseUrl}/api/advisor/catalog`, {
       method: "GET",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",

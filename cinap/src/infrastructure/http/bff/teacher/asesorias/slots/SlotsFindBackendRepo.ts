@@ -8,8 +8,7 @@ export class SlotsFindBackendRepo implements SchedulingRepo {
   private readonly cookie: string;
 
   constructor(cookie: string) {
-    this.baseUrl = process.env.BACKEND_URL ??
-     process.env.NEXT_PUBLIC_BACKEND_URL ?? "";
+    this.baseUrl = process.env.BACKEND_URL ?? "";
     this.cookie = cookie;
     this.inner = new AsesoriasBackendRepo(cookie); 
   }

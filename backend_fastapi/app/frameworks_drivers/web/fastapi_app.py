@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from redis.asyncio import Redis
 import jwt
@@ -178,6 +179,11 @@ confirmations_router = make_confirmations_router(
 )
 
 app.include_router(confirmations_router)
+
+@app.get("/auth/google/callback")
+async def legacy_google_callback(request: Request):
+    target = request.url.replace(path="/api/auth/google/callback")
+    return RedirectResponse(url=str(target), status_code=307)
 
 @measure_stage("request_validation")
 async def _validate_graph_chat(req: "GraphChatRequest"):

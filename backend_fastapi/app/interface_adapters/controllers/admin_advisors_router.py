@@ -257,8 +257,10 @@ def make_admin_advisors_router(*, get_session_dep: Callable[[], AsyncSession], j
                 ] if advisor.services else [],
                 categories=advisor.categories
             )
-        except ValueError as e:
+        except LookupError as e:
             raise HTTPException(status_code=404, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             await session.rollback()
             raise HTTPException(status_code=400, detail=f"Error al actualizar asesor: {str(e)}")
@@ -331,8 +333,11 @@ def make_admin_advisors_router(*, get_session_dep: Callable[[], AsyncSession], j
             await use_case.execute(advisor_id)
             await session.commit()
             return {"ok": True}
-        except ValueError as e:
+        except LookupError as e:
             raise HTTPException(status_code=404, detail=str(e))
+        except ValueError as e:
+            await session.rollback()
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             await session.rollback()
             raise HTTPException(status_code=400, detail=f"Error al eliminar asesor: {str(e)}")

@@ -12,7 +12,6 @@ export class ConfirmationsBackendRepo implements ConfirmationsRepo {
 
   constructor(cookie: string) {
     this.baseUrl = process.env.BACKEND_URL ??
-      process.env.NEXT_PUBLIC_BACKEND_URL ??
       "";
     this.cookie = cookie;
   }

@@ -8,7 +8,6 @@ export class TeacherConfirmationsBackendRepo implements TeacherConfirmationsRepo
 
   constructor(cookieHeader: string) {
     this.baseUrl =
-      process.env.NEXT_PUBLIC_BACKEND_URL ??
       process.env.BACKEND_URL ??
       "";
     this.cookie = cookieHeader ?? "";

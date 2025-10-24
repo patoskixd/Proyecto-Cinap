@@ -18,7 +18,8 @@ const DASHBOARD_PATH = "/dashboard";
 const PUBLIC_EXACT_PATHS = new Set<string>([
   ROOT_PATH,
   LOGIN_PATH,
-  "/auth/google/callback",
+  "/api/auth/google/callback",
+  "/api/auth/google/login",
   "/api/auth/login",
   "/api/auth/me",
 ]);
@@ -59,8 +60,8 @@ const ROLE_POLICIES: Array<{ pattern: RegExp; allow: Role[] }> = [
 ];
 
 const DEFAULT_HOME_BY_ROLE: Record<Role, string> = {
-  admin: "/admin",
-  advisor: "/asesor",
+  admin: DASHBOARD_PATH,
+  advisor: DASHBOARD_PATH,
   teacher: DASHBOARD_PATH,
 };
 

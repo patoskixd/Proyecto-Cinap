@@ -34,5 +34,7 @@ export class HttpConfirmationsRepo implements ConfirmationsRepo {
       throw new Error(msg || "Error cargando confirmaciones");
     }
     return res.json();
+    
   }
+  
 }

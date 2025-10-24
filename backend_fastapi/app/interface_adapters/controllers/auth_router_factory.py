@@ -22,7 +22,7 @@ def make_auth_router(
     uc_factory_logout: Callable[[AsyncSession], LogoutUseCase],
     cache: CachePort
 ) -> APIRouter:
-    router = APIRouter(prefix="/auth", tags=["auth"])
+    router = APIRouter(prefix="/api/auth", tags=["auth"])
 
     @router.get("/google/login")
     async def google_login():

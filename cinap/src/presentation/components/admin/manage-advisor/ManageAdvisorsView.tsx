@@ -12,6 +12,7 @@ import ManageAdvisorsHeader from "./ManageAdvisorsHeader";
 import AdvisorCard from "./AdvisorCard";
 import EditAdvisorModal from "./EditAdvisorModal";
 import ConfirmDialog from "./ConfirmDialog";
+import { notify } from "@/presentation/components/shared/Toast";
 
 import type { AdvisorId } from "@/domain/admin/advisors";
 
@@ -110,7 +111,9 @@ export default function ManageAdvisorsView() {
         setPages(data.pages);
         setTotal(data.total);
       } catch (error) {
-        console.error("Error cargando asesores:", error);
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("Error cargando asesores:", error);
+        }
       } finally {
         setLoading(false);
       }
@@ -151,7 +154,9 @@ export default function ManageAdvisorsView() {
       setReloadToken((r) => r + 1);
       setEditing(null);
     } catch (error) {
-      console.error("Error actualizando asesor:", error);
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("Error actualizando asesor:", error);
+      }
       alert("Error al actualizar el asesor. Intenta de nuevo.");
     } finally {
       setLoading(false);
@@ -169,9 +174,30 @@ export default function ManageAdvisorsView() {
         setReloadToken((r) => r + 1);
       }
       setConfirmDelete({ open: false });
+      notify(`Se eliminó al asesor ${confirmDelete.advisor.basic.name ?? ""} correctamente.`, "success");
     } catch (error) {
-      console.error("Error eliminando asesor:", error);
-      alert("Error al eliminar el asesor. Intenta de nuevo.");
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("Error eliminando asesor:", error);
+      }
+      let message = "No se pudo eliminar el asesor. Intenta de nuevo.";
+      if (error instanceof Error && error.message) {
+        const raw = error.message.trim();
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed?.detail || parsed?.message) {
+              message = parsed.detail || parsed.message;
+            } else {
+              message = raw;
+            }
+          } catch {
+            message = raw;
+          }
+        }
+      } else if (typeof error === "string" && error.trim()) {
+        message = error.trim();
+      }
+      notify(message, "error");
     }
   };
 

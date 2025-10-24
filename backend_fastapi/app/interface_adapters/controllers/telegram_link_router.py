@@ -12,7 +12,7 @@ def make_telegram_link_router(*, require_auth, cache, get_session_dep):
     if not TELEGRAM_BOT_USERNAME:
         raise RuntimeError("Falta TELEGRAM_BOT_USERNAME en .env (sin @).")
 
-    router = APIRouter(prefix="/api/telegram", tags=["telegram"])
+    router = APIRouter(prefix="/telegram", tags=["telegram"])
 
     @router.post("/link", response_model=LinkOut, dependencies=[Depends(require_auth)])
     async def link(request: Request):

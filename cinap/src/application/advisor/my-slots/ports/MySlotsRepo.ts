@@ -1,8 +1,7 @@
 import type { MySlot } from "@/domain/advisor/mySlots";
 
 export interface MySlotsRepo {
-  getMySlots(): Promise<MySlot[]>; // compat antigua
-
+  getMySlots(): Promise<MySlot[]>; 
   getMySlotsPage(params: {
     page?: number;
     limit?: number;

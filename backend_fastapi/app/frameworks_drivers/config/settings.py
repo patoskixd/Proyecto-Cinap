@@ -41,7 +41,7 @@ CORS_ORIGINS = [o.strip() for o in _get("CORS_ORIGINS", "http://localhost:3000")
 
 GOOGLE_CLIENT_ID     = _get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = _get("GOOGLE_CLIENT_SECRET")
-GOOGLE_REDIRECT_URI  = _get("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
+GOOGLE_REDIRECT_URI  = _get("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback")
 
 JWT_SECRET  = _get("JWT_SECRET", "change_me")
 JWT_ISSUER  = _get("JWT_ISSUER", "cinap.api")
@@ -77,7 +77,7 @@ LLM_TOP_P     = _get_float("LLM_TOP_P", 0.95)
 REDIS_URL = _get("REDIS_URL", "redis://localhost:6379/0")
 
 # Webhook Configuration
-WEBHOOK_PUBLIC_URL = _get("WEBHOOK_PUBLIC_URL", "https://672d9e0db883.ngrok-free.app/")
+WEBHOOK_PUBLIC_URL = _get("WEBHOOK_PUBLIC_URL", "https://16363787959b.ngrok-free.app/")
 
 TELEGRAM_BOT_TOKEN = _get("BOT_TOKEN")  
 TELEGRAM_BOT_USERNAME = _get("TELEGRAM_BOT_USERNAME")

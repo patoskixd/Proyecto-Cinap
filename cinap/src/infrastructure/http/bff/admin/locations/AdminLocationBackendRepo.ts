@@ -34,7 +34,6 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
 
   constructor(cookie: string) {
     this.baseUrl = process.env.BACKEND_URL ??
-      process.env.NEXT_PUBLIC_BACKEND_URL ??
       "";
     this.cookie = cookie;
   }
@@ -290,7 +289,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
   async listCampusPage(params?: {
     page?: number; limit?: number; q?: string; active?: boolean;
   }): Promise<Page<Campus, CampusStats>> {
-    const url = new URL(`${this.baseUrl}/admin/locations/campus`);
+    const url = new URL(`${this.baseUrl}/api/admin/locations/campus`);
     if (params?.page)  url.searchParams.set("page", String(params.page));
     if (params?.limit) url.searchParams.set("limit", String(params.limit));
     if (params?.q)     url.searchParams.set("q", params.q);

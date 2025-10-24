@@ -104,7 +104,7 @@ export class AsesoriasBackendRepo implements SchedulingRepo {
   async findSlots(input: FindSlotsInput): Promise<FoundSlot[]> {
     const payload = { ...(input ?? {}), tz: CL_TZ };
 
-    const res = await fetch(`${this.baseUrl}/slots/find`, {
+    const res = await fetch(`${this.baseUrl}/api/slots/find`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
