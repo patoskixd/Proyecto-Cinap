@@ -77,7 +77,7 @@ LLM_TOP_P     = _get_float("LLM_TOP_P", 0.95)
 REDIS_URL = _get("REDIS_URL", "redis://localhost:6379/0")
 
 # Webhook Configuration
-WEBHOOK_PUBLIC_URL = _get("WEBHOOK_PUBLIC_URL", "https://16363787959b.ngrok-free.app/")
+WEBHOOK_PUBLIC_URL = _get("WEBHOOK_PUBLIC_URL", "https://24804888114d.ngrok-free.app/")
 
 TELEGRAM_BOT_TOKEN = _get("BOT_TOKEN")  
 TELEGRAM_BOT_USERNAME = _get("TELEGRAM_BOT_USERNAME")

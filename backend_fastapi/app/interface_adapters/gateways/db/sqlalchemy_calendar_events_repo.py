@@ -376,13 +376,26 @@ class SqlAlchemyCalendarEventsRepo(CalendarEventsRepo):
             SELECT 
                 ap.usuario_id,
                 u.email,
-                u.first_name,
-                u.last_name
+                u.nombre
             FROM asesor_perfil ap
             JOIN usuario u ON u.id = ap.usuario_id
-            WHERE ap.estado = 'ACTIVO'
+            WHERE ap.activo = true
         """)
-        
+
+        rows = (await self.s.execute(sql)).mappings().all()
+        return [dict(r) for r in rows]
+
+    async def get_all_teachers(self) -> list[dict]:
+        """Obtiene todos los docentes activos del sistema"""
+        sql = text("""
+            SELECT 
+                dp.usuario_id,
+                u.email,
+                u.nombre
+            FROM docente_perfil dp
+            JOIN usuario u ON u.id = dp.usuario_id
+            WHERE dp.activo = true
+        """)
         rows = (await self.s.execute(sql)).mappings().all()
         return [dict(r) for r in rows]
 

@@ -3,7 +3,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from redis.asyncio import Redis
 import jwt
@@ -26,7 +25,7 @@ from app.interface_adapters.controllers.slots_router import make_slots_router
 from app.interface_adapters.controllers.advisor_catalog_router import (make_advisor_catalog_router)
 from app.interface_adapters.controllers.advisor_confirmations_router import make_confirmations_router
 from app.interface_adapters.controllers.asesorias_router import make_asesorias_router
-from app.interface_adapters.controllers.telegram_webhook import make_telegram_router
+from app.interface_adapters.controllers.telegram_webhook import make_telegram_router, setup_telegram_webhook
 from app.interface_adapters.controllers.telegram_link_router import make_telegram_link_router
 from app.interface_adapters.controllers.admin_catalog_router import make_admin_catalog_router  
 from app.interface_adapters.controllers.admin_location_router import make_admin_location_router
@@ -37,7 +36,9 @@ from app.interface_adapters.controllers.dashboard_controller import router as da
 from app.interface_adapters.controllers.google_calendar_webhook import make_google_calendar_webhook_router
 from app.interface_adapters.controllers.calendar_router import make_calendar_router
 from app.interface_adapters.gateways.db.sqlalchemy_user_repo import SqlAlchemyUserRepo
+from app.interface_adapters.gateways.db.sqlalchemy_calendar_events_repo import SqlAlchemyCalendarEventsRepo
 from app.interface_adapters.gateways.calendar.google_calendar_client import GoogleCalendarClient
+from app.use_cases.calendar.auto_configure_webhook import AutoConfigureWebhook
 from app.interface_adapters.controllers.teacher_confirmations_router import make_teacher_confirmations_router
 from app.interface_adapters.controllers.profile_router import make_profile_router
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -70,6 +71,51 @@ async def lifespan(app):
     await container.startup()
     if getattr(container, "graph_agent", None) and hasattr(container.graph_agent, "set_confirm_store"):
             container.graph_agent.set_confirm_store(confirm_store)
+
+    # Webhook de Telegram
+    try:
+        await setup_telegram_webhook(WEBHOOK_PUBLIC_URL)
+    except Exception as e:
+        logger.exception("No se pudo configurar webhook de Telegram: %r", e)
+
+    # Webhooks de Google Calendar para asesores y docentes
+    try:
+        if not WEBHOOK_PUBLIC_URL:
+            logger.warning("WEBHOOK_PUBLIC_URL no definido; se omite auto-configuración de Google Calendar")
+        else:
+            async with AsyncSessionLocal() as session:
+                calendar_repo = SqlAlchemyCalendarEventsRepo(session, cache=container.cache)
+                user_repo = SqlAlchemyUserRepo(session, default_role_id=None)
+                cal_client = GoogleCalendarClient(
+                    client_id=GOOGLE_CLIENT_ID,
+                    client_secret=GOOGLE_CLIENT_SECRET,
+                    get_refresh_token_by_usuario_id=user_repo.get_refresh_token_by_usuario_id,
+                )
+                auto_cfg = AutoConfigureWebhook(
+                    cal=cal_client,
+                    repo=calendar_repo,
+                    webhook_public_url=WEBHOOK_PUBLIC_URL,
+                )
+
+                advisors_result = await auto_cfg.configure_for_all_advisors()
+                teachers_result = await auto_cfg.configure_for_all_teachers()
+
+                logger.warning(
+                    "Auto-config webhooks Google (asesores): nuevos=%s, existentes=%s, omitidos=%s, errores=%s",
+                    advisors_result.get("configured"),
+                    advisors_result.get("already_configured"),
+                    advisors_result.get("skipped"),
+                    advisors_result.get("errors"),
+                )
+                logger.warning(
+                    "Auto-config webhooks Google (docentes): nuevos=%s, existentes=%s, omitidos=%s, errores=%s",
+                    teachers_result.get("configured"),
+                    teachers_result.get("already_configured"),
+                    teachers_result.get("skipped"),
+                    teachers_result.get("errors"),
+                )
+    except Exception as e:
+        logger.exception("No se pudo configurar los webhooks de Google Calendar: %r", e)
 
     scheduler.start()
     try:
@@ -180,11 +226,6 @@ confirmations_router = make_confirmations_router(
 
 app.include_router(confirmations_router)
 
-@app.get("/auth/google/callback")
-async def legacy_google_callback(request: Request):
-    target = request.url.replace(path="/api/auth/google/callback")
-    return RedirectResponse(url=str(target), status_code=307)
-
 @measure_stage("request_validation")
 async def _validate_graph_chat(req: "GraphChatRequest"):
     return True
@@ -232,13 +273,13 @@ async def health_db(session = Depends(get_session)):
     except Exception as e:
         return {"db": "error", "status": "unhealthy", "error": str(e)}
 
-graph_router = APIRouter(prefix="/api/assistant", tags=["assistant"])
+graph_router = APIRouter(prefix="/assistant", tags=["assistant"])
 
 class GraphChatRequest(BaseModel):
     message: str
     thread_id: str = "default-thread"
 
-limiter = make_simple_limiter(container.cache, limit=10, window_sec=60)
+limiter = make_simple_limiter(container.cache, limit=100, window_sec=60)
 
 @graph_router.post("/chat", dependencies=[Depends(limiter)])
 async def graph_chat(req: GraphChatRequest, request: Request):
@@ -246,7 +287,7 @@ async def graph_chat(req: GraphChatRequest, request: Request):
         raise HTTPException(status_code=503, detail="LangGraph agent no disponible")
 
     set_meta(
-        endpoint="/api/assistant/chat",
+        endpoint="/assistant/chat",
         thread_id=req.thread_id,
         model=getattr(container.graph_agent, "_model_name", None),
         user_id=(getattr(getattr(request, "state", None), "user", {}) or {}).get("sub"),
