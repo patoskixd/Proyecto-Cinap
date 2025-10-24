@@ -41,7 +41,7 @@ CORS_ORIGINS = [o.strip() for o in _get("CORS_ORIGINS", "http://localhost:3000")
 
 GOOGLE_CLIENT_ID     = _get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = _get("GOOGLE_CLIENT_SECRET")
-GOOGLE_REDIRECT_URI  = _get("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
+GOOGLE_REDIRECT_URI  = _get("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback")
 
 JWT_SECRET  = _get("JWT_SECRET", "change_me")
 JWT_ISSUER  = _get("JWT_ISSUER", "cinap.api")

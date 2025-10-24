@@ -23,7 +23,7 @@ class PendingConfirmationOut(BaseModel):
     status: str
 
 def make_confirmations_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: JwtPort) -> APIRouter:
-    r = APIRouter(prefix="/advisor/confirmations", tags=["advisor-confirmations"])
+    r = APIRouter(prefix="/api/advisor/confirmations", tags=["advisor-confirmations"])
 
     @r.get("/pending", response_model=list[PendingConfirmationOut])
     async def pending(request: Request, session: AsyncSession = Depends(get_session_dep)):

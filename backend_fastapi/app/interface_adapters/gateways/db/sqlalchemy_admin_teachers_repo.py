@@ -3,6 +3,7 @@ import uuid
 from typing import Optional, List
 import sqlalchemy as sa
 from sqlalchemy import select, delete
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -11,6 +12,11 @@ from app.use_cases.ports.auth_repos import UserRepo
 from app.domain.auth.docente_perfil import DocentePerfil, TeacherInfo, TeacherPage
 from app.interface_adapters.orm.models_docente import DocentePerfilModel
 from app.interface_adapters.orm.models_auth import UsuarioModel
+from app.interface_adapters.orm.models_scheduling import AsesoriaModel
+
+
+class TeacherDeletionBlockedError(Exception):
+    """Se lanza cuando un docente tiene asesorías o historial asociado."""
 
 class SqlAlchemyDocenteRepo(DocentePerfilRepo):
     def __init__(self, session: AsyncSession, user_repo: UserRepo, docente_role_id: uuid.UUID):
@@ -194,6 +200,22 @@ class SqlAlchemyDocenteRepo(DocentePerfilRepo):
         if not usuario_id:
             raise ValueError("Docente no encontrado")
 
-        await self.session.execute(delete(DocentePerfilModel).where(DocentePerfilModel.id == tid))
-        await self.session.execute(delete(UsuarioModel).where(UsuarioModel.id == usuario_id))
-        await self.session.flush()
+        asesoria_count_stmt = (
+            select(sa.func.count())
+            .select_from(AsesoriaModel)
+            .where(AsesoriaModel.docente_id == tid)
+        )
+        related_asesorias = (await self.session.execute(asesoria_count_stmt)).scalar_one()
+        if related_asesorias:
+            raise TeacherDeletionBlockedError(
+                "El docente tiene asesorías o historial registrado y no se puede eliminar."
+            )
+
+        try:
+            await self.session.execute(delete(DocentePerfilModel).where(DocentePerfilModel.id == tid))
+            await self.session.execute(delete(UsuarioModel).where(UsuarioModel.id == usuario_id))
+            await self.session.flush()
+        except IntegrityError as exc:
+            raise TeacherDeletionBlockedError(
+                "El docente tiene asesorías o historial registrado y no se puede eliminar."
+            ) from exc

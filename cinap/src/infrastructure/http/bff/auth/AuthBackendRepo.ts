@@ -7,7 +7,7 @@ export class AuthBackendRepo implements AuthRepo {
   private readonly cookie: string;
 
   constructor(cookie: string) {
-    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.baseUrl = process.env.BACKEND_URL ?? "";
     this.cookie = cookie;
   }
 
@@ -38,7 +38,7 @@ export class AuthBackendRepo implements AuthRepo {
   }
 
   async login(email: string, password: string): Promise<any> {
-    const res = await fetch(`${this.baseUrl}/auth/login`, {
+    const res = await fetch(`${this.baseUrl}/api/auth/login`, {
       method: "POST",
       headers: { 
         cookie: this.cookie, 
@@ -62,7 +62,7 @@ export class AuthBackendRepo implements AuthRepo {
   }
 
   async getMe(): Promise<Me> {
-    const res = await fetch(`${this.baseUrl}/auth/me`, {
+    const res = await fetch(`${this.baseUrl}/api/auth/me`, {
       method: "GET",
       headers: { 
         cookie: this.cookie, 
@@ -86,7 +86,7 @@ export class AuthBackendRepo implements AuthRepo {
   }
 
   async signOut(): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/auth/logout`, {
+    const res = await fetch(`${this.baseUrl}/api/auth/logout`, {
       method: "POST",
       headers: { 
         cookie: this.cookie, 
@@ -107,7 +107,7 @@ export class AuthBackendRepo implements AuthRepo {
   }
 
   async reissue(): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/auth/reissue`, {
+    const res = await fetch(`${this.baseUrl}/api/auth/reissue`, {
       method: "POST",
       headers: { 
         cookie: this.cookie, 
@@ -125,5 +125,32 @@ export class AuthBackendRepo implements AuthRepo {
       const errorData = await this.parse<any>(res);
       throw new Error(errorData?.detail || errorData?.message || `HTTP ${res.status}`);
     }
+  }
+
+  async startGoogleLogin(): Promise<{ redirectUrl: string; status: number }> {
+    if (!this.baseUrl) {
+      throw new Error("BACKEND_URL no está configurado");
+    }
+
+    const res = await fetch(`${this.baseUrl}/api/auth/google/login`, {
+      method: "GET",
+      headers: {
+        cookie: this.cookie,
+        accept: "application/json",
+      },
+      credentials: "include",
+      cache: "no-store",
+      redirect: "manual",
+    });
+
+    this.collectSetCookies(res);
+
+    const location = res.headers.get("location");
+    if (location) {
+      return { redirectUrl: location, status: res.status || 302 };
+    }
+
+    const errorData = await this.parse<any>(res);
+    throw new Error(errorData?.detail || errorData?.message || `HTTP ${res.status}`);
   }
 }

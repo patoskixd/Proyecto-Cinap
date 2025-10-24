@@ -5,7 +5,7 @@ from app.frameworks_drivers.config.db import get_session
 from app.interface_adapters.gateways.db.pgvector_repo import PgVectorKnowledgeRepository
 from app.use_cases.semantic_search.semantic_repo import SemanticSearchUC
 
-router = APIRouter()
+router = APIRouter(prefix="/api", tags=["semantic"])
 
 class SemanticIn(BaseModel):
     q: str

@@ -8,9 +8,8 @@ export class AdminTeachersBackendRepo implements TeachersRepo {
 
   constructor(cookie: string) {
     this.baseUrl =
-      process.env.NEXT_PUBLIC_BACKEND_URL ??
       process.env.BACKEND_URL ??
-      "http://localhost:8000";
+      "";
     this.cookie = cookie ?? "";
   }
 
@@ -51,7 +50,7 @@ export class AdminTeachersBackendRepo implements TeachersRepo {
     qs.set("limit", String(limit));
     if (query) qs.set("q", query);
 
-    const res = await fetch(`${this.baseUrl}/admin/teachers/?${qs.toString()}`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/teachers/?${qs.toString()}`, {
       method: "GET",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
@@ -70,7 +69,7 @@ export class AdminTeachersBackendRepo implements TeachersRepo {
   }
 
   async update(teacher: Teacher): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/admin/teachers/${teacher.id}`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/teachers/${teacher.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
       credentials: "include",
@@ -82,7 +81,7 @@ export class AdminTeachersBackendRepo implements TeachersRepo {
   }
 
   async delete(id: TeacherId): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/admin/teachers/${id}`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/teachers/${id}`, {
       method: "DELETE",
       headers: { accept: "application/json", cookie: this.cookie },
       credentials: "include",

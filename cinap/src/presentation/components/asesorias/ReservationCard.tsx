@@ -39,8 +39,7 @@ export default function ReservationCard({
 
   const showCancelButton =
     canCancel && (reservation.status === "pendiente" || reservation.status === "confirmada");
-  const showConfirmButton =
-    canConfirm && (reservation.status === "pendiente" || reservation.status === "cancelada");
+  const showConfirmButton = canConfirm && reservation.status === "pendiente";
 
   return (
     <div className="overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/20 to-yellow-50/10 shadow-lg backdrop-blur-sm">

@@ -12,7 +12,7 @@ def make_admin_location_router(
     get_session_dep: Callable[..., AsyncSession],
     jwt_port: Any = None,
 ):
-    router = APIRouter(prefix="/admin/locations", tags=["admin-locations"])
+    router = APIRouter(prefix="/api/admin/locations", tags=["admin-locations"])
 
     #  modelos de entrada 
     class CampusIn(BaseModel):

@@ -13,7 +13,10 @@ from app.use_cases.admin.teachers_management import (
     UpdateTeacherUseCase,
     DeleteTeacherUseCase,
 )
-from app.interface_adapters.gateways.db.sqlalchemy_admin_teachers_repo import SqlAlchemyDocenteRepo
+from app.interface_adapters.gateways.db.sqlalchemy_admin_teachers_repo import (
+    SqlAlchemyDocenteRepo,
+    TeacherDeletionBlockedError,
+)
 from app.interface_adapters.gateways.db.sqlalchemy_user_repo import SqlAlchemyUserRepo
 from app.interface_adapters.orm.models_auth import RolModel
 
@@ -38,7 +41,7 @@ class UpdateTeacherIn(BaseModel):
     active: bool | None = None
 
 def make_admin_teachers_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: JwtPort) -> APIRouter:
-    r = APIRouter(prefix="/admin/teachers", tags=["admin-teachers"])
+    r = APIRouter(prefix="/api/admin/teachers", tags=["admin-teachers"])
 
     async def require_user(req: Request):
         token = req.cookies.get("app_session")
@@ -123,6 +126,9 @@ def make_admin_teachers_router(*, get_session_dep: Callable[[], AsyncSession], j
             await use_case.execute(teacher_id)
             await session.commit()
             return {"ok": True}
+        except TeacherDeletionBlockedError as e:
+            await session.rollback()
+            raise HTTPException(status_code=409, detail=str(e))
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:

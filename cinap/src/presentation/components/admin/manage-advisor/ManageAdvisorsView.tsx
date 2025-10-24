@@ -12,10 +12,12 @@ import ManageAdvisorsHeader from "./ManageAdvisorsHeader";
 import AdvisorCard from "./AdvisorCard";
 import EditAdvisorModal from "./EditAdvisorModal";
 import ConfirmDialog from "./ConfirmDialog";
+import { notify } from "@/presentation/components/shared/Toast";
 
 import type { AdvisorId } from "@/domain/admin/advisors";
 
 const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 350;
 
 async function loadCatalog(): Promise<any[]> {
   const res = await fetch("/api/admin/catalog/categories", {
@@ -42,7 +44,8 @@ export default function ManageAdvisorsView() {
   const [editing, setEditing] = useState<Advisor | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; advisor?: Advisor }>({ open: false });
 
-  const [query, setQuery] = useState("");
+  const [searchValue, setSearchValue] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [page, setPage] = useState(1);
@@ -110,7 +113,9 @@ export default function ManageAdvisorsView() {
         setPages(data.pages);
         setTotal(data.total);
       } catch (error) {
-        console.error("Error cargando asesores:", error);
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("Error cargando asesores:", error);
+        }
       } finally {
         setLoading(false);
       }
@@ -119,12 +124,19 @@ export default function ManageAdvisorsView() {
   );
 
   useEffect(() => {
-    loadAdvisors(page, query, categoryId, serviceId);
-  }, [page, query, categoryId, serviceId, reloadToken, loadAdvisors]);
+    const handle = window.setTimeout(() => {
+      setDebouncedQuery(searchValue);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(handle);
+  }, [searchValue]);
+
+  useEffect(() => {
+    loadAdvisors(page, debouncedQuery, categoryId, serviceId);
+  }, [page, debouncedQuery, categoryId, serviceId, reloadToken, loadAdvisors]);
 
   const handleQueryChange = (value: string) => {
     setPage(1);
-    setQuery(value);
+    setSearchValue(value);
   };
 
   const handleCategoryChange = (id: string) => {
@@ -151,7 +163,9 @@ export default function ManageAdvisorsView() {
       setReloadToken((r) => r + 1);
       setEditing(null);
     } catch (error) {
-      console.error("Error actualizando asesor:", error);
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("Error actualizando asesor:", error);
+      }
       alert("Error al actualizar el asesor. Intenta de nuevo.");
     } finally {
       setLoading(false);
@@ -169,14 +183,43 @@ export default function ManageAdvisorsView() {
         setReloadToken((r) => r + 1);
       }
       setConfirmDelete({ open: false });
+      notify(`Se eliminó al asesor ${confirmDelete.advisor.basic.name ?? ""} correctamente.`, "success");
     } catch (error) {
-      console.error("Error eliminando asesor:", error);
-      alert("Error al eliminar el asesor. Intenta de nuevo.");
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("Error eliminando asesor:", error);
+      }
+      let message = "No se pudo eliminar el asesor. Intenta de nuevo.";
+      if (error instanceof Error && error.message) {
+        const raw = error.message.trim();
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed?.detail || parsed?.message) {
+              message = parsed.detail || parsed.message;
+            } else {
+              message = raw;
+            }
+          } catch {
+            message = raw;
+          }
+        }
+      } else if (typeof error === "string" && error.trim()) {
+        message = error.trim();
+      }
+      notify(message, "error");
     }
   };
 
   const filteredAdvisors = useMemo(() => {
+    const term = debouncedQuery.trim().toLowerCase();
     return advisors.filter((advisor) => {
+      if (term) {
+        const name = advisor.basic?.name?.toLowerCase() ?? "";
+        const email = advisor.basic?.email?.toLowerCase() ?? "";
+        if (!name.includes(term) && !email.includes(term)) {
+          return false;
+        }
+      }
       if (categoryId) {
         const categories = Array.isArray(advisor.categories) ? advisor.categories : [];
         const matchesCategory = categories.some((cid) => String(cid) === String(categoryId));
@@ -197,11 +240,11 @@ export default function ManageAdvisorsView() {
 
   const filteredTotal = filteredAdvisors.length;
   const displayedTotal = useMemo(() => {
-    if (query.trim() || categoryId || serviceId) {
+    if (debouncedQuery.trim() || categoryId || serviceId) {
       return filteredTotal;
     }
     return total;
-  }, [filteredTotal, total, query, categoryId, serviceId]);
+  }, [filteredTotal, total, debouncedQuery, categoryId, serviceId]);
 
   const hasPrev = page > 1;
   const hasNext = page < pages;
@@ -210,7 +253,7 @@ export default function ManageAdvisorsView() {
   return (
     <div className="space-y-6">
       <ManageAdvisorsHeader
-        query={query}
+        query={searchValue}
         onQueryChange={handleQueryChange}
         categoryId={categoryId}
         onCategoryChange={handleCategoryChange}
@@ -246,7 +289,7 @@ export default function ManageAdvisorsView() {
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">No se encontraron asesores</h3>
               <p className="text-gray-600">
-                {query.trim() || categoryId || serviceId
+                {debouncedQuery.trim() || categoryId || serviceId
                   ? "Ajusta los filtros de búsqueda para encontrar resultados."
                   : "Aún no hay asesores registrados en el sistema."}
               </p>

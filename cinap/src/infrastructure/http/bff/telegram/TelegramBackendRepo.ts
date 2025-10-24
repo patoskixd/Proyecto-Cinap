@@ -6,7 +6,8 @@ export class TelegramBackendRepo implements TelegramRepo {
   private readonly cookie: string;
 
   constructor(cookie: string) {
-    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.baseUrl = process.env.BACKEND_URL??
+      "";
     this.cookie = cookie;
   }
 

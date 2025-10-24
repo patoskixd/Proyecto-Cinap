@@ -36,7 +36,9 @@ from app.interface_adapters.controllers.dashboard_controller import router as da
 from app.interface_adapters.controllers.google_calendar_webhook import make_google_calendar_webhook_router
 from app.interface_adapters.controllers.calendar_router import make_calendar_router
 from app.interface_adapters.gateways.db.sqlalchemy_user_repo import SqlAlchemyUserRepo
+from app.interface_adapters.gateways.db.sqlalchemy_calendar_events_repo import SqlAlchemyCalendarEventsRepo
 from app.interface_adapters.gateways.calendar.google_calendar_client import GoogleCalendarClient
+from app.use_cases.calendar.auto_configure_webhook import AutoConfigureWebhook
 from app.interface_adapters.controllers.teacher_confirmations_router import make_teacher_confirmations_router
 from app.interface_adapters.controllers.profile_router import make_profile_router
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -75,6 +77,45 @@ async def lifespan(app):
         await setup_telegram_webhook(WEBHOOK_PUBLIC_URL)
     except Exception as e:
         logger.exception("No se pudo configurar webhook de Telegram: %r", e)
+
+    # Webhooks de Google Calendar para asesores y docentes
+    try:
+        if not WEBHOOK_PUBLIC_URL:
+            logger.warning("WEBHOOK_PUBLIC_URL no definido; se omite auto-configuración de Google Calendar")
+        else:
+            async with AsyncSessionLocal() as session:
+                calendar_repo = SqlAlchemyCalendarEventsRepo(session, cache=container.cache)
+                user_repo = SqlAlchemyUserRepo(session, default_role_id=None)
+                cal_client = GoogleCalendarClient(
+                    client_id=GOOGLE_CLIENT_ID,
+                    client_secret=GOOGLE_CLIENT_SECRET,
+                    get_refresh_token_by_usuario_id=user_repo.get_refresh_token_by_usuario_id,
+                )
+                auto_cfg = AutoConfigureWebhook(
+                    cal=cal_client,
+                    repo=calendar_repo,
+                    webhook_public_url=WEBHOOK_PUBLIC_URL,
+                )
+
+                advisors_result = await auto_cfg.configure_for_all_advisors()
+                teachers_result = await auto_cfg.configure_for_all_teachers()
+
+                logger.warning(
+                    "Auto-config webhooks Google (asesores): nuevos=%s, existentes=%s, omitidos=%s, errores=%s",
+                    advisors_result.get("configured"),
+                    advisors_result.get("already_configured"),
+                    advisors_result.get("skipped"),
+                    advisors_result.get("errors"),
+                )
+                logger.warning(
+                    "Auto-config webhooks Google (docentes): nuevos=%s, existentes=%s, omitidos=%s, errores=%s",
+                    teachers_result.get("configured"),
+                    teachers_result.get("already_configured"),
+                    teachers_result.get("skipped"),
+                    teachers_result.get("errors"),
+                )
+    except Exception as e:
+        logger.exception("No se pudo configurar los webhooks de Google Calendar: %r", e)
 
     scheduler.start()
     try:

@@ -109,10 +109,24 @@ export class AdminAdvisorsHttpRepo implements AdminAdvisorRepo {
       credentials: "include",
     });
 
-    if (!response.ok) {
-      throw new Error((await response.text()) || "No se pudo eliminar el asesor");
+    const raw = await response.text();
+    let payload: any = undefined;
+    if (raw) {
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        payload = undefined;
+      }
     }
 
-    return parse<Advisor>(response);
+    if (!response.ok) {
+      const detail =
+        (payload && (payload.detail || payload.message)) ||
+        raw ||
+        "No se pudo eliminar el asesor";
+      throw new Error(String(detail));
+    }
+
+    return (payload ?? {}) as Advisor;
   }
 }

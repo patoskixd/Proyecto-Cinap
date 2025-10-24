@@ -4,7 +4,7 @@ from uuid import UUID
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from requests import session
+
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Request, Body, Query
@@ -121,7 +121,7 @@ class MySlotsPageOut(BaseModel):
 
 
 def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: JwtPort) -> APIRouter:
-    r = APIRouter(prefix="/slots", tags=["slots"])
+    r = APIRouter(prefix="/api/slots", tags=["slots"])
 
     def db_to_ui_estado(s) -> str:
         if isinstance(s, EstadoCupo):
@@ -480,7 +480,6 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
 
         # --- stats globales del conjunto filtrado ---
         s = base.subquery()
-        # total ya lo tenemos (arriba). Calculamos disponibles y minutos ocupados.
         disponibles = (await session.execute(
             sa.select(sa.func.coalesce(sa.func.sum(
                 sa.case((s.c.estado == EstadoCupo.ABIERTO, 1), else_=0)
@@ -545,23 +544,34 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
         if slot.estado in (EstadoCupo.RESERVADO, EstadoCupo.REALIZADO):
             raise HTTPException(status_code=409, detail="No puedes reactivar un reservado/realizado")
 
-        if payload.date or payload.time or payload.duration:
-            tz = slot.inicio.tzinfo or ZoneInfo(payload.tz or "America/Santiago")
-            cur_ini = slot.inicio.astimezone(tz)
-            cur_fin = slot.fin.astimezone(tz)
+        if payload.date or payload.time or payload.duration is not None:
+            # Zona horaria a usar
+            tzinfo = ZoneInfo(payload.tz or "America/Santiago")
 
-            new_date = payload.date or cur_ini.strftime("%Y-%m-%d")
-            new_time = payload.time or cur_ini.strftime("%H:%M")
-            dur_min = int((cur_fin - cur_ini).total_seconds() // 60)
+            # Estado actual del cupo en TZ local
+            cur_ini = slot.inicio.astimezone(tzinfo)
+            cur_fin = slot.fin.astimezone(tzinfo)
 
+            # Valores base (si no vienen en el patch, se mantienen)
+            new_date = (payload.date or cur_ini.strftime("%Y-%m-%d")).strip()
+            new_time = (payload.time or cur_ini.strftime("%H:%M")).strip()
+
+            # Duración: si viene en el patch, úsala; si no, conserva la actual
+            cur_dur_min = int((cur_fin - cur_ini).total_seconds() // 60)
+            dur_min = int(payload.duration) if payload.duration is not None else cur_dur_min
+            if dur_min <= 0:
+                raise HTTPException(status_code=422, detail="Duración inválida")
+
+            # Construir datetime *aware* directamente en la TZ local
             try:
-                naive_dt = datetime.strptime(f"{new_date} {new_time}", "%Y-%m-%d %H:%M")
-                new_ini = naive_dt.replace(tzinfo=None).astimezone(ZoneInfo(payload.tz or "America/Santiago"))
+                naive_local = datetime.strptime(f"{new_date} {new_time}", "%Y-%m-%d %H:%M")
             except ValueError:
-                raise HTTPException(status_code=422, detail="Fecha/Hora inválida")
+                raise HTTPException(status_code=422, detail="Fecha/Hora inválida (use YYYY-MM-DD y HH:MM)")
 
+            new_ini = naive_local.replace(tzinfo=tzinfo)
             new_fin = new_ini + timedelta(minutes=dur_min)
 
+            # Conflictos con el recurso (excluyendo el propio cupo)
             conflicts = await repo.find_conflicting_slots(str(slot.recurso_id), [(new_ini, new_fin)])
             conflicts = [c for c in conflicts if c[0] != str(slot.id)]
             if conflicts:
@@ -571,12 +581,13 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
                         "code": "RESOURCE_BUSY",
                         "message": "Conflicto de horario con otro cupo de este recurso.",
                         "conflicts": [
-                            {"cupoId": c[0], "inicio": c[1].isoformat(), "fin": c[2].isoformat()}
-                            for c in conflicts
+                            {"cupoId": cid, "inicio": ini.isoformat(), "fin": fin.isoformat()}
+                            for (cid, ini, fin) in conflicts
                         ],
                     },
                 )
 
+            # Conflictos con otros cupos del mismo asesor
             j_conf_asesor = sa.select(CupoModel.id, CupoModel.inicio, CupoModel.fin).where(
                 CupoModel.asesor_id == slot.asesor_id,
                 CupoModel.id != slot.id,

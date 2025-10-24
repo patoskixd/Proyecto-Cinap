@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { makeLogin } from "@application/auth/usecases/Login";
+import { AuthRepoHttp } from "@infrastructure/auth/AuthRepoHttp";
+import { HttpError } from "@/infrastructure/http/client";
 
-type LoginResponse =
-  | { access_token: string; token_type?: string; user?: any }
-  | { detail?: string };
+const authRepo = new AuthRepoHttp();
+const loginUC = makeLogin(authRepo);
 
 export default function LoginForm() {
   const router = useRouter();
@@ -20,43 +22,30 @@ export default function LoginForm() {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-
-      if (!res.ok) {
-        let message = "Credenciales inválidas";
-        try {
-          const data = (await res.json()) as LoginResponse;
-          if ("detail" in data && data.detail) message = data.detail;
-        } catch {}
-        throw new Error(message);
-      }
-
-      try {
-        const data = (await res.json()) as LoginResponse;
-        if (data && "access_token" in data && data.access_token) {
-          const storage = remember ? localStorage : sessionStorage;
-          storage.setItem("token", data.access_token);
-          if (data.user) storage.setItem("user", JSON.stringify(data.user));
-        }
-      } catch {
-      }
-
+      await loginUC(email, password);
       router.push("/dashboard");
-    } catch (err: any) {
-      setError(err?.message ?? "Error al iniciar sesión");
+    } catch (err) {
+      if (err instanceof HttpError) {
+        const detail = err.detail;
+        if (typeof detail === "string") {
+          setError(detail);
+        } else if (detail && typeof detail?.message === "string") {
+          setError(detail.message);
+        } else {
+          setError(err.message);
+        }
+      } else if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Error al iniciar sesión");
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const onGoogle = () => {
-    window.location.href =
-      `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/auth/google/login`;
+    window.location.href = "/api/auth/google/login";
   };
 
   return (
@@ -87,14 +76,16 @@ export default function LoginForm() {
                 Correo Electrónico
               </label>
               <div className="relative">
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Ejemplo@email.com"
-                  className="w-full rounded-xl border-2 border-neutral-200 bg-white/80 px-4 py-3 text-[15px] placeholder:text-neutral-400 outline-none transition focus:border-blue-600 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)]"
-                />
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Ejemplo@email.com"
+                className="w-full rounded-xl border-2 border-neutral-300 bg-white px-4 py-3 text-[15px] text-black placeholder:text-neutral-600 outline-none transition focus:border-blue-600 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)] autofill:bg-white autofill:text-black"
+              />
+
+
               </div>
             </div>
 
@@ -109,7 +100,8 @@ export default function LoginForm() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full rounded-xl border-2 border-neutral-200 bg-white/80 px-4 py-3 text-[15px] placeholder:text-neutral-400 outline-none transition focus:border-blue-600 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)]"
+className="w-full rounded-xl border-2 border-neutral-300 bg-white px-4 py-3 text-[15px] text-black placeholder:text-neutral-600 outline-none transition focus:border-blue-600 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)] autofill:bg-white autofill:text-black"
+
                 />
               </div>
             </div>

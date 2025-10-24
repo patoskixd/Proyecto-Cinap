@@ -70,7 +70,11 @@ class GoogleCallbackUseCase:
         # Auto-configurar webhook para asesores cuando inician sesión
         if is_existing_asesor and self.auto_configure_webhook:
             try:
-                await self.auto_configure_webhook.ensure_webhook_configured(user.id, access_token)
+                await self.auto_configure_webhook.ensure_webhook_configured(
+                    user.id,
+                    access_token,
+                    role="asesor",
+                )
                 logger.info(f"Webhook auto-configurado para asesor {user.id}")
             except Exception as e:
                 logger.warning(f"No se pudo auto-configurar webhook para asesor {user.id}: {e}")

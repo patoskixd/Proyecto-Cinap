@@ -14,7 +14,8 @@ export class AdminAdvisorsBackendRepo implements AdminAdvisorRepo {
   private setCookies: string[] = [];
 
   constructor(cookie: string) {
-    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.baseUrl = process.env.BACKEND_URL ??
+      "";
     this.cookie = cookie;
   }
 
@@ -72,7 +73,7 @@ export class AdminAdvisorsBackendRepo implements AdminAdvisorRepo {
     if (categoryId) qs.set("category_id", categoryId);
     if (serviceId) qs.set("service_id", serviceId);
 
-    const res = await fetch(`${this.baseUrl}/admin/advisors/?${qs.toString()}`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/advisors/?${qs.toString()}`, {
       method: "GET",
       headers: { 
         cookie: this.cookie, 
@@ -103,7 +104,7 @@ export class AdminAdvisorsBackendRepo implements AdminAdvisorRepo {
       service_ids: request.services
     };
     
-    const res = await fetch(`${this.baseUrl}/admin/advisors`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/advisors`, {
       method: "POST",
       headers: { 
         "content-type": "application/json", 
@@ -140,7 +141,7 @@ export class AdminAdvisorsBackendRepo implements AdminAdvisorRepo {
       backendPayload.active = changes.active;
     }
     
-    const res = await fetch(`${this.baseUrl}/admin/advisors/${id}`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/advisors/${id}`, {
       method: "PATCH",
       headers: { 
         "content-type": "application/json", 
@@ -162,7 +163,7 @@ export class AdminAdvisorsBackendRepo implements AdminAdvisorRepo {
   }
 
   async remove(id: AdvisorId): Promise<Advisor> {
-    const res = await fetch(`${this.baseUrl}/admin/advisors/${id}`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/advisors/${id}`, {
       method: "DELETE",
       headers: { 
         cookie: this.cookie, 

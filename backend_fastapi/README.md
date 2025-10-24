@@ -61,7 +61,7 @@ DB_PASSWORD=postgres
 # Google OAuth
 GOOGLE_CLIENT_ID=dummy-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=dummy-secret
-GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback
+GOOGLE_REDIRECT_URI=http://localhost:8000/api/auth/google/callback
 
 # JWT
 JWT_SECRET=supersecreto

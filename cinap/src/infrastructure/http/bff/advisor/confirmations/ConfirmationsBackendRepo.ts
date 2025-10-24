@@ -11,7 +11,8 @@ export class ConfirmationsBackendRepo implements ConfirmationsRepo {
   }
 
   constructor(cookie: string) {
-    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.baseUrl = process.env.BACKEND_URL ??
+      "";
     this.cookie = cookie;
   }
 
@@ -21,7 +22,7 @@ export class ConfirmationsBackendRepo implements ConfirmationsRepo {
   }
 
   async getPending(): Promise<PendingConfirmation[]> {
-    const res = await fetch(`${this.baseUrl}/advisor/confirmations/pending`, {
+    const res = await fetch(`${this.baseUrl}/api/advisor/confirmations/pending`, {
       method: "GET",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",

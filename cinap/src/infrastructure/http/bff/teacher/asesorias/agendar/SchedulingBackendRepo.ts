@@ -71,7 +71,8 @@ export class AsesoriasBackendRepo implements SchedulingRepo {
   private readonly cookie: string;
 
   constructor(cookie: string) {
-    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.baseUrl = process.env.BACKEND_URL ?? 
+    process.env.NEXT_PUBLIC_BACKEND_URL ?? "";
     this.cookie = cookie;
   }
 
@@ -103,7 +104,7 @@ export class AsesoriasBackendRepo implements SchedulingRepo {
   async findSlots(input: FindSlotsInput): Promise<FoundSlot[]> {
     const payload = { ...(input ?? {}), tz: CL_TZ };
 
-    const res = await fetch(`${this.baseUrl}/slots/find`, {
+    const res = await fetch(`${this.baseUrl}/api/slots/find`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
