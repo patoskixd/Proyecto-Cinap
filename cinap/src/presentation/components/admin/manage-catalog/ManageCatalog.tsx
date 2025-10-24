@@ -4,7 +4,7 @@
 import React, { useMemo, useState } from "react";
 
 import { useCatalogState } from "./hooks/useCatalogState";
-import { parseError } from "./utils/parseError";
+import { parseError } from "@/presentation/components/shared/Toast/parseError";
 
 import CatalogStats from "./components/CatalogStats";
 import SectionCard from "./components/SectionCard";
