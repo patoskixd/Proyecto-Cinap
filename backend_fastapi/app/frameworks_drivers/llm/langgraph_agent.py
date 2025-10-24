@@ -4,6 +4,7 @@ from collections import deque
 import copy
 from datetime import datetime
 import time
+import uuid
 from zoneinfo import ZoneInfo
 import json, sqlite3, asyncio, re
 from typing import Any, Dict, List
@@ -14,7 +15,10 @@ from langchain.tools import StructuredTool
 from pydantic import BaseModel, create_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
-from langchain_core.messages.utils import trim_messages
+from langchain_core.messages.utils import trim_messages, count_tokens_approximately
+from langchain_core.messages import RemoveMessage
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
+from langchain_core.callbacks import BaseCallbackHandler
 from app.frameworks_drivers.mcp.stdio_client import MCPStdioClient
 from app.observability.confirm_store import is_confirmation
 from app.observability.metrics import set_meta, stage, astage, measure_stage
@@ -24,7 +28,7 @@ try:
 except Exception:
     ChatOllama = None
 from app.frameworks_drivers.config.settings import (
-    USE_OLLAMA,
+    USE_OLLAMA, EVAL_LOG_PATH,
     OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TEMP, OLLAMA_TOP_P,
 )
 
@@ -39,6 +43,52 @@ _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 CURRENT_THREAD_ID: ContextVar[str | None] = ContextVar("CURRENT_THREAD_ID", default=None)
 
 CONFIRM_TOOLS = {"schedule_asesoria", "cancel_asesoria", "confirm_asesoria"}
+
+_CINAP_LIST_RE = re.compile(r"<!--CINAP_LIST:.*?-->", re.DOTALL)
+_CINAP_CONFIRM_RE = re.compile(r"<!--CINAP_CONFIRM:.*?-->", re.DOTALL)
+_MAX_MSG_CHARS = 8000
+
+def _sanitize_for_state(text: str) -> str:
+    if not isinstance(text, str) or not text:
+        return text or ""
+    s = _CINAP_LIST_RE.sub(" [UI list omitted] ", text)
+    s = _CINAP_CONFIRM_RE.sub(" [confirm marker omitted] ", s)
+    if len(s) > _MAX_MSG_CHARS:
+        s = s[:_MAX_MSG_CHARS] + " …[truncated]"
+    return s
+
+def _pre_model_hook(state: dict) -> dict:
+    trimmed = trim_messages(
+        state["messages"],
+        strategy="last",
+        token_counter=count_tokens_approximately,
+        max_tokens=9000,
+        start_on="human",
+        end_on=("human", "tool"),
+    )
+
+    system_msgs = [m for m in state["messages"] if isinstance(m, SystemMessage)]
+
+    cleaned = []
+    for m in trimmed:
+        try:
+            c = getattr(m, "content", "")
+            if isinstance(c, str):
+                m.content = _sanitize_for_state(c)
+        except Exception:
+            pass
+        cleaned.append(m)
+
+    return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES), *system_msgs, *cleaned]}
+
+def _eval_log(event: dict):
+    try:
+        event = dict(event or {})
+        event["ts"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        with open(EVAL_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 def _normalize_event_update_args(kwargs: dict) -> dict:
     if not isinstance(kwargs, dict):
@@ -312,59 +362,37 @@ def _make_token_counter(model_name: str):
 
     return counter
 
-class TokenTrimCheckpointer:
-    def __init__(
-        self,
-        base,
-        *,
-        model_name: str,
-        max_tokens: int = 3000,
-        strategy: str = "recency",
-        include_system: bool = True,
-        allow_partial: bool = True,
-    ):
-        self._base = base
-        self._max_tokens = int(max_tokens)
-        self._strategy = strategy
-        self._include_system = include_system
-        self._allow_partial = allow_partial
-        self._token_counter = _make_token_counter(model_name)
+class MetricsCallbackHandler(BaseCallbackHandler):
+    def __init__(self, stage_name="llm.http"):
+        self.stage_name = stage_name
 
-    def __getattr__(self, name):
-        return getattr(self._base, name)
+    def on_llm_end(self, response, **kwargs):
+        usage = None
+        try:
+            usage = (getattr(response, "llm_output", {}) or {}).get("token_usage")
+        except Exception:
+            pass
 
-    def _trim_cp(self, cp: dict) -> dict:
-        if not isinstance(cp, dict):
-            return cp
-        cp2 = copy.deepcopy(cp)
-        vals = cp2.get("values")
-        if isinstance(vals, dict) and isinstance(vals.get("messages"), list):
-            messages = vals["messages"]
+        if not usage:
+            try:
+                gi = response.generations[0][0].generation_info or {}
+                usage = gi.get("token_usage") or gi.get("usage")
+            except Exception:
+                usage = None
 
-            trimmed = trim_messages(
-                messages=messages,
-                token_counter=self._token_counter,
-                max_tokens=self._max_tokens,
-                strategy=self._strategy,
-                include_system=self._include_system,
-                allow_partial=self._allow_partial,
+        if not usage:
+            try:
+                usage = getattr(response, "response_metadata", {}).get("token_usage")
+            except Exception:
+                pass
+
+        if usage:
+            set_meta(
+                stage=self.stage_name,
+                prompt_tokens=usage.get("prompt_tokens"),
+                completion_tokens=usage.get("completion_tokens"),
+                total_tokens=usage.get("total_tokens"),
             )
-            vals["messages"] = trimmed
-        return cp2
-
-    def put(self, *args, **kwargs):
-        args = list(args)
-        if len(args) >= 2 and isinstance(args[1], dict):
-            args[1] = self._trim_cp(args[1])
-        return self._base.put(*tuple(args), **kwargs)
-
-    async def aput(self, *args, **kwargs):
-        args = list(args)
-        if len(args) >= 2 and isinstance(args[1], dict):
-            args[1] = self._trim_cp(args[1])
-        if hasattr(self._base, "aput"):
-            return await self._base.aput(*tuple(args), **kwargs)
-        return self._base.put(*tuple(args), **kwargs)
 
 class LangGraphRunner:
     def __init__(self, app, system_text: str | None = None):
@@ -385,6 +413,17 @@ class LangGraphRunner:
                     config={"configurable": {"thread_id": thread_id}},
                 )
                 out = res.get("messages", [])
+                try:
+                    last = out[-1].content if out else ""
+                    _eval_log({
+                        "kind": "turn",
+                        "thread_id": thread_id,
+                        "turn_id": str(uuid.uuid4()),
+                        "user": message,
+                        "assistant": last,
+                    })
+                except Exception:
+                    pass
 
             with stage("agent.present.extract"):
                 return _strip_think(out[-1].content if out else "")
@@ -443,16 +482,24 @@ class LangGraphAgent:
                     if getattr(self, "_confirm_store", None) and thread_id and name in CONFIRM_TOOLS:
                         pending_exists = await self._confirm_store.peek(thread_id)
 
-                        if args.get("confirm") is True and not pending_exists:
-                            args["confirm"] = False
+                        inp = args.get("input") if isinstance(args.get("input"), dict) else {}
+                        pending_exists = await self._confirm_store.peek(thread_id)
+
+                        if inp.get("confirm") is True and not pending_exists:
+                            inp = {**inp, "confirm": False}
+                            args["input"] = inp
                             set_meta(enforced_preview=True)
 
-                        if not bool(args.get("confirm")):
+                        if not bool(inp.get("confirm")):
                             async with astage("confirm.store.put", extra={"tool": name}):
                                 idem = await self._confirm_store.put(thread_id, name, args)
 
+                            preview_payload = copy.deepcopy(args)
+                            prev_inp = preview_payload.get("input") if isinstance(preview_payload.get("input"), dict) else {}
+                            preview_payload["input"] = {**prev_inp, "confirm": False}
+
                             async with astage("mcp.rpc", extra={"tool": name, "phase": "preview"}):
-                                preview_res = await client.call_tool(name, {**args, "confirm": False})
+                                preview_res = await client.call_tool(name, preview_payload)
 
                             try:
                                 if isinstance(preview_res, dict):
@@ -483,7 +530,19 @@ class LangGraphAgent:
                         return "Necesito tu confirmación primero. Responde con “sí” para continuar."
 
                     async with astage("mcp.rpc", extra={"tool": name, "phase": "direct"}):
+                        start_ts = time.time()
                         res = await client.call_tool(name, args)
+                        elapsed_ms = int((time.time() - start_ts) * 1000)
+
+                        _eval_log({
+                            "kind": "tool_call",
+                            "thread_id": CURRENT_THREAD_ID.get(),
+                            "turn_id": str(uuid.uuid4()),
+                            "tool": name,
+                            "args": args,
+                            "result": res,
+                            "elapsed_ms": elapsed_ms,
+                        })
                     return _format_mcp_result(res, name)
 
             except Exception as e:
@@ -557,17 +616,12 @@ class LangGraphAgent:
 
         tools = await self._build_tools_from_mcp()
         conn = sqlite3.connect(self._db_path, check_same_thread=False)
-        base_cp = SqliteSaver(conn)
-        token_budget = 10000
-        checkpointer = TokenTrimCheckpointer(
-            base_cp,
-            model_name=self._model_name,
-            max_tokens=token_budget,
-            strategy="recency",
-            include_system=True,
-            allow_partial=True,
+        checkpointer = SqliteSaver(conn)
+        app_or_graph = create_react_agent(
+            llm, tools,
+            checkpointer=checkpointer,
+            pre_model_hook=_pre_model_hook,
         )
-        app_or_graph = create_react_agent(llm, tools, checkpointer=checkpointer)
         app = app_or_graph.compile(checkpointer=checkpointer) if hasattr(app_or_graph, "compile") else app_or_graph
 
         SYSTEM_STATIC_EN = """
@@ -592,12 +646,41 @@ class LangGraphAgent:
         - If the question is informative about CINAP (what is it, services, politics, how it works, etc.), use the tool "semantic_search" with { "q": "<user question>" } to gain context before responding.
         - If there's no results, say it clearly.
         """
+        FEW_SHOTS_ES = """
+        EJEMPLOS RÁPIDOS (Few-shot). Siempre responde en español y usa herramientas cuando apliquen:
+
+        Usuario: "Muéstrame mis asesorías de esta semana"
+        Asistente:
+        {"name":"list_asesorias","arguments":{"input":{"start":"2025-10-20T00:00:00-03:00","end":"2025-10-27T00:00:00-03:00"}}}
+
+        Usuario: "¿Hay cupos para Comunidades de Aprendizaje mañana entre 9 y 12?"
+        Asistente:
+        {"name":"check_availability","arguments":{"input":{"service":"Comunidades de Aprendizaje","start":"2025-10-24T09:00:00-03:00","end":"2025-10-24T12:00:00-03:00"}}}
+
+        Usuario: "Reserva con Ana Pérez para Comunidades de Aprendizaje el 3 de noviembre a las 10:00"
+        Asistente:
+        {"name":"schedule_asesoria","arguments":{"input":{"advisor":"Ana Pérez","service":"Comunidades de Aprendizaje","start":"2025-11-03T10:00:00-03:00","confirm":false}}}
+        # Nota: NO envíes user_id. El backend lo inyecta. Primero siempre preview (confirm=false).
+
+        Usuario: "Cancela la asesoría del 3 de noviembre 10:00 con Ana Pérez"
+        Asistente:
+        {"name":"cancel_asesoria","arguments":{"input":{"advisor":"Ana Pérez","start":"2025-11-03T10:00:00-03:00","confirm":false}}}
+        # Si no se indica 'end', la tool asume 30m/60m.
+
+        Usuario: "Confirma mi asistencia del 3 de noviembre 10:00 con Ana Pérez"
+        Asistente:
+        {"name":"confirm_asesoria","arguments":{"input":{"advisor":"Ana Pérez","start":"2025-11-03T10:00:00-03:00","confirm":false}}}
+
+        Usuario: "¿Qué es el programa CINAP?"
+        Asistente:
+        {"name":"semantic_search","arguments":{"q":"Qué es el programa CINAP","kinds":["general.page","doc.chunk"]}}
+        """
         now_cl = datetime.now(ZoneInfo("America/Santiago"))
         offset = now_cl.utcoffset()
         offset_h = int(offset.total_seconds() // 3600)
         offset_sign = "+" if offset_h >= 0 else "-"
         offset_txt = f"UTC{offset_sign}{abs(offset_h):02d}:00"
-        system_msg = SYSTEM_STATIC_EN + f"\nContext: TZ=America/Santiago ({offset_txt}), today={now_cl:%d-%m-%Y}\n /no_think"
+        system_msg = SYSTEM_STATIC_EN + "\n" + FEW_SHOTS_ES + f"\nContext: TZ=America/Santiago ({offset_txt}), today={now_cl:%d-%m-%Y}\n /no_think"
         self._runner = LangGraphRunner(app, system_text=system_msg)
 
     async def invoke(self, message: str, *, thread_id: str) -> str:
@@ -673,32 +756,26 @@ class LangGraphAgent:
                         post_ops = []
 
                     try:
-                        confirm_hint = None
+                        def _to_ops(nh):
+                            ops = []
+                            if isinstance(nh, dict):
+                                if nh.get("next_tool") and nh.get("suggested_args"):
+                                    ops.append({"tool": nh["next_tool"], "args": dict(nh["suggested_args"] or {})})
+                            elif isinstance(nh, list):
+                                for it in nh:
+                                    if isinstance(it, dict) and it.get("next_tool") and it.get("suggested_args"):
+                                        ops.append({"tool": it["next_tool"], "args": dict(it["suggested_args"] or {})})
+                            return ops
+
+                        confirm_ops = []
                         if isinstance(res, dict):
                             data = res.get("data") or {}
                             nh = data.get("next_hint") or res.get("next_hint")
-                            if isinstance(nh, dict) and nh.get("next_tool") and nh.get("suggested_args"):
-                                confirm_hint = {"tool": nh["next_tool"], "args": dict(nh["suggested_args"] or {})}
+                            confirm_ops = _to_ops(nh)
 
-                        def _deep_merge(dst: dict, src: dict) -> dict:
-                            out = dict(dst or {})
-                            for k, v in (src or {}).items():
-                                if isinstance(v, dict) and isinstance(out.get(k), dict):
-                                    out[k] = _deep_merge(out[k], v)
-                                else:
-                                    out[k] = v
-                            return out
+                        if confirm_ops:
+                            post_ops.extend(confirm_ops)
 
-                        if confirm_hint:
-                            if post_ops:
-                                for op in post_ops:
-                                    if op.get("tool") == confirm_hint["tool"]:
-                                        op["args"] = _deep_merge(op.get("args") or {}, confirm_hint["args"])
-                                        break
-                                else:
-                                    post_ops.append(confirm_hint)
-                            else:
-                                post_ops = [confirm_hint]
                     except Exception:
                         pass
 
@@ -742,11 +819,9 @@ class LangGraphAgent:
                             if isinstance(r2, dict):
                                 data2 = r2.get("data") or {}
                                 nh2 = data2.get("next_hint") or r2.get("next_hint")
-                                if isinstance(nh2, dict) and nh2.get("next_tool") and nh2.get("suggested_args"):
-                                    queue.append({
-                                        "tool": nh2["next_tool"],
-                                        "args": dict(nh2["suggested_args"] or {}),
-                                    })
+
+                                for extra_op in _to_ops(nh2):
+                                    queue.append(extra_op)
                         except Exception:
                             pass
 

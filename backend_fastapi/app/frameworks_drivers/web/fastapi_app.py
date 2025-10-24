@@ -25,7 +25,7 @@ from app.interface_adapters.controllers.slots_router import make_slots_router
 from app.interface_adapters.controllers.advisor_catalog_router import (make_advisor_catalog_router)
 from app.interface_adapters.controllers.advisor_confirmations_router import make_confirmations_router
 from app.interface_adapters.controllers.asesorias_router import make_asesorias_router
-from app.interface_adapters.controllers.telegram_webhook import make_telegram_router
+from app.interface_adapters.controllers.telegram_webhook import make_telegram_router, setup_telegram_webhook
 from app.interface_adapters.controllers.telegram_link_router import make_telegram_link_router
 from app.interface_adapters.controllers.admin_catalog_router import make_admin_catalog_router  
 from app.interface_adapters.controllers.admin_location_router import make_admin_location_router
@@ -69,6 +69,12 @@ async def lifespan(app):
     await container.startup()
     if getattr(container, "graph_agent", None) and hasattr(container.graph_agent, "set_confirm_store"):
             container.graph_agent.set_confirm_store(confirm_store)
+
+    # Webhook de Telegram
+    try:
+        await setup_telegram_webhook(WEBHOOK_PUBLIC_URL)
+    except Exception as e:
+        logger.exception("No se pudo configurar webhook de Telegram: %r", e)
 
     scheduler.start()
     try:
@@ -232,7 +238,7 @@ class GraphChatRequest(BaseModel):
     message: str
     thread_id: str = "default-thread"
 
-limiter = make_simple_limiter(container.cache, limit=10, window_sec=60)
+limiter = make_simple_limiter(container.cache, limit=100, window_sec=60)
 
 @graph_router.post("/chat", dependencies=[Depends(limiter)])
 async def graph_chat(req: GraphChatRequest, request: Request):
