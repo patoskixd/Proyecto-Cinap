@@ -24,7 +24,7 @@ export default function ScheduleWizard(props: {
 
   const { step, state, services, advisors, currentMonth, setCurrentMonth, selectedDate, setSelectedDate, openSlots,
           loadingSlots, slotsError, selectCategory, selectService, selectAdvisor, selectSlot, canGoNext, goNext,
-          goPrev, submitting, error, showSuccess, setShowSuccess, onConfirmar,} = useScheduleWizard({ categories, servicesByCategory, advisorsByService, defaultTimezone });
+          goPrev, submitting, error, showSuccess, setShowSuccess, onConfirmar,} = useScheduleWizard({ servicesByCategory, advisorsByService, defaultTimezone });
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-6">

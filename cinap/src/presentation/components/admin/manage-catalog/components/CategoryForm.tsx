@@ -1,9 +1,8 @@
 import React, { useState } from "react";
 
 export default function CategoryForm({
-  label, defaultValues, onSubmit, onCancel,
+  defaultValues, onSubmit, onCancel,
 }:{
-  label?: string;
   defaultValues?: Partial<{ name: string; description: string }>;
   onSubmit: (payload:{ name: string; description: string }) => void;
   onCancel: () => void;

@@ -1,6 +1,6 @@
 import { httpGetCached, httpPost } from "@/infrastructure/http/client";
 import type { SlotsRepo } from "@/application/advisor/slots/ports/SlotsRepo";
-import type {CreateSlotsData,CreateSlotsResult,CreateSlotsInput,SlotRule} from "@/domain/advisor/slots";
+import type { CreateSlotsData, CreateSlotsResult } from "@/domain/advisor/slots";
 
 type UIRulePayload = {
   day: string;

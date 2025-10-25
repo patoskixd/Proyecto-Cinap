@@ -162,11 +162,12 @@ class Container:
 
     def make_auto_configure_webhook(self, session: AsyncSession) -> AutoConfigureWebhook:
         """Crea una instancia de AutoConfigureWebhook con todas las dependencias"""
+        token_repo = SqlAlchemyUserRepo(session, default_role_id=None)
         cal_client = GoogleCalendarClient(
             client_id=self._google_client_id,
             client_secret=self._google_client_secret,
-            get_refresh_token_by_usuario_id=lambda usuario_id: 
-                SqlAlchemyUserRepo(session, default_role_id=None).get_refresh_token_by_usuario_id(usuario_id)
+            get_refresh_token_by_usuario_id=token_repo.get_refresh_token_by_usuario_id,
+            invalidate_refresh_token_by_usuario_id=token_repo.invalidate_refresh_token,
         )
         
         calendar_events_repo = SqlAlchemyCalendarEventsRepo(session, cache=self.cache)

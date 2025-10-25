@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import type { Advisor, AdvisorServiceRef, CategoryId } from "@/domain/admin/advisors";
+import type { Advisor } from "@/domain/admin/advisors";
 
 function initials(name: string | undefined | null) {
   if (!name || typeof name !== 'string') return "A";

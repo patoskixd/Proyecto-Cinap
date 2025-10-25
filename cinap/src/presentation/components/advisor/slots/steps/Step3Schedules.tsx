@@ -48,7 +48,7 @@ export default function Step3Schedules({ times, schedules, setSchedules }: Props
   const [multiSelected, setMultiSelected] = useState<Record<string, boolean>>({});
 
   const [singleStart, setSingleStart] = useState("09:00");
-  const [singleEnd, setSingleEnd] = useState("16:00");
+  const [singleEnd, setSingleEnd] = useState("18:00");
   const [breakEnabled, setBreakEnabled] = useState(false);
   const [breakStart, setBreakStart] = useState("13:00");
   const [breakEnd, setBreakEnd] = useState("14:00");

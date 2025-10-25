@@ -127,8 +127,23 @@ export default function ManageAdvisorsHeader({
         </div>
       </div>
 
-      
-  
+      {onReset && hasFilters && (
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={onReset}
+            className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white/80 px-4 py-2 text-xs font-semibold text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-white"
+          >
+            <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+              <path
+                fillRule="evenodd"
+                d="M10 5a1 1 0 011 1v2.586l1.293-1.293a1 1 0 111.414 1.414L11.414 10l2.293 2.293a1 1 0 11-1.414 1.414L11 12.414V15a1 1 0 11-2 0v-2.586l-1.293 1.293a1 1 0 11-1.414-1.414L8.586 10 6.293 7.707a1 1 0 111.414-1.414L9 8.586V6a1 1 0 011-1z"
+                clipRule="evenodd"
+              />
+            </svg>
+            Limpiar filtros
+          </button>
+        </div>
+      )}
     </div>
   );
 }

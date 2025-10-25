@@ -62,6 +62,7 @@ DB_PASSWORD=postgres
 GOOGLE_CLIENT_ID=dummy-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=dummy-secret
 GOOGLE_REDIRECT_URI=http://localhost:8000/api/auth/google/callback
+GOOGLE_TOKEN_CIPHER_KEY=base64-fernet-key
 
 # JWT
 JWT_SECRET=supersecreto
@@ -116,3 +117,4 @@ En producción, se recomienda usar un servidor ASGI como **Uvicorn + Gunicorn** 
 - Este servicio sigue principios de **Arquitectura Limpia**.  
 - Maneja seguridad mediante **JWT** y control de roles.  
 - Se conecta con el frontend vía CORS y expone un webhook para Telegram.  
+- Genera `GOOGLE_TOKEN_CIPHER_KEY` con `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` y reutiliza el mismo valor en todos los servicios que leen tokens desde la base de datos.

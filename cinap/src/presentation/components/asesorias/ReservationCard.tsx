@@ -39,7 +39,9 @@ export default function ReservationCard({
 
   const showCancelButton =
     canCancel && (reservation.status === "pendiente" || reservation.status === "confirmada");
-  const showConfirmButton = canConfirm && reservation.status === "pendiente";
+  const isPending = reservation.status === "pendiente";
+  const isReconfirmableCancellation = reservation.status === "cancelada" && reservation.canRetryConfirm;
+  const showConfirmButton = canConfirm && (isPending || isReconfirmableCancellation);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/20 to-yellow-50/10 shadow-lg backdrop-blur-sm">

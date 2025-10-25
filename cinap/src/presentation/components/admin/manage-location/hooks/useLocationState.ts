@@ -171,12 +171,12 @@ export default function useLocationState() {
   }, [loadBuildings, loadRooms, buildingsPage]);
 
   // inicial
-  useEffect(() => { void loadCampus(1); }, []); 
+  useEffect(() => { void loadCampus(1); }, [loadCampus]); 
 
   // recargas por filtros
-  useEffect(() => { void loadCampus(1); }, [campusQuery, campusActive]); 
-  useEffect(() => { void loadBuildings(1); }, [selectedCampusId, buildingsQuery, buildingsActive]); 
-  useEffect(() => { void loadRooms(1); }, [selectedBuildingId, roomsQuery, roomsActive]); 
+  useEffect(() => { void loadCampus(1); }, [campusQuery, campusActive, loadCampus]); 
+  useEffect(() => { void loadBuildings(1); }, [selectedCampusId, buildingsQuery, buildingsActive, loadBuildings]); 
+  useEffect(() => { void loadRooms(1); }, [selectedBuildingId, roomsQuery, roomsActive, loadRooms]); 
 
   // paginacion
   const setCampusPage = makeSetPage(loadCampus);

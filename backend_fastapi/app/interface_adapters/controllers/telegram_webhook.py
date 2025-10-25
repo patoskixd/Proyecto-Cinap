@@ -128,6 +128,7 @@ LIST_STATE_TTL = 1800  # 30 min
 PAGE_SIZE_DEFAULT = 6
 
 # Marcador que ya emite tu LangGraphAgent (_attach_items_payload)
+CINAP_CONFIRM_RE = re.compile(r"<!--CINAP_CONFIRM:([A-Za-z0-9+/=]+)-->")
 CINAP_LIST_RE = re.compile(r"<!--CINAP_LIST:([A-Za-z0-9+/=]+)-->")
 
 #  Dominio (CINAP/UCT): Reglas
@@ -183,7 +184,7 @@ def _is_domain_related(s: str) -> bool:
 def _enforce_domain_reply(user_text: str, reply_text: str) -> str:
     """
     RELAJADO:
-    - Si STRICT_DOMAIN_ENFORCEMENT es False, NO se aplica ninguna restricción.
+    - Si STRICT_DOMAIN_ENFORCEMENT es False, NO se aplica ninguna restriccion.
     - Si es True, se aplican las reglas originales.
     """
     if not STRICT_DOMAIN_ENFORCEMENT:
@@ -212,7 +213,7 @@ ALL_KEYWORDS = CALENDAR_KEYWORDS + ACADEMIC_KEYWORDS
 GLOSARIO_REGEX = [
     (
         re.compile(
-            r"\b(u\.?\s*c\.?\s*t\.?|u\s*ce\s*te|ucte|ucete|u\s*c\s*t|aus-?t|universidad\s+católica(?:\s+de\s+temuco)?)\b",
+            r"\b(u\.?\s*c\.?\s*t\.?|u\s*ce\s*te|ucte|ucete|u\s*c\s*t|aus-?t|universidad\s+cat+ólica(?:\s+de\s+temuco)?)\b",
             re.IGNORECASE,
         ),
         "UCT",
@@ -221,7 +222,7 @@ GLOSARIO_REGEX = [
         re.compile(
             r"\b(cina?p|cina|ci\s*nap|si\s*nap|c\s*i\s*nap|"
             r"ch[ií]n\s*up|chi\s*nap|che\s*nap|chinap|sino pop|chin up|"
-            r"centro\s+de\s+innovaci[óo]n(?:\s+en\s+aprendizaje)?(?:\s+docencia)?(?:\s+y\s+tecnolog[íi]a\s+educativa)?)\b",
+            r"centro\s+de\s+innovaci[óo]n(?:\s+en\s+aprendizaje)?(?:\s+docencia)?(?:\s+y\s+tecnolog[í]a\s+educativa)?)\b",
             re.IGNORECASE
         ),
         "CINAP",
@@ -293,9 +294,10 @@ def _chunk(s: str, n: int = 4000):
 def _fix_mojibake(s: str) -> str:
     if not s or not isinstance(s, str):
         return s
-    if 'Â' in s or 'Ã' in s or 'â' in s:
+    if 'Á' in s or 'Ã' in s or 'â' in s:
         try:
             return s.encode('latin-1').decode('utf-8')
+        
         except Exception:
             return s
     return s
@@ -304,6 +306,7 @@ def _mdv2_escape(s: str) -> str:
     if not s:
         return s
     s = _fix_mojibake(s)
+    s = CINAP_CONFIRM_RE.sub("", s).rstrip()
     s = s.replace("\\", "\\\\")
     specials = ('_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!')
     for ch in specials:
@@ -360,7 +363,7 @@ async def _set_pending_action(chat_id: int, payload: dict, cache=None):
 async def _clear_pending_action(chat_id: int, cache=None):
     if not cache: return
     try:
-        # Si no tienes DELETE, pisa con TTL bajísimo
+        # Si no tienes DELETE, pisa con TTL bajisimo
         await cache.set(f"tg_pending:{chat_id}", b"", ttl_seconds=1)
     except Exception as e:
         log.warning(f"Error limpiando pending_action: {e}")
@@ -395,7 +398,7 @@ async def tg_get_file_path(file_id: str, file_unique_id: str, cache=None):
             if data.get("ok") and data.get("result"):
                 file_path = data["result"].get("file_path")
                 if file_path:
-                    log.info(f"⚡ File path obtenido: {file_id[:8]}... -> {file_path}")
+                    log.info(f"File path obtenido: {file_id[:8]}... -> {file_path}")
                     if cache:
                         asyncio.create_task(_cache_file_path_async(cache, file_id, file_unique_id, file_path))
                     return file_path
@@ -624,7 +627,7 @@ def _prenormalizar_fonetico(texto: str) -> str:
 
     t = re.sub(r"\buniversidad\s+cat[oó]lica(?:\s+de\s+temuco)?\b", "UCT", t, flags=re.IGNORECASE)
     t = re.sub(
-        r"\bcentro\s+de\s+innovaci[oó]n(?:\s+en\s+aprendizaje)?(?:\s+docencia)?(?:\s+y\s+tecnolog[ií]a\s+educativa)?\b",
+        r"\bcentro\s+de\s+innovaci[oó]n(?:\s+en\s+aprendizaje)?(?:\s+docencia)?(?:\s+y\s+tecnolog[i+í]a\s+educativa)?\b",
         "CINAP", t, flags=re.IGNORECASE)
     return t
 
@@ -712,7 +715,7 @@ async def _audio_format_optimized(audio_bytes: bytes, target_ar: int = 16000) ->
         log.info(f"Audio convertido: {len(audio_bytes)} -> {len(stdout)} bytes")
         return stdout
     except Exception as e:
-        log.debug(f"Conversión optimizada falló: {e}")
+        log.debug(f"Conversión optimizada fallida: {e}")
         if isinstance(e, FileNotFoundError) or "not found" in str(e).lower() or "no se puede encontrar" in str(e).lower():
             log.info("ffmpeg no encontrado o inaccesible, usando audio original sin conversión")
             return audio_bytes
@@ -766,7 +769,7 @@ async def _asr_fallback_wav_optimized(audio_bytes: bytes, filename: str) -> str 
         if 200 <= status < 300:
             return _clean_transcript_text(text)
         else:
-            log.warning(f"ASR WAV fallback falló: {status}")
+            log.warning(f"ASR WAV fallback fallida: {status}")
             return None
     except Exception as e:
         log.warning(f"Fallback WAV error: {e}")
@@ -817,7 +820,7 @@ async def asr_transcribe(audio_bytes: bytes, filename: str = "audio.ogg", cache=
             r = await client.post(transcribe_url, data=data, files=files)
 
         if r.status_code >= 400:
-            log.info(f"ASR falló con formato original ({r.status_code}), probando WAV...")
+            log.info(f"ASR fallida con formato original ({r.status_code}), probando WAV...")
             fallback_text = await _asr_fallback_wav_optimized(audio_bytes, filename)
             if fallback_text:
                 return ASRResult(text=fallback_text, confidence=0.7, processing_time=time.time() - start_time)
@@ -899,7 +902,7 @@ def classify_user_intent(asr_result: ASRResult) -> IntentClassification:
         (r"disponibilidad.*(\w+)", {"action": "availability"}),
         (r"horario.*libre", {"action": "free_slots"}),
     ]
-    if re.search(r"(lista(me)?|mu[eé]strame|mostrar|ver).*(mis )?(eventos|asesor[ií]as|citas)", text):
+    if re.search(r"(lista(me)?|mu[eé]stame|mostrar|ver).*(mis )?(eventos|asesor[ií]as|citas)", text):
         return IntentClassification(
             "calendar_simple",
             0.9 + confidence_boost,
@@ -914,7 +917,7 @@ def classify_user_intent(asr_result: ASRResult) -> IntentClassification:
     professor_patterns = [
         (r"profesor.*de.*(\w+)", {"subject": "extracted"}),
         (r"asesor.*(\w+)", {"type": "advisor"}),
-        (r"docente.*matem[áa]tica", {"subject": "matematicas"}),
+        (r"docente.*matem[aá]tica", {"subject": "matematicas"}),
         (r"teacher.*english", {"subject": "ingles"}),
     ]
     for pattern, params in professor_patterns:
@@ -947,14 +950,14 @@ INTENT_TO_TOOL = {
 async def _maybe_store_pending_from_mcp(result, chat_id: int, cache=None):
     """
     Intenta detectar una respuesta de MCP que indique 'preview/pending' y guarda tool+args.
-    Adapta las claves según lo que devuelva tu servidor MCP.
+    Adapta las claves segn lo que devuelva tu servidor MCP.
     """
     try:
         if not cache or not isinstance(result, dict):
             return
         payload = None
 
-        # Formatos típicos (ajusta a tu payload real)
+        # Formatos tópicos (ajusta a tu payload real)
         if result.get("pending_action"):
             payload = result["pending_action"]
         elif result.get("status") in ("preview", "pending") and (result.get("tool") or result.get("args")):
@@ -1045,7 +1048,7 @@ def _format_mcp_direct_result(result, tool_name: str) -> str:
                 header = (result.get("say") or result.get("message") or result.get("text") or "").strip()
                 return _attach_items_payload_for_direct(header, items, kind=tool_name)
 
-            #  Si vino un único evento
+            #  Si vino un unico evento
             ev = data.get("event") or result.get("event")
             if isinstance(ev, dict):
                 title = ev.get("title") or "(sin título)"
@@ -1080,13 +1083,13 @@ async def route_to_mcp_direct(
         args: dict = {}
 
         if intent.intent_type == "calendar_simple":
-            # Determinar acción (usa la que venga, y si no, infiérela del texto)
+            # Determinar acción (usa la que venga, y si no, infiérala del texto)
             action = (intent.extracted_params or {}).get("action")
             spoken = (asr_result.text or "").lower()
 
             if not action:
                 # lista / ver / mostrar
-                if re.search(r"(lista(me)?|mu[eé]strame|muestrame|mostrar|ver).*(mis )?(eventos|asesor[ií]as|citas)", spoken):
+                if re.search(r"(lista(me)?|mu[eé]stame|muestrame|mostrar|ver).*(mis )?(eventos|asesor[ií]as|citas)", spoken):
                     action = "view"
                 # disponibilidad
                 elif "disponibilidad" in spoken:
@@ -1318,7 +1321,7 @@ async def route_to_llm_plus_mcp(asr_result: ASRResult, chat_id: int, agent_gette
                 elif hasattr(agent, "register_tool_defaults"):
                     agent.register_tool_defaults(defaults_input | defaults_flat)
                 else:
-                    # último recurso: deja un atributo convencional que tu on_tool_call puede leer
+                    # Último recurso: deja un atributo convencional que tu on_tool_call puede leer
                     try:
                         agent._default_tool_args = defaults_input | defaults_flat
                     except Exception:
@@ -1420,9 +1423,9 @@ async def intelligent_routing_system(asr_result: ASRResult, chat_id: int, agent_
     #  Saludo directo
     if intent.intent_type == "greeting":
         greetings = [
-            "¡Hola! Soy tu asistente de CINAP. ¿En qué puedo ayudarte hoy?",
-            "¡Hola! ¿Necesitas ayuda con tu agenda académica?",
-            "¡Buenas! Estoy aquí para ayudarte con citas y profesores."
+            "-Hola! Soy tu asistente de CINAP. ¿En qué puedo ayudarte hoy?",
+            "-Hola! ¿Necesitas ayuda con tu agenda académica?",
+            "-Buenas! Estoy aquí para ayudarte con citas y profesores."
         ]
         import random
         return random.choice(greetings)
@@ -1898,7 +1901,7 @@ def _format_item_when(item: dict) -> str | None:
         elif fecha:
             ds = _parse_any_dt(fecha)
 
-    #  Duración → fin
+    #  Duración hasta fin
     if ds and not de:
         dur_min = _first(item, "duration_min", "duracion_min", "duracion", "duration", "minutes")
         try:
@@ -1984,7 +1987,7 @@ def _title_of(it: dict) -> str:
     if t: 
         return str(t)
 
-    # intenta construir uno: p.ej. "Asesoría — <servicio/tema>"
+    # intenta construir uno: p.ej. "Asesoría en <servicio/tema>"
     servicio = _first(it, "service", "servicio", "tipo", "type")
     if isinstance(servicio, dict):
         servicio = _first(servicio, "title", "nombre", "name") or servicio.get("title") or servicio.get("nombre") or servicio.get("name")
@@ -2010,7 +2013,7 @@ def _subtitle_of(it: dict) -> str:
     if st:
         return str(st)
 
-    # intenta armar: "Docente/Asesor — Estado: XXX"
+    # intenta armar: "Docente/Asesor en Estado: XXX"
     persona = _first(it, "asesor", "advisor", "docente", "profesor", "teacher", "owner", "owner_name", "ownerName")
     estado  = _first(it, "estado", "status", "state")
     correo  = _first(it, "email", "correo")
@@ -2046,7 +2049,7 @@ def _extract_cinap_list(raw_text: str) -> tuple[str, dict | None]:
     return clean, payload if isinstance(payload, dict) else None
 
 def _truncate(s: str, n: int = 28) -> str:
-    return (s[: n-1] + "…") if isinstance(s, str) and len(s) > n else (s or "")
+    return (s[: n-1] + "…" ) if isinstance(s, str) and len(s) > n else (s or "")
 
 def _should_show_status(kind: str | None, it: dict) -> bool:
     k = (kind or "").lower()
@@ -2254,7 +2257,7 @@ async def _process_audio_background(chat_id: int, file_id: str, file_unique_id: 
                 transcript = None
 
         if not transcript or not asr_result:
-            await _send_direct_message(chat_id, " Audio vacío o no detecté mensaje\\. Intenta hablar más claro\\.")
+            await _send_direct_message(chat_id, " Audio vacío o no detectado. Intenta hablar más claro.")
             return
 
         # Autenticidad
@@ -2377,7 +2380,7 @@ async def _process_audio_background(chat_id: int, file_id: str, file_unique_id: 
                     f"\n Para agendar tu asesoría:\n"
                     f"1. Usa el sistema web en tu perfil\n"
                     f"2. O dime más detalles (materia, horario preferido, etc.)\n\n"
-                    f"¿Te ayudo a buscar disponibilidad de profesores?"
+                    f" ¿Te ayudo a buscar disponibilidad de profesores?"
                 )
                 safe_transcript = _mdv2_escape(transcript)
                 safe_calendar_response = _mdv2_escape(calendar_response)
@@ -2458,7 +2461,7 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                                 username=msg["from"].get("username") or msg["from"].get("first_name")
                             )
                             if success:
-                                await bot.send_message(chat_id, _mdv2_escape("✅ Cuenta vinculada exitosamente!"))
+                                await bot.send_message(chat_id, _mdv2_escape("Cuenta vinculada exitosamente!"))
 
                                 # cachear user_id para este chat 
                                 try:
@@ -2483,12 +2486,12 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                                     log.warning(f"no se pudo cachear user_id tras /start: {e}")
 
                             else:
-                                await bot.send_message(chat_id, _mdv2_escape("⚠️ Token inválido o expirado"))
+                                await bot.send_message(chat_id, _mdv2_escape("Token inválido o expirado"))
                         except Exception as e:
                             log.error(f"Error vinculando cuenta: {e}")
-                            await bot.send_message(chat_id, _mdv2_escape("⚠️ Error interno"))
+                            await bot.send_message(chat_id, _mdv2_escape("Error interno"))
                     else:
-                        await bot.send_message(chat_id, _mdv2_escape("Enviando: /start <token_de_vinculacion>"))
+                        await bot.send_message(chat_id, _mdv2_escape("Enviando: /start "))
                     return {"ok": True}
 
                 # Audio 
@@ -2611,10 +2614,10 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                             await bot.send_message(chat_id, _mdv2_escape(" No pude confirmar a tiempo. Intenta de nuevo."))
                         return {"ok": True}
 
-                    # Respuestas instantáneas 
+                    # Respuestas instant+�neas 
                     if len(words) <= 5:
                         if any(k in text_lower for k in ["hola", "hi", "buenas", "buenos días", "buenas tardes", "hello", "saludos"]):
-                            quick_response = _mdv2_escape("¡Hola! Soy tu asistente de CINAP. ¿En qué puedo ayudarte hoy?")
+                            quick_response = _mdv2_escape(" ¡Hola! Soy tu asistente de CINAP. - En qué puedo ayudarte hoy?")
                             await bot.send_message(chat_id, quick_response, disable_web_page_preview=True, allow_sending_without_reply=True)
                             return {"ok": True}
                         if any(k in text_lower for k in ["uct", "universidad católica", "católica temuco"]):
@@ -2635,7 +2638,7 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                             await bot.send_message(chat_id, cinap_response, disable_web_page_preview=True, allow_sending_without_reply=True)
                             return {"ok": True}
                         if any(k in text_lower for k in ["gracias", "thanks", "thank you", "muchas gracias"]):
-                            thanks_response = _mdv2_escape("¡De nada! Estoy aquí para ayudarte. ¿Necesitas algo más?")
+                            thanks_response = _mdv2_escape(" ¡De nada! Estoy aquí para ayudarte. ¿Necesitas algo más?")
                             await bot.send_message(chat_id, thanks_response, disable_web_page_preview=True, allow_sending_without_reply=True)
                             return {"ok": True}
 
@@ -2715,13 +2718,13 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                                 reply = reply or " No tengo una respuesta para eso."
                             except asyncio.TimeoutError:
                                 log.warning(f"Agent timeout ({timeout}s) para texto: '{text[:30]}...'")
-                                reply = " La consulta está tomando más tiempo del esperado\\. Intenta con una pregunta más específica\\."
+                                reply = " La consulta está tomando más tiempo del esperado. Intenta con una pregunta más específica."
                             except Exception as e:
                                 log.error(f"Error en agent.invoke: {e}")
                                 if "maximum context length" in str(e):
-                                    reply = " Tu consulta es muy larga o tienes mucho historial\\. Intenta con una pregunta más breve o empieza una nueva conversación\\."
+                                    reply = " Tu consulta es muy larga o tienes mucho historial. Intenta con una pregunta más breve o empieza una nueva conversación."
                                 else:
-                                    reply = " Error procesando tu consulta\\. Intenta de nuevo\\."
+                                    reply = " Error procesando tu consulta. Intenta de nuevo."
 
                         #  HOTFIX list_asesorias (reintento con user_id) 
                         try:
@@ -2745,7 +2748,7 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                                 if not uid:
                                     # No hay user vinculado: pide /start
                                     reply = ("Para listar tus asesorías primero debes vincular tu cuenta.\n\n"
-                                            "Envía: `/start <token_de_vinculacion>`")
+                                            "Envía: /start")
                                 else:
                                     #  Extraer start/end del mensaje de error
                                     start = None
@@ -2818,7 +2821,7 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                 # corta el spinner al toque
                 if cq_id:
                     try:
-                        await bot.answer_callback(cq_id, text="Procesando…")
+                        await bot.answer_callback(cq_id, text="Procesando...")
                     except Exception:
                         pass
 
@@ -3026,6 +3029,7 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                                         client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
                                         # Este getter se usa internamente por el cliente; devolvemos el token del usuario resuelto
                                         get_refresh_token_by_usuario_id=lambda uid: refresh_token if str(uid) == str(calendar_user_id) else None,
+                                        invalidate_refresh_token_by_usuario_id=oauth_repo.invalidate_refresh_token,
                                     )
 
                                     # Marcamos el RSVP en la COPIA del usuario
@@ -3041,7 +3045,7 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                             except Exception as e:
                                 log.warning(f"Google RSVP accept failed: {e}")
 
-                        #  Mensaje al usuario 
+                        #  Mensaje al usuario
                         detalle = it.get("title") or "Asesoría"
                         confirm_lines = [detalle or "Asesoría", "Estado: Confirmada"]
                         if g_ok:
@@ -3187,6 +3191,7 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                                             client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
                                             client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
                                             get_refresh_token_by_usuario_id=lambda uid: refresh_token if str(uid) == str(calendar_user_id) else None,
+                                        invalidate_refresh_token_by_usuario_id=oauth_repo.invalidate_refresh_token,
                                         )
                                         await gclient.delete_event(
                                             organizer_usuario_id=str(calendar_user_id),
@@ -3207,6 +3212,7 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                                                 client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
                                                 client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
                                                 get_refresh_token_by_usuario_id=lambda uid: refresh_token if str(uid) == str(calendar_user_id) else None,
+                                        invalidate_refresh_token_by_usuario_id=oauth_repo.invalidate_refresh_token,
                                             )
                                             await gclient.set_attendee_response(
                                                 usuario_id=str(calendar_user_id),
@@ -3219,7 +3225,7 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                             except Exception as e:
                                 log.warning(f"Google cancel operation failed: {e}")
 
-                            # Actualiza el ítem en la lista y re-renderiza
+                            # Actualiza el +�tem en la lista y re-renderiza
                         if 0 <= idx < len(items):
                             items[idx]["estado"] = "CANCELADA"
                             items[idx]["status"] = "CANCELADA"

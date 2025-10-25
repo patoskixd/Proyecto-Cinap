@@ -77,14 +77,6 @@ export default function CreateSlotsWizard() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [createdCount, setCreatedCount] = useState<number>(0);
 
-  const toMin = (hhmm: string) => { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; };
-  const slotsFor = (start: string, end: string) => Math.max(0, Math.floor((toMin(end) - toMin(start)) / (durationMin || 60)));
-  const totalSlots = useMemo(
-    () => normalized.merged.reduce((acc, s) => acc + slotsFor(s.startTime, s.endTime), 0),
-    [normalized.merged, durationMin]
-  );
-
-
   const submit = async () => {
   if (!serviceId || !recursoId) return;
 

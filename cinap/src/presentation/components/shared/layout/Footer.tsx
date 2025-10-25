@@ -1,5 +1,4 @@
 "use client";
-import Link from "next/link";   
 
 // Componente que muestra el pie de página en todas las páginas 
 export default function Footer() {

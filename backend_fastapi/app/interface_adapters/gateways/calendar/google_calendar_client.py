@@ -14,14 +14,24 @@ log = logging.getLogger(__name__)
 
 
 class GoogleCalendarClient(CalendarPort):
-    def __init__(self, *, client_id: str, client_secret: str, timeout: int = 20, get_refresh_token_by_usuario_id):
+    def __init__(
+        self,
+        *,
+        client_id: str,
+        client_secret: str,
+        timeout: int = 20,
+        get_refresh_token_by_usuario_id=None,
+        invalidate_refresh_token_by_usuario_id=None,
+    ):
         """
         get_refresh_token_by_usuario_id: async fn(usuario_id: str) -> str | None
+        invalidate_refresh_token_by_usuario_id: async fn(usuario_id: str) -> None
         """
         self.client_id = client_id
         self.client_secret = client_secret
         self.timeout = timeout
         self._get_rt = get_refresh_token_by_usuario_id
+        self._invalidate_rt = invalidate_refresh_token_by_usuario_id
 
     async def _get_refresh_token(self, usuario_id: str) -> Optional[str]:
         """Acepta factories async o sync para recuperar refresh token."""
@@ -40,18 +50,47 @@ class GoogleCalendarClient(CalendarPort):
         refresh_token = await self._get_refresh_token(usuario_id)
         if not refresh_token:
             raise RuntimeError(f"Cuenta Google sin refresh_token (usuario_id={usuario_id})")
-        access = await self._exchange_refresh(refresh_token)
+        access = await self._exchange_refresh(refresh_token, usuario_id=usuario_id)
         return {"Authorization": f"Bearer {access}"}
 
-    async def _exchange_refresh(self, refresh_token: str) -> str:
+    async def _exchange_refresh(self, refresh_token: str, *, usuario_id: str | None = None) -> str:
+        log.debug("Attempting to refresh Google token (len=%s)", len(refresh_token) if refresh_token else None)
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            r = await client.post(GOOGLE_TOKEN_URL, data={
-                "client_id": self.client_id,
-                "client_secret": self.client_secret,
-                "grant_type": "refresh_token",
-                "refresh_token": refresh_token,
-            })
-            r.raise_for_status()
+            r = await client.post(
+                GOOGLE_TOKEN_URL,
+                data={
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh_token,
+                },
+            )
+            try:
+                r.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                body_json = None
+                try:
+                    body_json = r.json()
+                except Exception:
+                    body_json = None
+                body_repr = body_json if body_json is not None else r.text[:500] if hasattr(r, "text") else "<unavailable>"
+                log.warning(
+                    "Google refresh_token exchange failed (status=%s, body=%s)",
+                    r.status_code,
+                    body_repr,
+                )
+                error_code = None
+                if isinstance(body_json, dict):
+                    error_code = body_json.get("error")
+                    if error_code == "invalid_grant" and usuario_id and self._invalidate_rt:
+                        try:
+                            maybe = self._invalidate_rt(usuario_id)
+                            if inspect.isawaitable(maybe):
+                                await maybe
+                            log.info("Marcado refresh_token inválido para usuario %s", usuario_id)
+                        except Exception as cb_exc:
+                            log.warning("No se pudo marcar refresh token inválido para %s: %s", usuario_id, cb_exc)
+                raise
             data = r.json()
             return data["access_token"]
 
@@ -63,7 +102,7 @@ class GoogleCalendarClient(CalendarPort):
         if not rt:
             raise RuntimeError("El asesor no tiene Google conectado (refresh_token ausente)")
 
-        access = await self._exchange_refresh(rt)
+        access = await self._exchange_refresh(rt, usuario_id=data.organizer_usuario_id)
 
         ev = {
             "summary": data.title,
@@ -115,7 +154,7 @@ class GoogleCalendarClient(CalendarPort):
         rt = await self._get_refresh_token(organizer_usuario_id)
         if not rt:
             raise RuntimeError("El asesor no tiene Google conectado (refresh_token ausente)")
-        access = await self._exchange_refresh(rt)
+        access = await self._exchange_refresh(rt, usuario_id=organizer_usuario_id)
         headers = {"Authorization": f"Bearer {access}"}
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             r = await client.get(f"{CAL_EVENTS_URL}/{event_id}", headers=headers)
@@ -128,7 +167,7 @@ class GoogleCalendarClient(CalendarPort):
         rt = await self._get_refresh_token(organizer_usuario_id)
         if not rt:
             raise RuntimeError("El asesor no tiene Google conectado (refresh_token ausente)")
-        access = await self._exchange_refresh(rt)
+        access = await self._exchange_refresh(rt, usuario_id=organizer_usuario_id)
         headers = {"Authorization": f"Bearer {access}"}
         body = {
             "id": channel_id,           # UUID que generas

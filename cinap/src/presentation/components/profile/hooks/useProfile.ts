@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { GetMyProfile } from "@/application/profile/usecases/GetMyProfile";
 import { ProfileRepoHttp } from "@/infrastructure/http/profile/ProfileRepoHttp";
 import type { ProfileSummary } from "@/application/profile/ports/ProfileRepo";
-import { UnlinkTelegram } from "@/application/telegram/usecases/UnlinkTelegram";
 
 export function useProfile() {
   const [data, setData] = useState<ProfileSummary | null>(null);

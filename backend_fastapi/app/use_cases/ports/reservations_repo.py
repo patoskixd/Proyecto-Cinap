@@ -24,6 +24,7 @@ class ReservationRecord:
     docente_nombre: str
     docente_email: str
     location_text: Optional[str]
+    has_calendar_event: bool = False
 
 
 @dataclass(frozen=True)
