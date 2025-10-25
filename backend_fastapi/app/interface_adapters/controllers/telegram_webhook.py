@@ -41,8 +41,8 @@ DMY_RE  = re.compile(r'^\s*(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:[ T](\d{1,2}):(\d
 TIME_RE = re.compile(r'^\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?\s*$', re.I)
 
 def _first(d: dict, *keys):
-    """Devuelve el primer valor no vacio de d[key] o de d[key]['iso'/'at'/'value'] si es dict.
-       Adems prueba dentro de 'meta' si existe.
+    """Devuelve el primer valor no vacío de d[key] o de d[key]['iso'/'at'/'value'] si es dict.
+       Además prueba dentro de 'meta' si existe.
     """
     for k in keys:
         v = d.get(k)
@@ -93,7 +93,7 @@ def _parse_any_dt(val):
         except Exception:
             pass
 
-        # dateparser como +�ltimo recurso
+        # dateparser como último recurso
         if dateparser is not None:
             try:
                 return dateparser.parse(s, languages=["es", "en"], settings={"PREFER_DATES_FROM": "future"})
@@ -137,7 +137,7 @@ STRICT_DOMAIN_ENFORCEMENT = False  #  Cambia a True si quieres volver a aplicar 
 
 DOMAIN_KEYWORDS = {
     "cinap", "uct",
-    "asesoría", "asesoria", "tutoria", "tutoria",
+    "asesoría", "asesoria", "tutoría", "tutoria",
     "calendario", "calendar", "agenda", "agendar", "cita", "reunión", "reunion",
     "profesor", "docente", "advisor", "teacher",
     "curso", "clase", "materia", "asignatura", "disponibilidad", "horario"
@@ -161,7 +161,7 @@ def _is_cancellation_text(t: str) -> bool:
     tl = (t or "").lower().strip()
     return tl in CANCEL_WORDS
 
-# Router global del m+�dulo para evitar problemas de scope con decoradores
+# Router global del módulo para evitar problemas de scope con decoradores
 router = APIRouter(prefix="/telegram", tags=["telegram"])
 # Dependencias configurables del router (se setean desde fastapi_app)
 cache = None
@@ -184,7 +184,7 @@ def _is_domain_related(s: str) -> bool:
 def _enforce_domain_reply(user_text: str, reply_text: str) -> str:
     """
     RELAJADO:
-    - Si STRICT_DOMAIN_ENFORCEMENT es False, NO se aplica ninguna restricci+�n.
+    - Si STRICT_DOMAIN_ENFORCEMENT es False, NO se aplica ninguna restriccion.
     - Si es True, se aplican las reglas originales.
     """
     if not STRICT_DOMAIN_ENFORCEMENT:
@@ -213,7 +213,7 @@ ALL_KEYWORDS = CALENDAR_KEYWORDS + ACADEMIC_KEYWORDS
 GLOSARIO_REGEX = [
     (
         re.compile(
-            r"\b(u\.?\s*c\.?\s*t\.?|u\s*ce\s*te|ucte|ucete|u\s*c\s*t|aus-?t|universidad\s+cat+�lica(?:\s+de\s+temuco)?)\b",
+            r"\b(u\.?\s*c\.?\s*t\.?|u\s*ce\s*te|ucte|ucete|u\s*c\s*t|aus-?t|universidad\s+cat+ólica(?:\s+de\s+temuco)?)\b",
             re.IGNORECASE,
         ),
         "UCT",
@@ -221,8 +221,8 @@ GLOSARIO_REGEX = [
     (
         re.compile(
             r"\b(cina?p|cina|ci\s*nap|si\s*nap|c\s*i\s*nap|"
-            r"ch[i+á]n\s*up|chi\s*nap|che\s*nap|chinap|sino pop|chin up|"
-            r"centro\s+de\s+innovaci[ó]n(?:\s+en\s+aprendizaje)?(?:\s+docencia)?(?:\s+y\s+tecnolog[í]a\s+educativa)?)\b",
+            r"ch[ií]n\s*up|chi\s*nap|che\s*nap|chinap|sino pop|chin up|"
+            r"centro\s+de\s+innovaci[óo]n(?:\s+en\s+aprendizaje)?(?:\s+docencia)?(?:\s+y\s+tecnolog[í]a\s+educativa)?)\b",
             re.IGNORECASE
         ),
         "CINAP",
@@ -294,7 +294,7 @@ def _chunk(s: str, n: int = 4000):
 def _fix_mojibake(s: str) -> str:
     if not s or not isinstance(s, str):
         return s
-    if '+á' in s or '+é' in s or '+í' in s:
+    if 'Á' in s or 'Ã' in s or 'â' in s:
         try:
             return s.encode('latin-1').decode('utf-8')
         
@@ -363,7 +363,7 @@ async def _set_pending_action(chat_id: int, payload: dict, cache=None):
 async def _clear_pending_action(chat_id: int, cache=None):
     if not cache: return
     try:
-        # Si no tienes DELETE, pisa con TTL baj+�simo
+        # Si no tienes DELETE, pisa con TTL bajisimo
         await cache.set(f"tg_pending:{chat_id}", b"", ttl_seconds=1)
     except Exception as e:
         log.warning(f"Error limpiando pending_action: {e}")
@@ -581,7 +581,7 @@ def _clean_transcript_text(transcript: str) -> str:
         transcript = re.sub(r'[\uFE0F\u200D]', '', transcript)
     transcript = transcript.replace('\\', '')
     transcript = transcript.replace("|", "")
-    transcript = transcript.replace("+-+-", "")
+    transcript = transcript.replace("ï¿½", "")
     transcript = transcript.replace("\x00", "")
     transcript = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', transcript)
     transcript = re.sub(r'\s+', ' ', transcript)
@@ -625,9 +625,9 @@ def _prenormalizar_fonetico(texto: str) -> str:
     t = re.sub(r"\bchinap\b", "CINAP", t, flags=re.IGNORECASE)
     t = re.sub(r"\bsyrup\b", "CINAP", t, flags=re.IGNORECASE)
 
-    t = re.sub(r"\buniversidad\s+cat[o+á]lica(?:\s+de\s+temuco)?\b", "UCT", t, flags=re.IGNORECASE)
+    t = re.sub(r"\buniversidad\s+cat[oó]lica(?:\s+de\s+temuco)?\b", "UCT", t, flags=re.IGNORECASE)
     t = re.sub(
-        r"\bcentro\s+de\s+innovaci[o+ó]n(?:\s+en\s+aprendizaje)?(?:\s+docencia)?(?:\s+y\s+tecnolog[i+í]a\s+educativa)?\b",
+        r"\bcentro\s+de\s+innovaci[oó]n(?:\s+en\s+aprendizaje)?(?:\s+docencia)?(?:\s+y\s+tecnolog[i+í]a\s+educativa)?\b",
         "CINAP", t, flags=re.IGNORECASE)
     return t
 
@@ -641,7 +641,7 @@ def _normalizar_siglas(texto: str) -> str:
 
 #  Slot-filling simple (fecha/hora)
 HOUR_RE = re.compile(r"\b(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b", re.I)
-WHO_RE  = re.compile(r"\bcon\s+([A-Z+á+é+í+ó+ú][\w+á+é+í+ó+ú]+(?:\s+[A-Z+á+é+í+ó+ú][\w+á+é+í+ó+ú]+)*)", re.U)
+WHO_RE  = re.compile(r"\bcon\s+([A-ZÁÉÍÓÚÑ][\wáéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][\wáéíóúñ]+)*)", re.U)
 
 def parse_when(text: str, tz="America/Santiago"):
     if dateparser is None:
@@ -902,7 +902,7 @@ def classify_user_intent(asr_result: ASRResult) -> IntentClassification:
         (r"disponibilidad.*(\w+)", {"action": "availability"}),
         (r"horario.*libre", {"action": "free_slots"}),
     ]
-    if re.search(r"(lista(me)?|muéstame|mostrar|ver).*(mis )?(eventos|asesorías|citas)", text):
+    if re.search(r"(lista(me)?|mu[eé]stame|mostrar|ver).*(mis )?(eventos|asesor[ií]as|citas)", text):
         return IntentClassification(
             "calendar_simple",
             0.9 + confidence_boost,
@@ -917,7 +917,7 @@ def classify_user_intent(asr_result: ASRResult) -> IntentClassification:
     professor_patterns = [
         (r"profesor.*de.*(\w+)", {"subject": "extracted"}),
         (r"asesor.*(\w+)", {"type": "advisor"}),
-        (r"docente.*matemática", {"subject": "matematicas"}),
+        (r"docente.*matem[aá]tica", {"subject": "matematicas"}),
         (r"teacher.*english", {"subject": "ingles"}),
     ]
     for pattern, params in professor_patterns:
@@ -957,7 +957,7 @@ async def _maybe_store_pending_from_mcp(result, chat_id: int, cache=None):
             return
         payload = None
 
-        # Formatos t+�picos (ajusta a tu payload real)
+        # Formatos tópicos (ajusta a tu payload real)
         if result.get("pending_action"):
             payload = result["pending_action"]
         elif result.get("status") in ("preview", "pending") and (result.get("tool") or result.get("args")):
@@ -1083,13 +1083,13 @@ async def route_to_mcp_direct(
         args: dict = {}
 
         if intent.intent_type == "calendar_simple":
-            # Determinar acción (usa la que venga, y si no, infiérrala del texto)
+            # Determinar acción (usa la que venga, y si no, infiérala del texto)
             action = (intent.extracted_params or {}).get("action")
             spoken = (asr_result.text or "").lower()
 
             if not action:
                 # lista / ver / mostrar
-                if re.search(r"(lista(me)?|muéstame|muestrame|mostrar|ver).*(mis )?(eventos|asesorías|citas)", spoken):
+                if re.search(r"(lista(me)?|mu[eé]stame|muestrame|mostrar|ver).*(mis )?(eventos|asesor[ií]as|citas)", spoken):
                     action = "view"
                 # disponibilidad
                 elif "disponibilidad" in spoken:
@@ -1423,8 +1423,8 @@ async def intelligent_routing_system(asr_result: ASRResult, chat_id: int, agent_
     #  Saludo directo
     if intent.intent_type == "greeting":
         greetings = [
-            "-Hola! Soy tu asistente de CINAP. -En qué puedo ayudarte hoy?",
-            "-Hola! -Necesitas ayuda con tu agenda académica?",
+            "-Hola! Soy tu asistente de CINAP. ¿En qué puedo ayudarte hoy?",
+            "-Hola! ¿Necesitas ayuda con tu agenda académica?",
             "-Buenas! Estoy aquí para ayudarte con citas y profesores."
         ]
         import random
@@ -1484,7 +1484,7 @@ async def intelligent_routing_system(asr_result: ASRResult, chat_id: int, agent_
         response = await route_to_llm_plus_mcp(asr_result, chat_id, agent_getter, cache)
 
     if not response:
-        response = "Lo siento, tuve un problema técnico. -Podrías repetir tu consulta?"
+        response = "Lo siento, tuve un problema técnico. ¿Podrías repetir tu consulta?"
         log.info("Final response fallback used (no response from MCP/LLM)")
 
     # En modo relajado no se fuerza dominio 
@@ -1973,7 +1973,7 @@ def _format_item_when(item: dict) -> str | None:
 
     #  Render final
     if ds and de:
-        return f"{ds.strftime('%d/%m/%Y')} - {ds.strftime('%H:%M')} - {de.strftime('%H:%M')}"
+        return f"{ds.strftime('%d/%m/%Y')} • {ds.strftime('%H:%M')}–{de.strftime('%H:%M')}"
     if ds:
         return f"{ds.strftime('%d/%m/%Y %H:%M')}"
 
@@ -1982,7 +1982,7 @@ def _format_item_when(item: dict) -> str | None:
 
 
 def _title_of(it: dict) -> str:
-    # busca en ra+�z y en meta
+    # busca en raíz y en meta
     t = _first(it, "title", "titulo", "name", "nombre")
     if t: 
         return str(t)
@@ -1994,7 +1994,7 @@ def _title_of(it: dict) -> str:
     tema = _first(it, "subject", "tema", "course", "curso", "categoria", "category")
 
     if servicio and tema:
-        return f"{servicio} en {tema}"
+        return f"{servicio} — {tema}"
     if servicio:
         return str(servicio)
     if tema:
@@ -2026,7 +2026,7 @@ def _subtitle_of(it: dict) -> str:
     if not parts and correo:
         parts.append(str(correo))
 
-    return " en ".join(parts)
+    return " — ".join(parts)
 
 
 
@@ -2098,9 +2098,9 @@ def _build_list_keyboard(items: list[dict], key: str, page: int, page_size: int,
 
     nav = []
     if page > 0:
-        nav.append({"text": "◀️ Anterior", "callback_data": f"LPG|{key}|{page-1}"})
+        nav.append({"text": "◀ Anterior", "callback_data": f"LPG|{key}|{page-1}"})
     if (start + page_size) < len(items):
-        nav.append({"text": "Siguiente ▶️", "callback_data": f"LPG|{key}|{page+1}"})
+        nav.append({"text": "Siguiente ▶", "callback_data": f"LPG|{key}|{page+1}"})
     if nav:
         rows.append(nav)
     rows.append([{"text": "Cerrar", "callback_data": f"LCLOSE|{key}"}])
@@ -2370,7 +2370,7 @@ async def _process_audio_background(chat_id: int, file_id: str, file_unique_id: 
             if calendar_intent.get("is_calendar_event", False):
                 log.info(f"CALENDAR EVENT DETECTED: {calendar_intent}")
                 calendar_response = (
-                    f" - Detecté que quieres agendar una asesoría!\n\n"
+                    f" ¡Detecté que quieres agendar una asesoría!\n\n"
                 )
                 if calendar_intent.get("time_mentions"):
                     calendar_response += f" Horario mencionado: {', '.join(calendar_intent['time_mentions'])}\n"
@@ -2380,7 +2380,7 @@ async def _process_audio_background(chat_id: int, file_id: str, file_unique_id: 
                     f"\n Para agendar tu asesoría:\n"
                     f"1. Usa el sistema web en tu perfil\n"
                     f"2. O dime más detalles (materia, horario preferido, etc.)\n\n"
-                    f"- Te ayudo a buscar disponibilidad de profesores?"
+                    f" ¿Te ayudo a buscar disponibilidad de profesores?"
                 )
                 safe_transcript = _mdv2_escape(transcript)
                 safe_calendar_response = _mdv2_escape(calendar_response)
@@ -2617,7 +2617,7 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                     # Respuestas instant+�neas 
                     if len(words) <= 5:
                         if any(k in text_lower for k in ["hola", "hi", "buenas", "buenos días", "buenas tardes", "hello", "saludos"]):
-                            quick_response = _mdv2_escape("- Hola! Soy tu asistente de CINAP. - En qué puedo ayudarte hoy?")
+                            quick_response = _mdv2_escape(" ¡Hola! Soy tu asistente de CINAP. - En qué puedo ayudarte hoy?")
                             await bot.send_message(chat_id, quick_response, disable_web_page_preview=True, allow_sending_without_reply=True)
                             return {"ok": True}
                         if any(k in text_lower for k in ["uct", "universidad católica", "católica temuco"]):
@@ -2638,12 +2638,12 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                             await bot.send_message(chat_id, cinap_response, disable_web_page_preview=True, allow_sending_without_reply=True)
                             return {"ok": True}
                         if any(k in text_lower for k in ["gracias", "thanks", "thank you", "muchas gracias"]):
-                            thanks_response = _mdv2_escape("-�De nada! Estoy aqu+� para ayudarte. -+Necesitas algo m+�s?")
+                            thanks_response = _mdv2_escape(" ¡De nada! Estoy aquí para ayudarte. ¿Necesitas algo más?")
                             await bot.send_message(chat_id, thanks_response, disable_web_page_preview=True, allow_sending_without_reply=True)
                             return {"ok": True}
 
                     if not _is_domain_related(text) and not _is_ack(text):
-                        log.info("Mensaje de texto fuera de dominio (permitido por configuraci+�n relajada)")
+                        log.info("Mensaje de texto fuera de dominio (permitido por configuración relajada)")
 
                     # Agente
                     if not agent_getter:
@@ -2735,7 +2735,7 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                                 and "Field required" in reply_str
                                 and "user_id" in reply_str
                             ):
-                                #  Resolver user_id si a+�n no lo tenemos
+                                #  Resolver user_id si aún no lo tenemos
                                 uid = resolved_user_id
                                 if not uid and cache:
                                     try:
@@ -2748,7 +2748,7 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                                 if not uid:
                                     # No hay user vinculado: pide /start
                                     reply = ("Para listar tus asesorías primero debes vincular tu cuenta.\n\n"
-                                            "Envía: `/start `")
+                                            "Envía: /start")
                                 else:
                                     #  Extraer start/end del mensaje de error
                                     start = None
@@ -3069,7 +3069,7 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
 
                         return {"ok": True}
 
-                        # Cancelar asesor+�a
+                        # Cancelar asesoría
                     elif data.startswith("LCANCEL|"):
                         _, key, idx_str = data.split("|", 2)
                         state = await _load_list_state(key) or {"items": [], "kind": ""}
@@ -3232,11 +3232,11 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                             state["items"] = items
                             await _save_list_state(key, state)
 
-                        page = 0  # si no llevas tracking de p+�gina
+                        page = 0  # si no llevas tracking de página
                         human_readable = _render_page_text(items, page, PAGE_SIZE_DEFAULT, kind=kind, title=state.get("kind"))
                         user_role = await _get_role_cached(chat_id=chat_id)
                         kb   = _build_list_keyboard(items, key, page, PAGE_SIZE_DEFAULT, kind, user_role=user_role)
-                            # feedback r+�pido al tap
+                            # feedback rápido al tap
                         if cq_id:
                             try:
                                 await bot.answer_callback(cq_id, text=" Cancelada")
@@ -3254,7 +3254,7 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                             if acting_as_organizer:
                                 cancel_lines.append('Evento eliminado de Google Calendar.')
                             else:
-                                cancel_lines.append('Actualiza tu asistencia en Google Calendar.')
+                                cancel_lines.append('Actualicé tu asistencia en Google Calendar.')
                         elif event_id:
                             cancel_lines.append('No pude actualizar Google Calendar. Vincula tu cuenta o vuelve a intentarlo.')
                         msg = _mdv2_escape("\n".join(cancel_lines))
@@ -3323,10 +3323,10 @@ def _detect_calendar_event_intent(text: str) -> dict:
         return {"is_calendar_event": False}
     text_lower = text.lower().strip()
     calendar_patterns = [
-        r'\b(agendar|programar|crear)\s+(una?\s+)?(cita|asesoría|reunión|meeting|appointment)\b',
-        r'\b(quiero|necesito|puedo)\s+(agendar|programar|una?\s+cita|una?\s+asesoría)\b',
-        r'\b(asesoría|cita|reunión|meeting)\s+(con|para|de)\b',
-        r'\b(agenda|calendar|calendario)\b.*\b(evento|cita|asesoría)\b',
+        r'\b(agendar|programar|crear)\s+(una?\s+)?(cita|asesor[íi]a|reuni[óo]n|meeting|appointment)\b',
+        r'\b(quiero|necesito|puedo)\s+(agendar|programar|una?\s+cita|una?\s+asesor[íi]a)\b',
+        r'\b(asesor[íi]a|cita|reuni[óo]n|meeting)\s+(con|para|de)\b',
+        r'\b(agenda|calendar|calendario)\b.*\b(evento|cita|asesor[íi]a)\b',
         r'\b(disponibilidad|horario)\s+(para|de)\s+(profesor|teacher|advisor)\b'
     ]
     detected_intent = None
@@ -3336,7 +3336,7 @@ def _detect_calendar_event_intent(text: str) -> dict:
             break
     if detected_intent:
         time_mentions = re.findall(r'\b(\d{1,2}:\d{2}|\d{1,2}\s*(?:am|pm)|mañana|tarde|hoy|mañana)\b', text_lower)
-        person_mentions = re.findall(r'\bcon\s+([A-ZÑÁÉÍÓÚ][\wÑÁÉÍÓÚ]+(?:\s+[A-ZÑÁÉÍÓÚ][\wÑÁÉÍÓÚ]+)*)', text, re.U)
+        person_mentions = re.findall(r'\bcon\s+([A-ZÁÉÍÓÚÑ][\wáéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][\wáéíóúñ]+)*)', text, re.U)
         return {
             "is_calendar_event": True,
             "intent_type": detected_intent,

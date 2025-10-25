@@ -90,7 +90,7 @@ async def lifespan(app):
     # Webhooks de Google Calendar para asesores y docentes
     try:
         if not WEBHOOK_PUBLIC_URL:
-            logger.warning("WEBHOOK_PUBLIC_URL no definido; se omite auto-configuracin de Google Calendar")
+            logger.warning("WEBHOOK_PUBLIC_URL no definido; se omite auto-configuración de Google Calendar")
         else:
             async with AsyncSessionLocal() as session:
                 calendar_repo = SqlAlchemyCalendarEventsRepo(session, cache=container.cache)
@@ -192,7 +192,7 @@ async def purge_only_unreferenced_expired_slots():
         return
     try:
         async with AsyncSessionLocal() as session:
-            # Borra SOLO los EXPIRADO que no est+�n referenciados por 'asesoria'
+            # Borra SOLO los EXPIRADO que no estén referenciados por 'asesoria'
             sql = sa.text("""
                 DELETE FROM cupo c
                 WHERE c.estado = CAST(:estado AS estado_cupo)
@@ -248,7 +248,7 @@ async def health():
 
 @app.get("/observability/telegram/analyze")
 async def analyze_telegram_performance(hours: int = 24):
-    """Analiza el rendimiento de Telegram de las +�ltimas N horas"""
+    """Analiza el rendimiento de Telegram de las últimas N horas"""
     try:
         from app.observability.telegram_analyzer import log_telegram_analysis
         analysis = log_telegram_analysis(hours)
@@ -269,7 +269,7 @@ async def telegram_performance_summary():
 
 @app.get("/health/db")
 async def health_db(session = Depends(get_session)):
-    """Health check que verifica la conexi+�n a la base de datos"""
+    """Health check que verifica la conexión a la base de datos"""
     try:
         from sqlalchemy import text
         await session.execute(text("SELECT 1"))
