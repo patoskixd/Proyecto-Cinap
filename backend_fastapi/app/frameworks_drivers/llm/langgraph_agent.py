@@ -15,7 +15,7 @@ from langchain.tools import StructuredTool
 from pydantic import BaseModel, create_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
-from langchain_core.messages.utils import trim_messages, count_tokens_approximately
+from langchain_core.messages.utils import trim_messages, count_tokens_approximately, get_buffer_string
 from langchain_core.messages import RemoveMessage
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langchain_core.callbacks import BaseCallbackHandler
@@ -44,6 +44,9 @@ CURRENT_THREAD_ID: ContextVar[str | None] = ContextVar("CURRENT_THREAD_ID", defa
 
 CONFIRM_TOOLS = {"schedule_asesoria", "cancel_asesoria", "confirm_asesoria"}
 
+GLOBAL_SYSTEM_TEXT = ""
+GLOBAL_TOKEN_COUNTER = None
+
 _CINAP_LIST_RE = re.compile(r"<!--CINAP_LIST:.*?-->", re.DOTALL)
 _CINAP_CONFIRM_RE = re.compile(r"<!--CINAP_CONFIRM:.*?-->", re.DOTALL)
 _MAX_MSG_CHARS = 8000
@@ -51,35 +54,80 @@ _MAX_MSG_CHARS = 8000
 def _sanitize_for_state(text: str) -> str:
     if not isinstance(text, str) or not text:
         return text or ""
-    s = _CINAP_LIST_RE.sub(" [UI list omitted] ", text)
+    s = _THINK_RE.sub("", text)
+    s = _CINAP_LIST_RE.sub(" [UI list omitted] ", s)
     s = _CINAP_CONFIRM_RE.sub(" [confirm marker omitted] ", s)
     if len(s) > _MAX_MSG_CHARS:
         s = s[:_MAX_MSG_CHARS] + " …[truncated]"
     return s
 
+def _compact_content(content: Any) -> str:
+    if isinstance(content, str):
+        s = _THINK_RE.sub("", content)
+        return _sanitize_for_state(s)
+
+    if isinstance(content, list):
+        parts = []
+        for blk in content:
+            if isinstance(blk, dict):
+                t = (blk.get("type") or "").lower()
+                if t in ("text", "input_text"):
+                    parts.append(str(blk.get("text") or blk.get("content") or ""))
+                elif t in ("tool_use", "function_call"):
+                    name = blk.get("name") or blk.get("tool_name") or ""
+                    parts.append(f"[tool:{name}]")
+                else:
+                    parts.append("[non-text]")
+            else:
+                parts.append(str(blk))
+        return _sanitize_for_state("\n".join(parts)).strip()
+
+    if isinstance(content, dict):
+        if "tool_calls" in content or "function_call" in content:
+            try:
+                name = ""
+                if "function_call" in content:
+                    name = (content["function_call"] or {}).get("name") or ""
+                elif "tool_calls" in content:
+                    tc = content["tool_calls"] or []
+                    if tc and isinstance(tc, list):
+                        name = (tc[0].get("function") or {}).get("name") or tc[0].get("type") or ""
+                return f"[tool:{name}]"
+            except Exception:
+                return "[tool]"
+        return "[json]"
+
+    return _sanitize_for_state(str(content or ""))
+
 def _pre_model_hook(state: dict) -> dict:
+    token_counter = GLOBAL_TOKEN_COUNTER or count_tokens_approximately
+
     trimmed = trim_messages(
         state["messages"],
         strategy="last",
-        token_counter=count_tokens_approximately,
-        max_tokens=9000,
+        token_counter=token_counter,
+        max_tokens=8000,
         start_on="human",
         end_on=("human", "tool"),
     )
 
-    system_msgs = [m for m in state["messages"] if isinstance(m, SystemMessage)]
-
     cleaned = []
     for m in trimmed:
         try:
-            c = getattr(m, "content", "")
-            if isinstance(c, str):
-                m.content = _sanitize_for_state(c)
+            m.content = _compact_content(getattr(m, "content", ""))
+            akw = getattr(m, "additional_kwargs", None)
+            if isinstance(akw, dict):
+                for k in ("tool_calls", "function_call", "refusal", "audio", "parsed"):
+                    if k in akw:
+                        akw.pop(k, None)
         except Exception:
             pass
         cleaned.append(m)
 
-    return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES), *system_msgs, *cleaned]}
+    non_system = [m for m in cleaned if not isinstance(m, SystemMessage)]
+    single_system = SystemMessage(content=_compact_content(GLOBAL_SYSTEM_TEXT))
+
+    return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES), single_system, *non_system]}
 
 def _eval_log(event: dict):
     try:
@@ -403,8 +451,6 @@ class LangGraphRunner:
         def _run():
             with stage("agent.llm.prompt_build"):
                 msgs = []
-                if self._system_text:
-                    msgs.append(SystemMessage(content=self._system_text))
                 msgs.append(HumanMessage(content=message))
 
             with stage("agent.langgraph.invoke"):
@@ -593,6 +639,22 @@ class LangGraphAgent:
         if top_p is not None: self._top_p = top_p
 
     async def startup(self):
+        def _messages_token_counter(messages):
+            try:
+                s = get_buffer_string(messages)
+            except Exception:
+                parts = []
+                for m in (messages or []):
+                    c = getattr(m, "content", "")
+                    if not isinstance(c, str):
+                        try:
+                            c = json.dumps(c, ensure_ascii=False)
+                        except Exception:
+                            c = str(c)
+                    parts.append(c)
+                s = "\n".join(parts)
+            return string_counter(s or "")
+        
         if USE_OLLAMA:
             if ChatOllama is None:
                 raise RuntimeError("langchain_ollama no está instalado. Instala: pip install langchain-ollama")
@@ -681,7 +743,11 @@ class LangGraphAgent:
         offset_sign = "+" if offset_h >= 0 else "-"
         offset_txt = f"UTC{offset_sign}{abs(offset_h):02d}:00"
         system_msg = SYSTEM_STATIC_EN + "\n" + FEW_SHOTS_ES + f"\nContext: TZ=America/Santiago ({offset_txt}), today={now_cl:%d-%m-%Y}\n /no_think"
-        self._runner = LangGraphRunner(app, system_text=system_msg)
+        string_counter = _make_token_counter(self._model_name)
+        global GLOBAL_SYSTEM_TEXT, GLOBAL_TOKEN_COUNTER
+        GLOBAL_SYSTEM_TEXT = system_msg
+        GLOBAL_TOKEN_COUNTER = _messages_token_counter
+        self._runner = LangGraphRunner(app, system_text=None)
 
     async def invoke(self, message: str, *, thread_id: str) -> str:
         if not self._runner:

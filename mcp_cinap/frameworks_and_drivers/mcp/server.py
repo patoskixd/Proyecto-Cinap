@@ -13,7 +13,7 @@ from application.ports import Pagination, TimeRange
 from application.use_cases.list_user_asesorias import ListUserAsesorias, ListUserAsesoriasIn
 from application.use_cases.upsert_calendar_event import UpsertCalendarEvent, UpsertCalendarEventIn
 from frameworks_and_drivers.db.sa_calendar_events_repo import SqlAlchemyCalendarEventsRepo
-from frameworks_and_drivers.db.sa_repos import ServicioORM
+from frameworks_and_drivers.db.sa_repos import LocationRepo, ServicioORM
 from interface_adapters.services.text_norm import norm_key
 from sqlalchemy import delete, select, text
 
@@ -141,6 +141,27 @@ def _fmt_item(it: Dict[str, Any]) -> Dict[str, Any]:
     dist = it.get("dist")
     sub = f"sim={1.0 - float(dist):.3f}" if isinstance(dist, (int, float)) else ""
     return {"title": title, "subtitle": sub, "start": None, "end": None}
+
+def _build_event_description(*, servicio: str, docente_email: str | None,
+                             asesor_nombre: str | None, ubicacion: str | None,
+                             origen: str | None, notas: str | None) -> str:
+    docente_linea = f"Docente: {docente_email}" if docente_email else "Docente: (sin email)"
+    asesor_linea  = f"Asesor: {asesor_nombre or 'Asesor'}"
+    ubic_linea    = f"Ubicación: {ubicacion or 'Por confirmar'}"
+    origen_linea  = f"Origen: {origen or 'chat'}"
+    notas_linea   = f"Notas: {notas.strip()}" if notas else "Notas: Sin notas adicionales"
+    return (
+        "ASESORIA CINAP\n\n"
+        f"Servicio: {servicio}\n"
+        f"{docente_linea}\n"
+        f"{asesor_linea}\n"
+        f"{ubic_linea}\n"
+        f"Origen: {origen or 'chat'}\n"
+        f"{notas_linea}\n\n"
+        "IMPORTANTE: Por favor ACEPTA o RECHAZA esta invitación.\n"
+        "Si aceptas: el asesor confirmará la cita.\n"
+        "Si rechazas: se cancelará el cupo."
+    )
 
 TZ_CL = ZoneInfo("America/Santiago")
 
@@ -657,16 +678,30 @@ def build_mcp() -> FastMCP:
                 f"el {_fmt_local(chosen.inicio)}–{chosen.fin.astimezone(TZ_CL).strftime('%H:%M')}."
             )
 
+            loc_repo = LocationRepo(uow.session)
+            ubicacion_txt = await loc_repo.get_location_for_cupo(chosen.id)
+
+            asesor_nombre = getattr(adv_win, 'nombre', None) or "Asesor"
+            descripcion_evento = _build_event_description(
+                servicio=svc_win.nombre,
+                docente_email=docente_email,
+                asesor_nombre=asesor_nombre,
+                ubicacion=ubicacion_txt,
+                origen=input.origen,
+                notas=input.notas,
+            )
+
             next_hint = None
             if asesor_refresh_token:
                 next_hint = {
                     "next_tool": "event_create",
                     "suggested_args": {
-                        "title": f"Asesoría — {svc_win.nombre} con {getattr(adv_win,'nombre','Asesor')}",
+                        "title": f"Asesoría — {svc_win.nombre} con {asesor_nombre}",
                         "start": chosen.inicio.astimezone(TZ_CL).isoformat(),
                         "end": chosen.fin.astimezone(TZ_CL).isoformat(),
                         "attendees": attendees,
-                        "description": input.notas or "",
+                        "description": descripcion_evento,
+                        "location": ubicacion_txt,
                         "calendar_id": "primary",
                         "refresh_token": asesor_refresh_token,
                         "asesoria_id": str(nueva.id),

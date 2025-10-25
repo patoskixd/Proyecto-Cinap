@@ -31,12 +31,25 @@ class CupoORM(Base):
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
     asesor_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
     servicio_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    recurso_id: Mapped[Optional[UUID]] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("recurso.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     inicio: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    fin: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    fin: Mapped[datetime]    = mapped_column(DateTime(timezone=True), nullable=False)
 
     estado: Mapped[EstadoCupo] = mapped_column(
         ENUM(EstadoCupo, name="estado_cupo", create_type=False, native_enum=True),
         nullable=False
+    )
+
+    recurso: Mapped[Optional["RecursoORM"]] = relationship(
+        "RecursoORM",
+        back_populates="cupos",
+        lazy="selectin",
     )
 
 class AsesoriaORM(Base):
@@ -95,3 +108,54 @@ class CalendarEventORM(Base):
 
     asesoria: Mapped["AsesoriaORM"] = relationship("AsesoriaORM", backref="calendar_events", lazy="selectin")
     user_identity: Mapped[Optional["UserIdentityORM"]] = relationship("UserIdentityORM", lazy="selectin")
+
+class CampusORM(Base):
+    __tablename__ = "campus"
+
+    id: Mapped[UUID]       = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
+    nombre: Mapped[str]    = mapped_column(String, nullable=False)
+    codigo: Mapped[Optional[str]]   = mapped_column(String, nullable=True)
+    direccion: Mapped[Optional[str]]= mapped_column(String, nullable=True)
+    tz: Mapped[Optional[str]]       = mapped_column(String, nullable=True)
+    activo: Mapped[bool]   = mapped_column(sa.Boolean, default=True, nullable=False)
+
+    edificios: Mapped[list["EdificioORM"]] = relationship(
+        "EdificioORM", back_populates="campus", lazy="selectin"
+    )
+
+class EdificioORM(Base):
+    __tablename__ = "edificio"
+
+    id: Mapped[UUID]        = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
+    campus_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("campus.id", ondelete="RESTRICT"),
+        index=True,
+        nullable=False,
+    )
+    nombre: Mapped[str]     = mapped_column(String, nullable=False)
+    codigo: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    activo: Mapped[bool]    = mapped_column(sa.Boolean, default=True, nullable=False)
+
+    campus: Mapped["CampusORM"] = relationship("CampusORM", back_populates="edificios", lazy="selectin")
+    recursos: Mapped[list["RecursoORM"]] = relationship("RecursoORM", back_populates="edificio", lazy="selectin")
+
+class RecursoORM(Base):
+    __tablename__ = "recurso"
+
+    id: Mapped[UUID]         = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
+    tipo: Mapped[Optional[str]]  = mapped_column(String, nullable=True)
+    nombre: Mapped[Optional[str]]= mapped_column(String, nullable=True)
+    activo: Mapped[bool]     = mapped_column(sa.Boolean, default=True, nullable=False)
+
+    edificio_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("edificio.id", ondelete="RESTRICT"),
+        index=True,
+        nullable=False,
+    )
+    sala_numero: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    capacidad: Mapped[Optional[int]]   = mapped_column(sa.Integer, nullable=True)
+
+    edificio: Mapped["EdificioORM"] = relationship("EdificioORM", back_populates="recursos", lazy="selectin")
+    cupos: Mapped[list["CupoORM"]]  = relationship("CupoORM", back_populates="recurso", lazy="selectin")

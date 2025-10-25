@@ -273,7 +273,7 @@ async def health_db(session = Depends(get_session)):
     except Exception as e:
         return {"db": "error", "status": "unhealthy", "error": str(e)}
 
-graph_router = APIRouter(prefix="/assistant", tags=["assistant"])
+graph_router = APIRouter(prefix="/api/assistant", tags=["assistant"])
 
 class GraphChatRequest(BaseModel):
     message: str
