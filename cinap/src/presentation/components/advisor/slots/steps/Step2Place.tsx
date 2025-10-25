@@ -55,12 +55,12 @@ export default function Step2Place({
   useEffect(() => {
     setBuildingId("");
     setRecursoId(undefined);
-  }, [campusId]); 
+  }, [campusId, setRecursoId]); 
 
 
   useEffect(() => {
     setRecursoId(undefined);
-  }, [buildingId]); 
+  }, [buildingId, setRecursoId]); 
 
   return (
     <div className="space-y-8 p-6 md:p-8">

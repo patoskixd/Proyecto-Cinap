@@ -2,18 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { FoundSlot } from "@/domain/teacher/scheduling";
-import type { Advisor, Category, CategoryId, Service, WizardState } from "../types";
+import type { Advisor, CategoryId, Service, WizardState } from "../types";
 import { SchedulingHttpRepo } from "@/infrastructure/teachers/asesorias/agendar/SchedulingHttpRepo";
 import { isPastDate, startOfDay } from "../utils/date";
 import { notify } from "@/presentation/components/shared/Toast/ToastProvider";
 
 export function useScheduleWizard({
-  categories,
   servicesByCategory,
   advisorsByService,
   defaultTimezone,
 }: {
-  categories: Category[];
   servicesByCategory: Record<CategoryId, Service[]>;
   advisorsByService: Record<string, Advisor[]>;
   defaultTimezone: string;
@@ -50,13 +48,13 @@ export function useScheduleWizard({
       setSelectedDate(sameMonthAsToday ? today : null);
     }
     setState((s) => ({ ...s, slot: null }));
-  }, [currentMonth]);
+  }, [currentMonth, selectedDate, setState, setSelectedDate]);
 
   useEffect(() => {
     setState((s) => ({ ...s, slot: null }));
-  }, [selectedDate]);
+  }, [selectedDate, setState]);
 
-  const api = new SchedulingHttpRepo();
+  const api = useMemo(() => new SchedulingHttpRepo(), []);
   const [openSlots, setOpenSlots] = useState<FoundSlot[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [slotsError, setSlotsError] = useState<string | null>(null);
@@ -96,7 +94,7 @@ export function useScheduleWizard({
       }
     }
     fetchSlots();
-  }, [state.serviceId, state.advisorId, selectedDate]);
+  }, [state.serviceId, state.advisorId, selectedDate, api, setState]);
 
   const selectCategory = (id: CategoryId) =>
     setState((s) => ({ ...s, categoryId: id, serviceId: undefined, advisorId: undefined, slot: null }));

@@ -47,7 +47,14 @@ export default function ActiveCategoryCard({
         <div className="mb-5 space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-semibold text-blue-800 uppercase tracking-wider">Mis Servicios</h4>
-            <span className="rounded-full bg-blue-200 px-2 py-0.5 text-xs font-bold text-blue-800">{uniq.length}</span>
+            <div className="flex items-center gap-2">
+              {selectedServices > 0 && (
+                <span className="rounded-full bg-yellow-200 px-2 py-0.5 text-[10px] font-bold text-yellow-800">
+                  {selectedServices} activos
+                </span>
+              )}
+              <span className="rounded-full bg-blue-200 px-2 py-0.5 text-xs font-bold text-blue-800">{uniq.length}</span>
+            </div>
           </div>
           
           {uniq.length > 0 && (

@@ -25,6 +25,7 @@ type BackendReservation = {
     email: string;
   };
   location?: string | null;
+  canRetryConfirm?: boolean;
 };
 
 type BackendMeta = {
@@ -176,6 +177,8 @@ export class ReservationsBackendRepo {
         ? "cancelada"
         : "pendiente";
 
+    const canRetryConfirm = Boolean(item.canRetryConfirm);
+
     return {
       id: item.id,
       dateISO: item.inicio,
@@ -196,6 +199,7 @@ export class ReservationsBackendRepo {
       },
       status,
       location: item.location ?? undefined,
+      canRetryConfirm,
       docente: item.docente,
     };
   }

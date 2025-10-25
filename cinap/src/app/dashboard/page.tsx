@@ -2,7 +2,6 @@
 
 import DashboardHeader from "@/presentation/components/shared/DashboardHeader";
 import StatusCards from "@presentation/components/dashboard/StatusCards";
-import EmptyState from "@/presentation/components/shared/EmptyState";
 import ChatWidget from "@/presentation/components/shared/widgets/ChatWidget";
 import { RoleSections } from "@presentation/components/dashboard/RoleSections";
 import { useDashboardData } from "@/presentation/components/dashboard/hooks/useDashboardData";
@@ -35,6 +34,7 @@ export default function DashboardPage() {
 
   if (!mounted) return null;
   if (!isAuthed) return null;
+  if (loading) return <div className="flex justify-center items-center min-h-screen">Cargando dashboard...</div>;
   if (!hasValidRole) return <div className="flex justify-center items-center min-h-screen">Cargando...</div>;
   if (error) return <div className="flex justify-center items-center min-h-screen text-red-600">{error}</div>;
 

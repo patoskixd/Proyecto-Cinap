@@ -8,7 +8,6 @@ import type {
   AdvisorBasicInfo, 
   AdvisorServiceRef, 
   CategoryId, 
-  Advisor,
   RegisterAdvisorRequest 
 } from "@/domain/admin/advisors";
 import { RegisterAdvisor } from "@/application/admin/advisors/usecases/RegisterAdvisor";

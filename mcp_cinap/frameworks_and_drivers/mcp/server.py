@@ -26,6 +26,7 @@ from frameworks_and_drivers.db.config import SAUnitOfWork
 from frameworks_and_drivers.db.orm_models import AsesoriaORM, CalendarEventORM, CupoORM, EstadoAsesoria, EstadoCupo
 from frameworks_and_drivers.db.sa_repos import UsuarioORM as UsuarioModel, AsesorPerfilORM as AsesorPerfilModel, DocentePerfilORM as DocentePerfilModel
 from frameworks_and_drivers.db.orm_models import UserIdentityORM as UserIdentityModel
+from interface_adapters.services.token_cipher import get_token_cipher
 from interface_adapters.gateways.calendar_gateway import NullCalendarGateway
 
 SEMANTIC_URL = os.getenv("SEMANTIC_URL", "http://localhost:8000/search/semantic")
@@ -134,7 +135,8 @@ async def _google_refresh_token(session, usuario_id: UUID) -> str | None:
         .where(UserIdentityModel.provider == "google")
         .limit(1)
     )
-    return (await session.execute(q)).scalar_one_or_none()
+    stored = (await session.execute(q)).scalar_one_or_none()
+    return get_token_cipher().decrypt(stored)
 
 def _fmt_item(it: Dict[str, Any]) -> Dict[str, Any]:
     title = it.get("title") or it.get("kind") or "Resultado"

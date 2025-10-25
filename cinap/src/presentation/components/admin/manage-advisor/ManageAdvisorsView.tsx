@@ -236,7 +236,7 @@ export default function ManageAdvisorsView() {
       }
       return true;
     });
-  }, [advisors, categoryId, serviceId]);
+  }, [advisors, categoryId, serviceId, debouncedQuery]);
 
   const filteredTotal = filteredAdvisors.length;
   const displayedTotal = useMemo(() => {
@@ -264,6 +264,10 @@ export default function ManageAdvisorsView() {
         total={displayedTotal}
         onReset={() => {
           setPage(1);
+          setSearchValue("");
+          setDebouncedQuery("");
+          setCategoryId("");
+          setServiceId("");
           setReloadToken((r) => r + 1);
         }}
       />

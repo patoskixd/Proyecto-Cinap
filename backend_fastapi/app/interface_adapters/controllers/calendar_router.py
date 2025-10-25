@@ -30,7 +30,9 @@ def make_calendar_router(*, get_session_dep, jwt_port: JwtPort, cache, webhook_p
             client_id=GOOGLE_CLIENT_ID,
             client_secret=GOOGLE_CLIENT_SECRET,
             get_refresh_token_by_usuario_id=lambda uid: 
-                SqlAlchemyUserRepo(session, default_role_id=None).get_refresh_token_by_usuario_id(uid)
+                SqlAlchemyUserRepo(session, default_role_id=None).get_refresh_token_by_usuario_id(uid),
+            invalidate_refresh_token_by_usuario_id=lambda uid: 
+                SqlAlchemyUserRepo(session, default_role_id=None).invalidate_refresh_token(uid),
         )
 
         channel_id = str(uuid.uuid4())
@@ -62,7 +64,9 @@ def make_calendar_router(*, get_session_dep, jwt_port: JwtPort, cache, webhook_p
             client_id=GOOGLE_CLIENT_ID,
             client_secret=GOOGLE_CLIENT_SECRET,
             get_refresh_token_by_usuario_id=lambda uid: 
-                SqlAlchemyUserRepo(session, default_role_id=None).get_refresh_token_by_usuario_id(uid)
+                SqlAlchemyUserRepo(session, default_role_id=None).get_refresh_token_by_usuario_id(uid),
+            invalidate_refresh_token_by_usuario_id=lambda uid: 
+                SqlAlchemyUserRepo(session, default_role_id=None).invalidate_refresh_token(uid),
         )
         
         auto_config = AutoConfigureWebhook(

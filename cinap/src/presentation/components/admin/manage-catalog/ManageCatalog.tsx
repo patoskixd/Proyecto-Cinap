@@ -18,7 +18,6 @@ import ToastProvider, { notify } from "../../shared/Toast/ToastProvider";
 export default function ManageCatalog() {
   const {
     // listas y stats
-    categories,
     activeCategories,
     otherCategories,
     stats,

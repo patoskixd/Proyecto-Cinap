@@ -398,6 +398,3 @@ class SqlAlchemyCalendarEventsRepo(CalendarEventsRepo):
         """)
         rows = (await self.s.execute(sql)).mappings().all()
         return [dict(r) for r in rows]
-
-
-

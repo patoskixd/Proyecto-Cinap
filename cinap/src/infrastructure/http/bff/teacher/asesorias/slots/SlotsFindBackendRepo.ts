@@ -23,7 +23,8 @@ export class SlotsFindBackendRepo implements SchedulingRepo {
     return this.inner.findSlots(input);
   }
 
-  async reserve(_: ReserveAsesoriaInput): Promise<CreateAsesoriaOut> {
+  async reserve(_input: ReserveAsesoriaInput): Promise<CreateAsesoriaOut> {
+    void _input;
     throw new Error("SlotsFindBackendRepo no soporta reserve(). Usa AsesoriasBackendRepo.");
   }
 }

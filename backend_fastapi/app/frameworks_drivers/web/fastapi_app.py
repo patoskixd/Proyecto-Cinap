@@ -66,6 +66,15 @@ def require_auth(request: Request):
 
 logger = logging.getLogger(__name__)
 
+def _build_calendar_client(session: AsyncSession) -> GoogleCalendarClient:
+    repo = SqlAlchemyUserRepo(session, default_role_id=None)
+    return GoogleCalendarClient(
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        get_refresh_token_by_usuario_id=repo.get_refresh_token_by_usuario_id,
+        invalidate_refresh_token_by_usuario_id=repo.invalidate_refresh_token,
+    )
+
 @asynccontextmanager
 async def lifespan(app):
     await container.startup()
@@ -81,16 +90,11 @@ async def lifespan(app):
     # Webhooks de Google Calendar para asesores y docentes
     try:
         if not WEBHOOK_PUBLIC_URL:
-            logger.warning("WEBHOOK_PUBLIC_URL no definido; se omite auto-configuración de Google Calendar")
+            logger.warning("WEBHOOK_PUBLIC_URL no definido; se omite auto-configuracin de Google Calendar")
         else:
             async with AsyncSessionLocal() as session:
                 calendar_repo = SqlAlchemyCalendarEventsRepo(session, cache=container.cache)
-                user_repo = SqlAlchemyUserRepo(session, default_role_id=None)
-                cal_client = GoogleCalendarClient(
-                    client_id=GOOGLE_CLIENT_ID,
-                    client_secret=GOOGLE_CLIENT_SECRET,
-                    get_refresh_token_by_usuario_id=user_repo.get_refresh_token_by_usuario_id,
-                )
+                cal_client = _build_calendar_client(session)
                 auto_cfg = AutoConfigureWebhook(
                     cal=cal_client,
                     repo=calendar_repo,
@@ -188,7 +192,7 @@ async def purge_only_unreferenced_expired_slots():
         return
     try:
         async with AsyncSessionLocal() as session:
-            # Borra SOLO los EXPIRADO que no están referenciados por 'asesoria'
+            # Borra SOLO los EXPIRADO que no est+�n referenciados por 'asesoria'
             sql = sa.text("""
                 DELETE FROM cupo c
                 WHERE c.estado = CAST(:estado AS estado_cupo)
@@ -244,7 +248,7 @@ async def health():
 
 @app.get("/observability/telegram/analyze")
 async def analyze_telegram_performance(hours: int = 24):
-    """Analiza el rendimiento de Telegram de las últimas N horas"""
+    """Analiza el rendimiento de Telegram de las +�ltimas N horas"""
     try:
         from app.observability.telegram_analyzer import log_telegram_analysis
         analysis = log_telegram_analysis(hours)
@@ -254,7 +258,7 @@ async def analyze_telegram_performance(hours: int = 24):
 
 @app.get("/observability/telegram/summary")
 async def telegram_performance_summary():
-    """Obtiene un resumen de performance de Telegram (última hora + 24h)"""
+    """Obtiene un resumen de performance de Telegram (+�ltima hora + 24h)"""
     try:
         from app.observability.telegram_analyzer import log_performance_summary
         summary = log_performance_summary()
@@ -265,7 +269,7 @@ async def telegram_performance_summary():
 
 @app.get("/health/db")
 async def health_db(session = Depends(get_session)):
-    """Health check que verifica la conexión a la base de datos"""
+    """Health check que verifica la conexi+�n a la base de datos"""
     try:
         from sqlalchemy import text
         await session.execute(text("SELECT 1"))
@@ -273,7 +277,7 @@ async def health_db(session = Depends(get_session)):
     except Exception as e:
         return {"db": "error", "status": "unhealthy", "error": str(e)}
 
-graph_router = APIRouter(prefix="/assistant", tags=["assistant"])
+graph_router = APIRouter(prefix="/api/assistant", tags=["assistant"])
 
 class GraphChatRequest(BaseModel):
     message: str
@@ -384,12 +388,7 @@ app.include_router(calendar_router)
 google_webhook_router = make_google_calendar_webhook_router(
     get_session_dep=get_session,
     cache=container.cache,
-    cal_client_factory=lambda session: GoogleCalendarClient(
-        client_id=GOOGLE_CLIENT_ID,
-        client_secret=GOOGLE_CLIENT_SECRET,
-        get_refresh_token_by_usuario_id=lambda usuario_id: 
-            SqlAlchemyUserRepo(session, default_role_id=None).get_refresh_token_by_usuario_id(usuario_id)
-    )
+    cal_client_factory=_build_calendar_client,
 )
 
 app.include_router(google_webhook_router)
@@ -400,7 +399,7 @@ teacher_confirmations_router = make_teacher_confirmations_router(
 )
 app.include_router(teacher_confirmations_router)
 
-@scheduler.scheduled_job("cron", hour=16, minute=32)
+@scheduler.scheduled_job("cron", hour=22, minute=00)
 async def cron_sweep_due_slots_and_close_asesorias_daily():
     async with AsyncSessionLocal() as session:
         repo = SqlAlchemySlotsRepo(session)
