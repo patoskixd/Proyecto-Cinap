@@ -15,13 +15,13 @@ from langchain.tools import StructuredTool
 from pydantic import BaseModel, create_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
-from langchain_core.messages.utils import trim_messages, count_tokens_approximately, get_buffer_string
+from langchain_core.messages.utils import trim_messages, get_buffer_string
 from langchain_core.messages import RemoveMessage
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langchain_core.callbacks import BaseCallbackHandler
 from app.frameworks_drivers.mcp.stdio_client import MCPStdioClient
 from app.observability.confirm_store import is_confirmation
-from app.observability.metrics import set_meta, stage, astage, measure_stage
+from app.observability.metrics import set_meta, stage, astage
 from app.observability.metrics_llm import MetricsCallbackHandler
 try:
     from langchain_ollama import ChatOllama
@@ -43,9 +43,6 @@ _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 CURRENT_THREAD_ID: ContextVar[str | None] = ContextVar("CURRENT_THREAD_ID", default=None)
 
 CONFIRM_TOOLS = {"schedule_asesoria", "cancel_asesoria", "confirm_asesoria"}
-
-GLOBAL_SYSTEM_TEXT = ""
-GLOBAL_TOKEN_COUNTER = None
 
 _CINAP_LIST_RE = re.compile(r"<!--CINAP_LIST:.*?-->", re.DOTALL)
 _CINAP_CONFIRM_RE = re.compile(r"<!--CINAP_CONFIRM:.*?-->", re.DOTALL)
@@ -99,35 +96,32 @@ def _compact_content(content: Any) -> str:
 
     return _sanitize_for_state(str(content or ""))
 
-def _pre_model_hook(state: dict) -> dict:
-    token_counter = GLOBAL_TOKEN_COUNTER or count_tokens_approximately
-
-    trimmed = trim_messages(
-        state["messages"],
-        strategy="last",
-        token_counter=token_counter,
-        max_tokens=8000,
-        start_on="human",
-        end_on=("human", "tool"),
-    )
-
-    cleaned = []
-    for m in trimmed:
-        try:
-            m.content = _compact_content(getattr(m, "content", ""))
-            akw = getattr(m, "additional_kwargs", None)
-            if isinstance(akw, dict):
-                for k in ("tool_calls", "function_call", "refusal", "audio", "parsed"):
-                    if k in akw:
+def make_pre_model_hook(system_text: str, token_counter):
+    def _hook(state: dict) -> dict:
+        trimmed = trim_messages(
+            state["messages"],
+            strategy="last",
+            token_counter=token_counter,
+            max_tokens=10000,
+            start_on="human",
+            end_on=("human","tool"),
+        )
+        cleaned = []
+        for m in trimmed:
+            try:
+                m.content = _compact_content(getattr(m, "content", ""))
+                akw = getattr(m, "additional_kwargs", None)
+                if isinstance(akw, dict):
+                    for k in ("tool_calls","function_call","refusal","audio","parsed"):
                         akw.pop(k, None)
-        except Exception:
-            pass
-        cleaned.append(m)
+            except Exception:
+                pass
+            cleaned.append(m)
 
-    non_system = [m for m in cleaned if not isinstance(m, SystemMessage)]
-    single_system = SystemMessage(content=_compact_content(GLOBAL_SYSTEM_TEXT))
-
-    return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES), single_system, *non_system]}
+        non_system = [m for m in cleaned if not isinstance(m, SystemMessage)]
+        single_system = SystemMessage(content=_compact_content(system_text))
+        return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES), single_system, *non_system]}
+    return _hook
 
 def _eval_log(event: dict):
     try:
@@ -216,7 +210,6 @@ def _attach_items_payload(text: str, items: list[dict], kind: str) -> str:
         return None
 
     def _compose_start(d: dict):
-        # 1) Directos comunes
         v = _first(
             d,
             "start", "start_time", "inicio",
@@ -225,16 +218,13 @@ def _attach_items_payload(text: str, items: list[dict], kind: str) -> str:
         )
         if v:
             return v
-        # 2) Composición fecha + hora (muy común en tu backend)
         fecha = _first(d, "fecha", "date", "dia", "day")
         hora  = _first(d, "hora", "time", "hora_inicio", "horaInicio", "slot")
         if fecha and hora:
             try:
-                # Deja que el webhook lo parsee; basta concatenar
                 return f"{fecha} {hora}"
             except Exception:
                 pass
-        # 3) Solo fecha (el webhook igual la muestra)
         if fecha:
             return fecha
         return None
@@ -275,26 +265,10 @@ def _strip_think(text: str | None) -> str:
         return ""
     return _THINK_RE.sub("", text).strip()
 
-def _strip_code_fences(s: str) -> str:
-    s = s.strip()
-    if s.startswith("```"):
-        s = re.sub(r"^```(?:json)?\s*", "", s)
-        s = re.sub(r"\s*```$", "", s)
-    return s.strip()
-
 def _fmt_list_item(it: dict) -> str:
     title = str(it.get("title") or "(sin título)").strip()
     sub = str(it.get("subtitle") or it.get("email") or "").strip()
     return f"{title}\n{sub}" if sub else title
-
-def _render_numbered(items: list[dict], limit: int = 10) -> str:
-    shown = items[:limit]
-    lines = [f"{idx+1}) {_fmt_list_item(ev)}" for idx, ev in enumerate(shown)]
-
-    if len(items) > limit:
-        lines.append(f"... y {len(items) - limit} más")
-
-    return "\n".join(lines)
 
 def _format_mcp_result(res: dict, tool_name: str) -> str:
     if isinstance(res, dict) and res.get("ok"):
@@ -330,9 +304,6 @@ def _format_mcp_result(res: dict, tool_name: str) -> str:
         return f"[{tool_name}] resultado no estándar: " + json.dumps(res, ensure_ascii=False)[:1200]
     except Exception:
         return f"[{tool_name}] resultado no estándar (no JSON serializable)."
-
-def _looks_like_tool_json(s: str) -> bool:
-    return bool(_TOOL_JSON_RE.match(s or ""))
 
 def _pydantic_model_from_json_schema(name: str, schema: Dict[str, Any]) -> type[BaseModel]:
     props = schema.get("properties", {}) if isinstance(schema, dict) else {}
@@ -377,18 +348,6 @@ def _pydantic_model_from_json_schema(name: str, schema: Dict[str, Any]) -> type[
 
     return create_model(name, **fields)
 
-def _parse_tool_json(s: str) -> tuple[str, dict] | None:
-    try:
-        raw = _strip_code_fences(s)
-        obj = json.loads(raw)
-        name = obj.get("name") or obj.get("function")
-        args = obj.get("arguments") or obj.get("parameters") or {}
-        if isinstance(name, str) and isinstance(args, dict):
-            return name, args
-    except Exception:
-        pass
-    return None
-
 try:
     import tiktoken
 except Exception:
@@ -409,6 +368,23 @@ def _make_token_counter(model_name: str):
         return max(1, len(text or "") // 4)
 
     return counter
+
+def make_messages_token_counter(model_name: str):
+    string_counter = _make_token_counter(model_name)
+    def _messages_token_counter(messages):
+        try:
+            s = get_buffer_string(messages)
+        except Exception:
+            parts = []
+            for m in (messages or []):
+                c = getattr(m, "content", "")
+                if not isinstance(c, str):
+                    try: c = json.dumps(c, ensure_ascii=False)
+                    except Exception: c = str(c)
+                parts.append(c)
+            s = "\n".join(parts)
+        return string_counter(s or "")
+    return _messages_token_counter
 
 class MetricsCallbackHandler(BaseCallbackHandler):
     def __init__(self, stage_name="llm.http"):
@@ -639,22 +615,6 @@ class LangGraphAgent:
         if top_p is not None: self._top_p = top_p
 
     async def startup(self):
-        def _messages_token_counter(messages):
-            try:
-                s = get_buffer_string(messages)
-            except Exception:
-                parts = []
-                for m in (messages or []):
-                    c = getattr(m, "content", "")
-                    if not isinstance(c, str):
-                        try:
-                            c = json.dumps(c, ensure_ascii=False)
-                        except Exception:
-                            c = str(c)
-                    parts.append(c)
-                s = "\n".join(parts)
-            return string_counter(s or "")
-        
         if USE_OLLAMA:
             if ChatOllama is None:
                 raise RuntimeError("langchain_ollama no está instalado. Instala: pip install langchain-ollama")
@@ -679,12 +639,6 @@ class LangGraphAgent:
         tools = await self._build_tools_from_mcp()
         conn = sqlite3.connect(self._db_path, check_same_thread=False)
         checkpointer = SqliteSaver(conn)
-        app_or_graph = create_react_agent(
-            llm, tools,
-            checkpointer=checkpointer,
-            pre_model_hook=_pre_model_hook,
-        )
-        app = app_or_graph.compile(checkpointer=checkpointer) if hasattr(app_or_graph, "compile") else app_or_graph
 
         SYSTEM_STATIC_EN = """
         You are a tool-using assistant. 
@@ -743,10 +697,14 @@ class LangGraphAgent:
         offset_sign = "+" if offset_h >= 0 else "-"
         offset_txt = f"UTC{offset_sign}{abs(offset_h):02d}:00"
         system_msg = SYSTEM_STATIC_EN + "\n" + FEW_SHOTS_ES + f"\nContext: TZ=America/Santiago ({offset_txt}), today={now_cl:%d-%m-%Y}\n /no_think"
-        string_counter = _make_token_counter(self._model_name)
-        global GLOBAL_SYSTEM_TEXT, GLOBAL_TOKEN_COUNTER
-        GLOBAL_SYSTEM_TEXT = system_msg
-        GLOBAL_TOKEN_COUNTER = _messages_token_counter
+        token_counter = make_messages_token_counter(self._model_name)
+        pre_hook = make_pre_model_hook(system_msg, token_counter)
+        app_or_graph = create_react_agent(
+            llm, tools,
+            checkpointer=checkpointer,
+            pre_model_hook=pre_hook,
+        )
+        app = app_or_graph.compile(checkpointer=checkpointer) if hasattr(app_or_graph, "compile") else app_or_graph
         self._runner = LangGraphRunner(app, system_text=None)
 
     async def invoke(self, message: str, *, thread_id: str) -> str:
