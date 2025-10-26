@@ -7,6 +7,7 @@ import { normalizeSchedules, type UIRule } from "@/application/advisor/slots/use
 import { GetCreateSlotsData } from "@/application/advisor/slots/usecases/GetCreateSlotsData";
 import { CreateSlots } from "@/application/advisor/slots/usecases/CreateSlots";
 import { SlotsHttpRepo } from "@/infrastructure/advisor/slots/SlotsHttpRepo";
+import { HttpError } from "@/infrastructure/http/client";
 
 import Header from "./components/Header";
 import Progress from "./components/Progress";
@@ -98,15 +99,33 @@ export default function CreateSlotsWizard() {
       setCreatedCount(res.createdSlots);
       setShowSuccess(true);
 
-    } catch (e: any) {
-      if (e?.status === 409) {
-        setErrorMsg(e?.message ?? "Este recurso ya tiene cupos en esos horarios.");
-        setErrorConflicts(Array.isArray(e?.detail?.conflicts) ? e.detail.conflicts : []);
+    } catch (error: unknown) {
+      const err = error as HttpError & { detail?: any };
+      const conflicts = Array.isArray(err?.detail?.conflicts) ? err.detail.conflicts : [];
+
+      const rawMessage =
+        typeof err?.detail === "string"
+          ? err.detail
+          : typeof err?.detail?.message === "string"
+            ? err.detail.message
+            : err instanceof Error
+              ? err.message
+              : "";
+
+      const message =
+        typeof rawMessage === "string"
+          ? rawMessage.replace(/^HTTP\s\d+:\s*/, "").trim()
+          : "";
+
+      if (err instanceof HttpError && err.status === 409) {
+        setErrorMsg(message || "Las siguientes horas ya están ocupadas para este recurso.");
+        setErrorConflicts(conflicts);
         setShowError(true);
         return;
       }
-      setErrorMsg(e?.message ?? "Ocurrió un error al crear los cupos.");
-      setErrorConflicts([]);
+
+      setErrorMsg(message || "Ocurrió un error al crear los cupos.");
+      setErrorConflicts(conflicts);
       setShowError(true);
     }
   };

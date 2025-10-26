@@ -75,11 +75,29 @@ export class AdminAdvisorsHttpRepo implements AdminAdvisorRepo {
       body: JSON.stringify(request),
     });
 
-    if (!response.ok) {
-      throw new Error((await response.text()) || "No se pudo registrar el asesor");
+    const raw = await response.text();
+    let payload: any = undefined;
+    if (raw) {
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        payload = undefined;
+      }
     }
 
-    return parse<Advisor>(response);
+    if (!response.ok) {
+      const detail =
+        (payload && (payload.detail || payload.message)) ||
+        raw ||
+        "No se pudo registrar el asesor";
+      throw new Error(String(detail).trim());
+    }
+
+    if (!payload) {
+      throw new Error("Respuesta inválida del backend al registrar asesor");
+    }
+
+    return payload as Advisor;
   }
 
   async update(id: AdvisorId, changes: UpdateAdvisorRequest): Promise<Advisor> {

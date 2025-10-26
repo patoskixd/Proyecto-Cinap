@@ -57,7 +57,20 @@ async createSlots(input: CreateSlotsInput): Promise<CreateSlotsResult> {
   });
 
   const data = await this.parse<any>(res);
-  if (!res.ok) throw new Error(data?.detail || data?.message || "No se pudieron abrir los cupos");
+  if (!res.ok) {
+    const detail = data?.detail;
+    const detailMessage =
+      typeof detail === "string"
+        ? detail
+        : typeof detail?.message === "string"
+          ? detail.message
+          : undefined;
+    const message = detailMessage || data?.message || "No se pudieron abrir los cupos";
+    const err = new Error(message);
+    (err as any).detail = detail ?? data;
+    (err as any).status = res.status;
+    throw err;
+  }
   return { createdSlots: data?.createdSlots ?? 0 };
 }
 

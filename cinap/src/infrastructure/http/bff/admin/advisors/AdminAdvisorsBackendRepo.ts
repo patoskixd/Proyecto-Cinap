@@ -104,7 +104,7 @@ export class AdminAdvisorsBackendRepo implements AdminAdvisorRepo {
       service_ids: request.services
     };
     
-    const res = await fetch(`${this.baseUrl}/api/admin/advisors`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/advisors/`, {
       method: "POST",
       headers: { 
         "content-type": "application/json", 
