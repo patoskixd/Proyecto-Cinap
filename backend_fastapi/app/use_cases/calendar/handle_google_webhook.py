@@ -28,24 +28,34 @@ class HandleGoogleWebhook:
             logger.warning(f"No se encontró asesor para channel_id {channel_id}")
             return {"ok": True, "synced": 0}
 
-        # Trae las asesorías PENDIENTE y CANCELADAS de este asesor para manejar re-aceptaciones
-        print(f"BUSCANDO asesorías pendientes y canceladas para {organizer_usuario_id}")
-        pendings = await self.repo.list_pending_and_cancelled_for_organizer(organizer_usuario_id)
-        print(f"ENCONTRADAS: {len(pendings)} asesorías para revisar")
-        logger.info(f"Revisando {len(pendings)} asesorías (pendientes + canceladas) para asesor {organizer_usuario_id}")
+        # Trae asesorias activas (pendientes, confirmadas o canceladas) del asesor para sincronizar estados
+        print(f"BUSCANDO asesorias activas para {organizer_usuario_id}")
+        candidates = await self.repo.list_pending_and_cancelled_for_organizer(organizer_usuario_id)
+        print(f"ENCONTRADAS: {len(candidates)} asesorias para revisar")
+        logger.info(f"Revisando {len(candidates)} asesorias (pendientes/confirmadas/canceladas) para asesor {organizer_usuario_id}")
 
         synced = 0
-        for i, p in enumerate(pendings):
+        event_cache: dict[str, dict] = {}
+        for i, p in enumerate(candidates):
             asesoria_id = p.get('asesoria_id', 'N/A')
             asesoria_estado = p.get('asesoria_estado', 'UNKNOWN')
-            print(f"PROCESANDO {i+1}/{len(pendings)}: {asesoria_id} (Estado actual: {asesoria_estado})")
+            print(f"PROCESANDO {i+1}/{len(candidates)}: {asesoria_id} (Estado actual: {asesoria_estado})")
             try:
-                print(f"OBTENIENDO evento {p['provider_event_id']}")
-                ev = await self.cal.get_event(
-                    organizer_usuario_id=organizer_usuario_id,
-                    event_id=p["provider_event_id"]
-                )
-                print(f"EVENTO OBTENIDO: {ev.get('id', 'N/A')}")
+                provider_event_id = p.get("provider_event_id")
+                if not provider_event_id:
+                    print("SIN provider_event_id, se omite sincronización para esta asesoría")
+                    continue
+                if provider_event_id in event_cache:
+                    print(f"REUTILIZANDO evento cacheado {provider_event_id}")
+                    ev = event_cache[provider_event_id]
+                else:
+                    print(f"OBTENIENDO evento {provider_event_id}")
+                    ev = await self.cal.get_event(
+                        organizer_usuario_id=organizer_usuario_id,
+                        event_id=provider_event_id
+                    )
+                    print(f"EVENTO OBTENIDO: {ev.get('id', 'N/A')}")
+                    event_cache[provider_event_id] = ev
                 
                 # Busca al docente en attendees y su responseStatus
                 attendees = ev.get("attendees", []) or []
@@ -83,47 +93,64 @@ class HandleGoogleWebhook:
                             break
 
                 # Manejar todos los estados posibles de Google Calendar
+                updated = False
                 if status in ("accepted", "declined", "tentative"):
                     asesoria_id = p["asesoria_id"]
                     cupo_id = p["cupo_id"]
                     estado_actual = p["asesoria_estado"]
-                    print(f"PROCESANDO status: '{status}' para asesoría {asesoria_id} (estado actual: {estado_actual})")
-                    logger.info(f"Docente {p['docente_email']} {status} la asesoría {asesoria_id}")
-                    
+                    print(f"PROCESANDO status: '{status}' para asesoria {asesoria_id} (estado actual: {estado_actual})")
+                    logger.info(f"Docente {p['docente_email']} {status} la asesoria {asesoria_id}")
                     if status == "accepted":
-                        if estado_actual == "CANCELADA":
-                            # Re-aceptación: asesoría cancelada que vuelve a ser aceptada
-                            print(f"🔄 RE-ACEPTACIÓN: Reactivando asesoría cancelada {asesoria_id}")
+                        if estado_actual == "CONFIRMADA":
+                            print(f"Asesoria {asesoria_id} ya confirmada; se omite actualización.")
+                            logger.debug(f"Asesoria {asesoria_id} ya estaba CONFIRMADA, se ignora accepted.")
+                        elif estado_actual == "CANCELADA":
+                            print(f" RE-ACEPTACION: Reactivando asesoria cancelada {asesoria_id}")
                             await self.repo.mark_confirmed(asesoria_id)
-                            print(f"✅ RE-CONFIRMADA: Asesoría {asesoria_id} reactivada")
-                            logger.info(f"Asesoría {asesoria_id} RE-CONFIRMADA - cambió de CANCELADA a CONFIRMADA")
+                            updated = True
+                            print(f" RE-CONFIRMADA: Asesoria {asesoria_id} reactivada")
+                            logger.info(f"Asesoria {asesoria_id} paso de CANCELADA a CONFIRMADA por aceptacion del docente")
                         elif estado_actual == "PENDIENTE":
-                            # Confirmación normal
-                            print(f" EJECUTANDO mark_confirmed para asesoría {asesoria_id}")
+                            print(f" EJECUTANDO mark_confirmed para asesoria {asesoria_id}")
                             await self.repo.mark_confirmed(asesoria_id)
-                            print(f" CONFIRMADA: Asesoría {asesoria_id}")
-                            logger.info(f"Asesoría {asesoria_id} marcada como CONFIRMADA")
+                            updated = True
+                            print(f" CONFIRMADA: Asesoria {asesoria_id}")
+                            logger.info(f"Asesoria {asesoria_id} marcada como CONFIRMADA")
+                        else:
+                            print(f"Asesoria {asesoria_id} ya estaba en {estado_actual}, no se actualiza por accepted")
+                            logger.debug(f"Asesoria {asesoria_id} ya estaba en {estado_actual}; se omite accepted.")
                     elif status in ("declined", "tentative"):
-                        if estado_actual == "PENDIENTE":
-                            # Cancelación normal
-                            print(f"EJECUTANDO mark_rejected_and_free_slot para asesoría {asesoria_id}")
+                        if estado_actual == "CANCELADA":
+                            print(f"Asesoria {asesoria_id} ya cancelada; se omite {status}.")
+                            logger.debug(f"Asesoria {asesoria_id} ya estaba CANCELADA, se ignora {status}.")
+                        elif estado_actual in ("PENDIENTE", "CONFIRMADA"):
+                            print(f"EJECUTANDO mark_rejected_and_free_slot para asesoria {asesoria_id}")
                             try:
                                 await self.repo.mark_rejected_and_free_slot(asesoria_id, cupo_id)
-                                print(f"CANCELADA: Asesoría {asesoria_id} - cupo permanece ocupado ({status})")
-                                logger.info(f"Asesoría {asesoria_id} marcada como CANCELADA - cupo permanece ocupado - Razón: {status}")
+                                updated = True
+                                print(f"CANCELADA: Asesoria {asesoria_id} - cupo permanece ocupado ({status})")
+                                logger.info(f"Asesoria {asesoria_id} marcada como CANCELADA por {status}")
                             except Exception as cancel_error:
                                 print(f" ERROR CANCELANDO: {cancel_error}")
-                                logger.error(f"Error cancelando asesoría {asesoria_id}: {cancel_error}")
+                                logger.error(f"Error cancelando asesoria {asesoria_id}: {cancel_error}")
                                 raise
                         else:
-                            print(f"Asesoría {asesoria_id} ya está en estado {estado_actual}, no se procesa {status}")
-                    
-                    synced += 1
-                    print(f" SYNCED: {synced} asesorías procesadas hasta ahora")
+                            print(f"Asesoria {asesoria_id} ya esta en estado {estado_actual}, no se procesa {status}")
+                            logger.debug(f"Asesoria {asesoria_id} ya en estado {estado_actual}; se omite {status}.")
+                    if updated:
+                        synced += 1
+                        print(f" SYNCED: {synced} asesorias procesadas hasta ahora")
+
                 elif status == "needsaction":
-                    # El docente aún no ha respondido - no hacer nada
-                    print(f" PENDIENTE: Docente {p['docente_email']} aún no ha respondido")
-                    logger.debug(f"Docente {p['docente_email']} aún no ha respondido (needsAction)")
+                    estado_actual = p.get('asesoria_estado')
+                    if estado_actual == "CONFIRMADA":
+                        print(f" REVERTIENDO: Docente {p['docente_email']} volvio a needsAction, asesoria {p['asesoria_id']} vuelve a PENDIENTE")
+                        await self.repo.update_event_state(p["asesoria_id"], "PENDIENTE")
+                        logger.info(f"Asesoria {p['asesoria_id']} marcada como PENDIENTE desde needsAction")
+                        synced += 1
+                    else:
+                        print(f" PENDIENTE: Docente {p['docente_email']} aun no ha respondido")
+                        logger.debug(f"Docente {p['docente_email']} aun no ha respondido (needsAction)")
                     
                 elif status:
                     logger.debug(f"Status {status} de docente {p['docente_email']} no requiere acción")

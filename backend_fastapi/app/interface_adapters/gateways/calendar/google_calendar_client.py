@@ -188,6 +188,22 @@ class GoogleCalendarClient(CalendarPort):
             r.raise_for_status()
             return r.json()
 
+    async def stop_channel(
+        self,
+        *,
+        organizer_usuario_id: str,
+        channel_id: str,
+        resource_id: str,
+    ) -> None:
+        headers = await self._auth_headers_for_user(organizer_usuario_id)
+        body = {"id": channel_id, "resourceId": resource_id}
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            r = await client.post("https://www.googleapis.com/calendar/v3/channels/stop", headers=headers, json=body)
+            if r.status_code not in (200, 204):
+                log.debug("channels.stop (%s) devolvió %s: %s", channel_id, r.status_code, r.text[:200])
+                r.raise_for_status()
+        log.info("Canal Google detenido: channel_id=%s resource_id=%s", channel_id, resource_id)
+
     async def delete_event(
         self,
         *,

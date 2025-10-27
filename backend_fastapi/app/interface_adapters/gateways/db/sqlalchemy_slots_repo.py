@@ -54,8 +54,8 @@ class SqlAlchemySlotsRepo(SlotsRepo):
             select(CupoModel.id, CupoModel.inicio, CupoModel.fin)
             .where(
                 CupoModel.recurso_id == uuid.UUID(recurso_id),
-                # Solo chocan cupos activos (ABIERTO/RESERVADO); ignoramos CANCELADO/EXPIRADO
-                CupoModel.estado.in_([EstadoCupo.ABIERTO, EstadoCupo.RESERVADO]),
+                # Consideramos cupos activos o cancelados; ignoramos EXPIRADO
+                CupoModel.estado.in_([EstadoCupo.ABIERTO, EstadoCupo.RESERVADO, EstadoCupo.CANCELADO]),
                 sa.or_(*conds),
             )
             .order_by(CupoModel.inicio.asc(), CupoModel.fin.asc())
@@ -80,7 +80,7 @@ class SqlAlchemySlotsRepo(SlotsRepo):
             select(CupoModel.id, CupoModel.inicio, CupoModel.fin)
             .where(
                 CupoModel.asesor_id == uuid.UUID(asesor_id),
-                CupoModel.estado.in_([EstadoCupo.ABIERTO, EstadoCupo.RESERVADO]),
+                CupoModel.estado.in_([EstadoCupo.ABIERTO, EstadoCupo.RESERVADO, EstadoCupo.CANCELADO]),
                 sa.or_(*conds),
             )
             .order_by(CupoModel.inicio.asc(), CupoModel.fin.asc())

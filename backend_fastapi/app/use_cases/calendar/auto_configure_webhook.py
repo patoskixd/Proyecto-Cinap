@@ -46,6 +46,8 @@ class AutoConfigureWebhook:
                 return {"configured": False, "error": "missing_webhook_public_url"}
 
             existing_channels = await self.repo.get_channels_for_user(usuario_id)
+            await self._cleanup_extra_channels(usuario_id, existing_channels)
+            existing_channels = await self.repo.get_channels_for_user(usuario_id)
 
             if existing_channels:
                 logger.info(
@@ -93,6 +95,7 @@ class AutoConfigureWebhook:
 
             resource_id = result.get("resourceId")
             await self.repo.save_channel_owner(channel_id, usuario_id, resource_id)
+            await self._cleanup_extra_channels(usuario_id, (existing_channels or []) + [channel_id], keep=channel_id)
 
             logger.info(
                 "Webhook configurado automáticamente para %s %s (channel_id=%s)",
@@ -111,6 +114,36 @@ class AutoConfigureWebhook:
         except Exception as e:
             logger.error("Error configurando webhook automático para %s %s: %s", role, usuario_id, e)
             return {"configured": False, "error": str(e)}
+
+    async def _cleanup_extra_channels(self, usuario_id: str, channels: list[str], *, keep: str | None = None) -> None:
+        if not channels or not self.repo or not hasattr(self.cal, "stop_channel"):
+            return
+        keep_channel = keep or (channels[-1] if channels else None)
+        if not keep_channel:
+            return
+
+        for channel_id in list(channels):
+            if channel_id == keep_channel:
+                continue
+            try:
+                resource_id = await self.repo.get_channel_resource(channel_id)
+                if resource_id:
+                    await self.cal.stop_channel(
+                        organizer_usuario_id=usuario_id,
+                        channel_id=channel_id,
+                        resource_id=resource_id,
+                    )
+                else:
+                    logger.debug("Canal %s no tiene resource_id almacenado; se eliminará del cache.", channel_id)
+            except Exception as exc:
+                logger.warning(
+                    "No se pudo detener canal antiguo %s de %s: %s",
+                    channel_id,
+                    usuario_id,
+                    exc,
+                )
+            finally:
+                await self.repo.drop_channel(channel_id, usuario_id)
 
     async def configure_for_all_advisors(self) -> dict:
         """

@@ -14,14 +14,24 @@ type Props = {
 function fmtRange(iniIso: string, finIso: string) {
   const ini = new Date(iniIso);
   const fin = new Date(finIso);
-  const fecha = ini.toLocaleDateString("es-ES", {
+  const fecha = new Intl.DateTimeFormat("es-ES", {
     weekday: "long",
     day: "2-digit",
     month: "long",
-  }).replace(",", "");
-  const hi = ini.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
-  const hf = fin.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
-  return `${fecha} · ${hi} – ${hf}`;
+  })
+    .format(ini)
+    .replace(",", "");
+  const timeFmt = new Intl.DateTimeFormat("es-ES", { hour: "2-digit", minute: "2-digit" });
+  const hi = timeFmt.format(ini);
+  const hf = timeFmt.format(fin);
+  return `${fecha} ${hi} - ${hf}`;
+}
+
+function fmtCompactRange(iniIso: string, finIso: string) {
+  const timeFmt = new Intl.DateTimeFormat("es-ES", { hour: "2-digit", minute: "2-digit" });
+  const hi = timeFmt.format(new Date(iniIso));
+  const hf = timeFmt.format(new Date(finIso));
+  return `${hi}-${hf}`;
 }
 
 export default function ErrorModal({ open, message, conflicts, onClose }: Props) {
@@ -30,6 +40,14 @@ export default function ErrorModal({ open, message, conflicts, onClose }: Props)
   const sorted = [...(conflicts ?? [])].sort(
     (a, b) => new Date(a.inicio).getTime() - new Date(b.inicio).getTime()
   );
+
+  const summary = sorted.length
+    ? sorted.map((c) => fmtCompactRange(c.inicio, c.fin)).join(", ")
+    : "";
+  const fallbackMessage = summary
+    ? `Las siguientes horas ya están ocupadas para este recurso: ${summary}.`
+    : "Este recurso ya tiene cupos en los horarios seleccionados.";
+  const displayMessage = (message ?? "").trim() || fallbackMessage;
 
   const list = sorted.map((c, i) => (
     <li key={`${c.cupoId ?? i}-${c.inicio}`} className="rounded-md bg-rose-50 px-3 py-2 text-rose-800">
@@ -41,7 +59,7 @@ export default function ErrorModal({ open, message, conflicts, onClose }: Props)
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-xl ring-1 ring-rose-100">
-        {/* Ícono rojo */}
+        {/* Icono rojo */}
         <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-rose-100">
           <svg className="h-6 w-6 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -49,14 +67,12 @@ export default function ErrorModal({ open, message, conflicts, onClose }: Props)
         </div>
 
         <h3 className="text-lg font-bold text-neutral-900">No se pudieron crear los cupos</h3>
-        <p className="mt-1 text-sm text-neutral-600">
-          {message ?? "Este recurso ya tiene cupos en los horarios seleccionados."}
-        </p>
+        <p className="mt-1 text-sm text-neutral-600">{displayMessage}</p>
 
         {list.length > 0 && (
           <div className="mt-4 text-left">
-            <div className="mb-2 text-sm font-semibold text-neutral-800">Períodos ocupados:</div>
-            <ul className="space-y-2">{list}</ul>
+            <div className="mb-2 text-sm font-semibold text-neutral-800">Periodos ocupados:</div>
+            <ul className="max-h-60 space-y-2 overflow-y-auto pr-1">{list}</ul>
           </div>
         )}
 

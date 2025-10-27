@@ -13,6 +13,7 @@ import type {
 import { RegisterAdvisor } from "@/application/admin/advisors/usecases/RegisterAdvisor";
 import { AdminAdvisorsHttpRepo } from "@/infrastructure/admin/advisors/AdminAdvisorsHttpRepo";
 import { AdminCatalogHttpRepo } from "@/infrastructure/admin/catalog/AdminCatalogHttpRepo";
+import { notify } from "@/presentation/components/shared/Toast";
 
 type Step = 1 | 2 | 3 | 4;
 const createRepos = () => {
@@ -48,7 +49,7 @@ export default function RegisterAdvisorForm() {
         const data = await catalogRepo.listCategories();
         setCategories(data);
       } catch (error) {
-        console.error("Error loading categories:", error);
+        notify("No se pudieron cargar las categorías. Intenta nuevamente.", "error");
       } finally {
         setLoading(false);
       }
@@ -122,7 +123,16 @@ export default function RegisterAdvisorForm() {
       await ucRegister.exec(request);
       setSuccessOpen(true);
     } catch (error) {
-      console.error("Error registering advisor:", error);
+      let message = "No se pudo registrar el asesor. Intenta de nuevo.";
+      if (error instanceof Error) {
+        const trimmed = error.message?.trim();
+        if (trimmed) {
+          message = trimmed;
+        }
+      } else if (typeof error === "string" && error.trim()) {
+        message = error.trim();
+      }
+      notify(message, "error");
     }
   };
 

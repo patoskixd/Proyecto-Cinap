@@ -252,13 +252,33 @@ class SqlAlchemyAsesorRepo(AsesorPerfilRepo):
         # 2. Actualizar el rol del usuario a "Asesor" si no es ya
         await self.ensure_user_is_asesor(user.id)
         
-        # 3. Crear perfil de asesor
+        # 3. Eliminar el perfil de docente si existía para evitar duplicados
+        try:
+            usuario_uuid = uuid.UUID(user.id)
+        except ValueError:
+            usuario_uuid = None
+
+        if usuario_uuid:
+            docente_stmt = select(DocentePerfilModel.id).where(DocentePerfilModel.usuario_id == usuario_uuid)
+            docente_result = await self.session.execute(docente_stmt)
+            docente_id = docente_result.scalar_one_or_none()
+            if docente_id:
+                asesorias_count_stmt = select(func.count(AsesoriaModel.id)).where(AsesoriaModel.docente_id == docente_id)
+                asesorias_count = (await self.session.execute(asesorias_count_stmt)).scalar_one()
+                if asesorias_count:
+                    raise ValueError(
+                        "El usuario tiene asesorías registradas como docente y no puede convertirse en asesor."
+                    )
+                await self.session.execute(delete(DocentePerfilModel).where(DocentePerfilModel.id == docente_id))
+                await self.session.flush()
+
+        # 4. Crear perfil de asesor
         asesor_perfil = await self.create_perfil(user.id)
         
-        # 4. Asignar servicios
+        # 5. Asignar servicios
         await self._assign_services_to_advisor(str(asesor_perfil.id), request.service_ids)
         
-        # 5. Recargar con información completa y retornar
+        # 6. Recargar con información completa y retornar
         return await self.get_advisor_by_id(str(asesor_perfil.id))
 
     async def get_advisor_by_id(self, advisor_id: str) -> Optional[AdvisorInfo]:

@@ -66,6 +66,48 @@ def require_auth(request: Request):
 
 logger = logging.getLogger(__name__)
 
+
+async def _reset_google_webhook_cache(redis: Redis | None, *, webhook_url: str) -> None:
+    """
+    Si la URL pública del webhook cambió, elimina los registros cacheados de
+    canales anteriores para forzar una nueva configuración.
+    """
+    if not redis or not webhook_url:
+        return
+
+    key = "gc:webhook:last_url"
+
+    try:
+        last = await redis.get(key)
+        if isinstance(last, bytes):
+            last = last.decode()
+
+        if last == webhook_url:
+            return
+
+        if last:
+            logger.info("Webhook URL actualizada (%s -> %s); limpiando cache de canales Google.", last, webhook_url)
+        else:
+            logger.info("No se encontró URL previa; limpiando cache de canales Google.")
+
+        async def _purge(pattern: str) -> None:
+            batch: list[bytes] = []
+            async for cache_key in redis.scan_iter(match=pattern):
+                batch.append(cache_key)
+                if len(batch) >= 256:
+                    await redis.delete(*batch)
+                    batch.clear()
+            if batch:
+                await redis.delete(*batch)
+
+        await _purge("gc:channel:*")
+        await _purge("gc:user_channels:*")
+        await redis.set(key, webhook_url.encode())
+
+    except Exception as exc:
+        logger.warning("No se pudo reiniciar el cache de webhooks de Google: %s", exc)
+
+
 def _build_calendar_client(session: AsyncSession) -> GoogleCalendarClient:
     repo = SqlAlchemyUserRepo(session, default_role_id=None)
     return GoogleCalendarClient(
@@ -80,6 +122,8 @@ async def lifespan(app):
     await container.startup()
     if getattr(container, "graph_agent", None) and hasattr(container.graph_agent, "set_confirm_store"):
             container.graph_agent.set_confirm_store(confirm_store)
+
+    await _reset_google_webhook_cache(container.redis, webhook_url=WEBHOOK_PUBLIC_URL)
 
     # Webhook de Telegram
     try:
@@ -242,11 +286,11 @@ async def _invoke_agent(agent, message: str, thread_id: str):
 async def _present_reply(reply: str, thread_id: str):
     return {"reply": reply, "thread_id": thread_id}
 
-@app.get("/health")
+@app.get("/api/health")
 async def health():
     return {"ok": True}
 
-@app.get("/observability/telegram/analyze")
+@app.get("/api/observability/telegram/analyze")
 async def analyze_telegram_performance(hours: int = 24):
     """Analiza el rendimiento de Telegram de las últimas N horas"""
     try:
@@ -256,7 +300,7 @@ async def analyze_telegram_performance(hours: int = 24):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-@app.get("/observability/telegram/summary")
+@app.get("/api/observability/telegram/summary")
 async def telegram_performance_summary():
     """Obtiene un resumen de performance de Telegram (+�ltima hora + 24h)"""
     try:
@@ -267,7 +311,7 @@ async def telegram_performance_summary():
         return {"success": False, "error": str(e)}
 
 
-@app.get("/health/db")
+@app.get("/api/health/db")
 async def health_db(session = Depends(get_session)):
     """Health check que verifica la conexión a la base de datos"""
     try:
