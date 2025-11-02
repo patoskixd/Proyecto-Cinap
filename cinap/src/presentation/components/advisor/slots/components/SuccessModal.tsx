@@ -4,11 +4,14 @@ import Link from "next/link";
 type Props = {
   open: boolean;
   total: number;
+  skipped?: number;
   onClose(): void;
 };
 
-export default function SuccessModal({ open, total, onClose }: Props) {
+export default function SuccessModal({ open, total, skipped = 0, onClose }: Props) {
   if (!open) return null;
+  const effective = total ?? 0;
+  const skippedInfo = skipped > 0 ? ` (${skipped} omitidos)` : "";
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl ring-1 ring-blue-100">
@@ -19,7 +22,7 @@ export default function SuccessModal({ open, total, onClose }: Props) {
         </div>
         <h3 className="text-lg font-bold text-neutral-900">¡Cupos creados exitosamente!</h3>
         <p className="mt-1 text-sm text-neutral-600">
-          Se generaron <strong>{total}</strong> cupos de asesoría.
+          Se generaron <strong>{effective}</strong> cupos de asesoría{skippedInfo}.
         </p>
         <Link
           href="/dashboard?role=advisor"

@@ -23,16 +23,23 @@ type Props = {
 };
 
 export default function AdvisorCard({ advisor, categoriesById, servicesByCat, onEdit, onDelete }: Props) {
-  const totalServices = advisor.services.length;
-  const visibleServices = advisor.services.slice(0, 3);
+  const basic = advisor.basic ?? { name: "", email: "" };
+  const categories = Array.isArray(advisor.categories) ? advisor.categories : [];
+  const services = Array.isArray(advisor.services) ? advisor.services : [];
+
+  const totalServices = services.length;
+  const visibleServices = services.slice(0, 3);
   const remainingServices = Math.max(0, totalServices - 3);
+  const cardAppearance = advisor.active
+    ? "border-blue-200/40 bg-gradient-to-br from-white via-blue-50/30 to-yellow-50/20 shadow-lg backdrop-blur-sm hover:border-blue-300/60"
+    : "border-slate-200/60 bg-white shadow-md hover:border-slate-300/60";
 
   return (
-    <div className={`group relative overflow-hidden rounded-3xl border transition-all duration-500 hover:-translate-y-2 hover:scale-105 hover:shadow-2xl ${
-      advisor.active 
-        ? 'border-blue-200/40 bg-gradient-to-br from-white via-blue-50/30 to-yellow-50/20 shadow-lg backdrop-blur-sm hover:border-blue-300/60'
-        : 'border-gray-200/40 bg-gradient-to-br from-gray-50/80 via-gray-100/50 to-gray-50/20 shadow-md backdrop-blur-sm hover:border-gray-300/60 opacity-75'
-    }`}>
+    <div
+      className={`group relative overflow-hidden rounded-3xl border transition-all duration-500 hover:-translate-y-2 hover:scale-105 hover:shadow-2xl ${cardAppearance} ${
+        advisor.active ? "" : "opacity-80"
+      }`}
+    >
       {/* Decorative elements */}
       <div className="absolute -right-6 -top-6 h-20 w-20 rounded-full bg-gradient-to-br from-yellow-400/20 to-blue-400/20 blur-xl transition-all duration-500 group-hover:scale-150 group-hover:bg-gradient-to-br group-hover:from-yellow-500/30 group-hover:to-blue-500/30" />
       
@@ -51,7 +58,7 @@ export default function AdvisorCard({ advisor, categoriesById, servicesByCat, on
         <div className="mb-5 flex items-start gap-4">
           <div className="relative">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-yellow-400 via-yellow-500 to-blue-600 text-xl font-bold text-white shadow-xl transition-all duration-300 group-hover:scale-110 group-hover:-rotate-3">
-              {initials(advisor.basic.name)}
+              {initials(basic?.name)}
             </div>
             {/* Expertise badge */}
             <div className="absolute -bottom-1 -right-1 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 p-1.5 shadow-lg">
@@ -62,8 +69,8 @@ export default function AdvisorCard({ advisor, categoriesById, servicesByCat, on
           </div>
           
           <div className="flex-1 min-w-0">
-            <h3 className="text-xl font-bold text-blue-900 transition-colors group-hover:text-blue-700">{advisor.basic?.name || "Sin nombre"}</h3>
-            <p className="mt-1 text-sm text-blue-700/80 font-medium truncate">{advisor.basic?.email || "Sin email"}</p>
+            <h3 className="text-xl font-bold text-blue-900 transition-colors group-hover:text-blue-700">{basic?.name || "Sin nombre"}</h3>
+            <p className="mt-1 text-sm text-blue-700/80 font-medium truncate">{basic?.email || "Sin email"}</p>
             
             {/* Role badge */}
             <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-yellow-100 to-blue-100 px-3 py-1 text-xs font-semibold text-blue-800 border border-yellow-200/50">
@@ -79,7 +86,7 @@ export default function AdvisorCard({ advisor, categoriesById, servicesByCat, on
         <div className="mb-4 space-y-2">
           <h4 className="text-xs font-semibold text-blue-800 uppercase tracking-wider">Especialidades</h4>
           <div className="flex flex-wrap gap-2">
-            {advisor.categories.slice(0, 3).map((cid, index) => {
+            {categories.slice(0, 3).map((cid, index) => {
               const c = categoriesById.get(String(cid));
               const safeKey = `category_${String(cid || '')}_${index}`;
               return (
@@ -92,9 +99,9 @@ export default function AdvisorCard({ advisor, categoriesById, servicesByCat, on
                 </span>
               );
             })}
-            {advisor.categories.length > 3 && (
+            {categories.length > 3 && (
               <span className="inline-flex items-center rounded-full bg-gradient-to-r from-gray-100 to-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 border border-gray-300/50">
-                +{advisor.categories.length - 3} más
+                +{categories.length - 3} más
               </span>
             )}
           </div>

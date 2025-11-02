@@ -1,6 +1,8 @@
 import ScheduleWizard from "@/presentation/components/teacher/asesorias/agendar/ScheduleWizard";
 import { SchedulingHttpRepo } from "@/infrastructure/teachers/asesorias/agendar/SchedulingHttpRepo";
 
+export const dynamic = "force-dynamic";
+
 export default async function Page() {
   const repo = new SchedulingHttpRepo();
   let data: any = {};

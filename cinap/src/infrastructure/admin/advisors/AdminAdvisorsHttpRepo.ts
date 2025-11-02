@@ -24,6 +24,43 @@ async function parse<T>(res: Response): Promise<T> {
   }
 }
 
+function mapToAdvisor(raw: any): Advisor {
+  if (!raw) {
+    return {
+      id: "",
+      basic: { name: "", email: "" },
+      categories: [],
+      services: [],
+      active: false,
+      createdAt: new Date(0).toISOString(),
+    };
+  }
+
+  const basic = raw.basic ?? {
+    name: raw.name ?? "",
+    email: raw.email ?? "",
+  };
+
+  return {
+    id: raw.id ?? "",
+    basic: {
+      name: basic.name ?? "",
+      email: basic.email ?? "",
+    },
+    categories: Array.isArray(raw.categories) ? raw.categories.map(String) : [],
+    services: Array.isArray(raw.services)
+      ? raw.services.map((svc: any) => ({
+          id: svc?.id ?? "",
+          name: svc?.name ?? "",
+          categoryId: svc?.categoryId ?? svc?.category_id ?? "",
+          categoryName: svc?.categoryName ?? svc?.category_name ?? "",
+        }))
+      : [],
+    active: raw.active ?? raw.activo ?? false,
+    createdAt: raw.createdAt ?? raw.created_at ?? new Date(0).toISOString(),
+  };
+}
+
 export class AdminAdvisorsHttpRepo implements AdminAdvisorRepo {
   private baseUrl: string;
 
@@ -56,7 +93,7 @@ export class AdminAdvisorsHttpRepo implements AdminAdvisorRepo {
     const data = await parse<any>(response);
     const items = Array.isArray(data?.items) ? (data.items as Advisor[]) : [];
     return {
-      items,
+      items: items.map(mapToAdvisor),
       page: data?.page ?? page,
       perPage: data?.per_page ?? limit,
       total: data?.total ?? items.length,
@@ -65,6 +102,12 @@ export class AdminAdvisorsHttpRepo implements AdminAdvisorRepo {
   }
 
   async add(request: RegisterAdvisorRequest): Promise<Advisor> {
+    const backendPayload = {
+      name: request.basic.name,
+      email: request.basic.email,
+      service_ids: request.services,
+    };
+
     const response = await fetch(this.baseUrl, {
       method: "POST",
       headers: {
@@ -72,7 +115,7 @@ export class AdminAdvisorsHttpRepo implements AdminAdvisorRepo {
         "Accept": "application/json",
       },
       credentials: "include",
-      body: JSON.stringify(request),
+      body: JSON.stringify(backendPayload),
     });
 
     const raw = await response.text();
@@ -97,10 +140,19 @@ export class AdminAdvisorsHttpRepo implements AdminAdvisorRepo {
       throw new Error("Respuesta inválida del backend al registrar asesor");
     }
 
-    return payload as Advisor;
+    return mapToAdvisor(payload);
   }
 
   async update(id: AdvisorId, changes: UpdateAdvisorRequest): Promise<Advisor> {
+    const backendPayload: Record<string, unknown> = {};
+
+    if (changes.basic) {
+      if (changes.basic.name !== undefined) backendPayload.name = changes.basic.name;
+      if (changes.basic.email !== undefined) backendPayload.email = changes.basic.email;
+    }
+    if (changes.services) backendPayload.service_ids = changes.services;
+    if (changes.active !== undefined) backendPayload.active = changes.active;
+
     const response = await fetch(`${this.baseUrl}/${id}`, {
       method: "PATCH",
       headers: {
@@ -108,14 +160,15 @@ export class AdminAdvisorsHttpRepo implements AdminAdvisorRepo {
         "Accept": "application/json",
       },
       credentials: "include",
-      body: JSON.stringify(changes),
+      body: JSON.stringify(backendPayload),
     });
 
     if (!response.ok) {
       throw new Error((await response.text()) || "No se pudo actualizar el asesor");
     }
 
-    return parse<Advisor>(response);
+    const payload = await parse<any>(response);
+    return mapToAdvisor(payload);
   }
 
   async remove(id: AdvisorId): Promise<Advisor> {
@@ -145,6 +198,6 @@ export class AdminAdvisorsHttpRepo implements AdminAdvisorRepo {
       throw new Error(String(detail));
     }
 
-    return (payload ?? {}) as Advisor;
+    return mapToAdvisor(payload ?? {});
   }
 }

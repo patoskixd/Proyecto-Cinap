@@ -75,12 +75,12 @@ class SqlAlchemyDashboardUpcomingAppointmentsRepository:
         if role == "Asesor":
             if not profile_id:
                 return []
-            base_sql += " AND c.asesor_id = :profile_id"
+            base_sql += " AND c.asesor_id = CAST(:profile_id AS uuid)"
             params["profile_id"] = str(profile_id)
         elif role == "Profesor":
             if not profile_id:
                 return []
-            base_sql += " AND a.docente_id = :profile_id"
+            base_sql += " AND a.docente_id = CAST(:profile_id AS uuid)"
             params["profile_id"] = str(profile_id)
         elif role == "Admin":
             # sin filtro
@@ -148,12 +148,12 @@ class SqlAlchemyDashboardUpcomingAppointmentsRepository:
         if role == "Asesor":
             if not profile_id:
                 return 0
-            base_sql += " AND c.asesor_id = :profile_id"
+            base_sql += " AND c.asesor_id = CAST(:profile_id AS uuid)"
             params["profile_id"] = str(profile_id)
         elif role == "Profesor":
             if not profile_id:
                 return 0
-            base_sql += " AND a.docente_id = :profile_id"
+            base_sql += " AND a.docente_id = CAST(:profile_id AS uuid)"
             params["profile_id"] = str(profile_id)
         elif role == "Admin":
             pass

@@ -77,14 +77,20 @@ export function useReservations() {
           filters: sanitizedFilters,
         };
         const result = await getPage.exec(params);
-        setItems(result.items);
-        setTotal(result.total);
-        setPages(result.pages);
-        setCapabilities(result.capabilities);
+        const safeItems = Array.isArray(result.items) ? result.items : [];
+        setItems(safeItems);
+        setTotal(typeof result.total === "number" ? result.total : safeItems.length);
+        setPages(typeof result.pages === "number" && result.pages > 0 ? result.pages : 1);
+        setCapabilities(
+          result.capabilities ?? {
+            canCancel: false,
+            canConfirm: false,
+          },
+        );
 
         const upcomingTotalPromise =
           kind === "upcoming"
-            ? Promise.resolve(result.total)
+            ? Promise.resolve(typeof result.total === "number" ? result.total : safeItems.length)
             : getPage
                 .exec({ tab: "upcoming", page: 1, limit: 1, filters: sanitizedFilters })
                 .then((r) => r.total)
@@ -92,7 +98,7 @@ export function useReservations() {
 
         const pastTotalPromise =
           kind === "past"
-            ? Promise.resolve(result.total)
+            ? Promise.resolve(typeof result.total === "number" ? result.total : safeItems.length)
             : getPage
                 .exec({ tab: "past", page: 1, limit: 1, filters: sanitizedFilters })
                 .then((r) => r.total)

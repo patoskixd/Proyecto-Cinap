@@ -9,6 +9,7 @@ async function parse<T>(res: Response): Promise<T> {
 export class TeacherConfirmationsHttpRepo {
   async getPending(): Promise<PendingTeacherConfirmation[]> {
     const res = await fetch("/api/teacher/confirmations", {
+//     const res = await fetch("/api/teacher/confirmations/pending", {      (Para producción)
       credentials: "include",
       cache: "no-store",
       headers: { accept: "application/json" },

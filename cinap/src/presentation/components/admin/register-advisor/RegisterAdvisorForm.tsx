@@ -49,6 +49,7 @@ export default function RegisterAdvisorForm() {
         const data = await catalogRepo.listCategories();
         setCategories(data);
       } catch (error) {
+        console.error(error);
         notify("No se pudieron cargar las categorías. Intenta nuevamente.", "error");
       } finally {
         setLoading(false);

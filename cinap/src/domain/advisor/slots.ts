@@ -4,8 +4,8 @@ export type SlotRule = {
   day: WeekdayId;
   startTime: string; 
   endTime: string;  
+  isoDate?: string | null;
 };
-
 
 export type Resource = {
   id: string;
@@ -24,7 +24,7 @@ export type CategoryId = string;
 export type Service = {
   id: string;
   name: string;
-
+  duration: string;
 };
 
 export type CreateSlotsData = {
@@ -44,6 +44,3 @@ export type CreateSlotsInput = {
   roomNotes?: string;
   schedules: SlotRule[];
 };
-
-export type CreateSlotsResult = { createdSlots: number };
-
