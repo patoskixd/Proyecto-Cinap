@@ -1,7 +1,101 @@
 from typing import Optional, List, Dict, Any
+import logging
+import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+
+ALLOWED_ROOM_TYPES = (
+    "SALA",
+    "LAB",
+    "AUDITORIO",
+    "SALA_REUNIONES",
+    "SALA_VIRTUAL",
+    "OFICINA",
+)
+ALLOWED_ROOM_TYPES_SQL = ", ".join(f"'{it}'" for it in ALLOWED_ROOM_TYPES)
+ALLOWED_ROOM_TYPES_ARRAY = f"ARRAY[{ALLOWED_ROOM_TYPES_SQL}]"
+
+logger = logging.getLogger(__name__)
+_room_types_checked = False
+_room_types_lock = asyncio.Lock()
+
+
+async def ensure_room_type_constraints(session: AsyncSession) -> None:
+    """
+    Make sure the DB CHECK constraint and trigger allow every supported room type.
+    Runs once per process (subsequent calls are cheap).
+    """
+    global _room_types_checked
+    if _room_types_checked:
+        return
+
+    async with _room_types_lock:
+        if _room_types_checked:
+            return
+        try:
+            await session.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF EXISTS (
+                            SELECT 1
+                            FROM pg_constraint
+                            WHERE conname = 'recurso_tipo_valido_chk'
+                              AND conrelid = 'public.recurso'::regclass
+                        ) THEN
+                            ALTER TABLE public.recurso DROP CONSTRAINT recurso_tipo_valido_chk;
+                        END IF;
+                    END$$;
+                    """
+                )
+            )
+
+            await session.execute(
+                text(
+                    f"""
+                    ALTER TABLE public.recurso
+                        ADD CONSTRAINT recurso_tipo_valido_chk
+                        CHECK (tipo = ANY ({ALLOWED_ROOM_TYPES_ARRAY}));
+                    """
+                )
+            )
+
+            await session.execute(
+                text(
+                    f"""
+                    CREATE OR REPLACE FUNCTION public.ensure_cupo_recurso_es_espacio() RETURNS trigger
+                        LANGUAGE plpgsql
+                    AS $$
+                    BEGIN
+                      IF NEW.recurso_id IS NULL THEN
+                        RETURN NEW;
+                      END IF;
+
+                      IF NOT EXISTS (
+                        SELECT 1
+                        FROM public.recurso r
+                        WHERE r.id = NEW.recurso_id
+                          AND r.activo = true
+                          AND r.tipo = ANY ({ALLOWED_ROOM_TYPES_ARRAY})
+                      ) THEN
+                        RAISE EXCEPTION 'El recurso % no es un espacio valido o no esta activo.', NEW.recurso_id
+                          USING ERRCODE = 'check_violation';
+                      END IF;
+                      RETURN NEW;
+                    END;
+                    $$;
+                    """
+                )
+            )
+
+            await session.commit()
+            _room_types_checked = True
+        except Exception as exc:  # pragma: no cover - defensive
+            await session.rollback()
+            logger.exception("No se pudieron actualizar las restricciones de tipos de sala: %s", exc)
+            raise
 
 
 def row_to_campus(r) -> Dict[str, Any]:
@@ -359,6 +453,7 @@ class SqlAlchemyAdminLocationRepo:
         return row_to_room(row)
 
     async def create_room(self, name: str, building_id: str, number: str, rtype: str, capacity: int) -> Dict[str, Any]:
+        await ensure_room_type_constraints(self.session)
         rs = await self.session.execute(
             text("""
                 WITH ins AS (
@@ -381,6 +476,7 @@ class SqlAlchemyAdminLocationRepo:
         number: Optional[str], rtype: Optional[str], capacity: Optional[int],
         active: Optional[bool] = None
     ) -> Dict[str, Any]:
+        await ensure_room_type_constraints(self.session)
         if active is not None:
             await self.session.execute(text("""
               UPDATE public.recurso SET activo=:active WHERE id=:id

@@ -17,15 +17,16 @@ export default function FiltersBar({ value, onChange, options }: Props) {
   return (
     <div className="mb-6 rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-yellow-50/20 p-6 shadow-lg backdrop-blur-sm">
       <div className="mb-4">
-        <h3 className="text-lg font-semibold text-blue-900 mb-1">Filtros de búsqueda</h3>
+        <h2 className="text-lg font-semibold text-blue-900 mb-1">Filtros de búsqueda</h2>
         <p className="text-sm text-blue-700">Utiliza los filtros para encontrar los cupos que necesitas</p>
       </div>
       
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {/* Categoría */}
         <div>
-          <label className="mb-2 block text-sm font-semibold text-blue-900">Categoría</label>
+          <label htmlFor="filters-category" className="mb-2 block text-sm font-semibold text-blue-900">Categoría</label>
           <select
+            id="filters-category"
             className="w-full rounded-lg border-2 border-blue-200 bg-white/80 backdrop-blur-sm p-2.5 text-sm text-blue-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200"
             value={value.category}
             onChange={(e) => onChange(prev => ({ ...prev, category: e.target.value }))}
@@ -39,8 +40,9 @@ export default function FiltersBar({ value, onChange, options }: Props) {
 
         {/* Servicio */}
         <div>
-          <label className="mb-2 block text-sm font-semibold text-blue-900">Servicio</label>
+          <label htmlFor="filters-service" className="mb-2 block text-sm font-semibold text-blue-900">Servicio</label>
           <select
+            id="filters-service"
             className="w-full rounded-lg border-2 border-blue-200 bg-white/80 backdrop-blur-sm p-2.5 text-sm text-blue-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200"
             value={value.service}
             onChange={(e) => onChange(prev => ({ ...prev, service: e.target.value }))}
@@ -54,8 +56,9 @@ export default function FiltersBar({ value, onChange, options }: Props) {
 
         {/* Campus */}
         <div>
-          <label className="mb-2 block text-sm font-semibold text-blue-900">Campus</label>
+          <label htmlFor="filters-campus" className="mb-2 block text-sm font-semibold text-blue-900">Campus</label>
           <select
+            id="filters-campus"
             className="w-full rounded-lg border-2 border-blue-200 bg-white/80 backdrop-blur-sm p-2.5 text-sm text-blue-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200"
             value={value.campus}
             onChange={(e) => onChange(prev => ({ ...prev, campus: e.target.value }))}
@@ -69,8 +72,9 @@ export default function FiltersBar({ value, onChange, options }: Props) {
 
         {/* Estado */}
         <div>
-          <label className="mb-2 block text-sm font-semibold text-blue-900">Estado</label>
+          <label htmlFor="filters-status" className="mb-2 block text-sm font-semibold text-blue-900">Estado</label>
           <select
+            id="filters-status"
             className="w-full rounded-lg border-2 border-blue-200 bg-white/80 backdrop-blur-sm p-2.5 text-sm text-blue-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200"
             value={value.status}
             onChange={(e) => onChange(prev => ({ ...prev, status: e.target.value as Filters["status"] }))}
@@ -86,8 +90,9 @@ export default function FiltersBar({ value, onChange, options }: Props) {
 
         {/* Fecha */}
         <div>
-          <label className="mb-2 block text-sm font-semibold text-blue-900">Fecha</label>
+          <label htmlFor="filters-date" className="mb-2 block text-sm font-semibold text-blue-900">Fecha</label>
           <input
+            id="filters-date"
             type="date"
             min={todayLocalISO()}
             className="w-full rounded-lg border-2 border-blue-200 bg-white/80 backdrop-blur-sm p-2.5 text-sm text-blue-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200"

@@ -88,6 +88,14 @@ Para iniciar el backend en desarrollo:
 uv run uvicorn app.frameworks_drivers.web.fastapi_app:app --port 8000
 ```
 
+Si necesitas exponer únicamente los webhooks (Telegram / Google Calendar) en otro puerto o detrás de un proxy inverso:
+
+```bash
+uv run uvicorn app.frameworks_drivers.web.fastapi_app:webhook_app --port 8011
+```
+
+Apunta tu proxy o túnel público (por ejemplo `https://asesorias.webhook.inf.uct.cl`) al segundo servicio para que los webhooks de terceros lleguen correctamente.
+
 En producción, se recomienda usar un servidor ASGI como **Uvicorn + Gunicorn** o **Hypercorn**, junto con un **proxy reverso** (Nginx/Caddy).
 
 ---

@@ -2,14 +2,17 @@ import { SchedulingRepo } from "@/application/teacher/asesorias/agendar/ports/Sc
 import { FindSlotsInput, FoundSlot, ReserveAsesoriaInput, CreateAsesoriaOut } from "@/domain/teacher/scheduling";
 
 export class SchedulingHttpRepo implements SchedulingRepo {
+  private readonly baseAsesoriasUrl = "/api/asesorias";
+  private readonly baseSlotsUrl = "/api/slots";
+
   async findSlots(input: FindSlotsInput): Promise<FoundSlot[]> {
     const isServer = typeof window === "undefined";
-    let url = "/api/advisor/slots/find";
+    let url = `${this.baseSlotsUrl}/find`;
     const init: RequestInit = {
       method: "POST",
       headers: { "content-type": "application/json" },
       credentials: "include",
-      body: JSON.stringify(input ?? {}),
+      body: JSON.stringify({ ...(input ?? {}), tz: "America/Santiago" }),
       cache: "no-store",
     };
 
@@ -29,7 +32,7 @@ export class SchedulingHttpRepo implements SchedulingRepo {
 
   async reserve(input: ReserveAsesoriaInput): Promise<CreateAsesoriaOut> {
     const isServer = typeof window === "undefined";
-    let url = "/api/teacher/advice";
+    let url = this.baseAsesoriasUrl;
     const init: RequestInit = {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -61,7 +64,7 @@ export class SchedulingHttpRepo implements SchedulingRepo {
     times: string[];
   }> {
     const isServer = typeof window === "undefined";
-    let url = "/api/teacher/advice/create-data";
+    let url = `${this.baseAsesoriasUrl}/create-data`;
     const init: RequestInit = {
       method: "GET",
       credentials: "include",

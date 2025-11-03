@@ -77,12 +77,23 @@ export default function CreateSlotsWizard() {
 
   const [showSuccess, setShowSuccess] = useState(false);
   const [createdCount, setCreatedCount] = useState<number>(0);
+  const [skippedCount, setSkippedCount] = useState<number>(0);
 
   const submit = async () => {
-  if (!serviceId || !recursoId) return;
+    if (!serviceId || !recursoId) return;
 
     const repo = new SlotsHttpRepo();
     const uc = new CreateSlots(repo);
+    const resourceLabel = selectedResource
+      ? [selectedResource.campus, selectedResource.building].filter(Boolean).join(" — ")
+      : "";
+    const roomLabel = selectedResource
+      ? [selectedResource.alias, selectedResource.number].filter(Boolean).join(" — ")
+      : "";
+
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[CreateSlotsWizard] schedules", normalized.merged);
+    }
 
     try {
       const res = await uc.exec({
@@ -90,13 +101,14 @@ export default function CreateSlotsWizard() {
         categoryId: categoryId!,
         serviceId,
         recursoId,
-        location: "",
-        room: "",
+        location: resourceLabel,
+        room: roomLabel,
         roomNotes,
         schedules: normalized.merged as unknown as SlotRule[],
       } as any);
 
       setCreatedCount(res.createdSlots);
+      setSkippedCount(res.skipped ?? 0);
       setShowSuccess(true);
 
     } catch (error: unknown) {
@@ -198,7 +210,7 @@ export default function CreateSlotsWizard() {
         )}
 
         <FooterNav step={step} canNext={!!canNext} prev={prev} next={next} submit={submit} />
-        <SuccessModal open={showSuccess} total={createdCount} onClose={() => setShowSuccess(false)} />
+        <SuccessModal open={showSuccess} total={createdCount} skipped={skippedCount} onClose={() => setShowSuccess(false)} />
         <ErrorModal open={showError} message={errorMsg} conflicts={errorConflicts} onClose={() => setShowError(false)}/>
 
       </section>

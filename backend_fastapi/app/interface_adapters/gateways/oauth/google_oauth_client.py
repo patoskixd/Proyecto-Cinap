@@ -7,11 +7,22 @@ class GoogleOAuthClient(GoogleOAuthPort):
     TOKEN_URL = "https://oauth2.googleapis.com/token"
     USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 
-    def __init__(self, *, client_id:str, client_secret:str, scope:str, timeout:int=20):
+    def __init__(
+        self,
+        *,
+        client_id: str,
+        client_secret: str,
+        scope: str,
+        timeout: int = 20,
+        device_id: str | None = None,
+        device_name: str | None = None,
+    ):
         self.client_id = client_id
         self.client_secret = client_secret
         self.scope = scope
         self.timeout = timeout
+        self.device_id = device_id or None
+        self.device_name = device_name or None
 
     def build_authorize_url(self, *, redirect_uri:str, state:str, access_type:str="offline", prompt:str="consent") -> str:
         params = {
@@ -24,6 +35,9 @@ class GoogleOAuthClient(GoogleOAuthPort):
             "prompt": prompt,
             "include_granted_scopes": "true",
         }
+        if self.device_id and self.device_name:
+            params["device_id"] = self.device_id
+            params["device_name"] = self.device_name
         return f"{self.AUTH_URL}?{urlencode(params)}"
 
     async def exchange_code(self, code:str, redirect_uri:str) -> dict:

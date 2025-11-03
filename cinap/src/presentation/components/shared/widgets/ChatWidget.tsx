@@ -199,6 +199,8 @@ export default function ChatWidget() {
       <button
         type="button"
         aria-label={isOpen ? "Cerrar chat" : "Abrir chat"}
+        aria-controls="cinap-chat-panel"
+        aria-expanded={isOpen}
         onClick={toggleChat}
         className={classNames(
           "relative flex h-16 w-16 items-center justify-center rounded-full text-white shadow-xl transition-all duration-300 transform",
@@ -233,32 +235,31 @@ export default function ChatWidget() {
       </button>
 
       {/* Backdrop y Panel */}
-      <div
-        aria-hidden={!isOpen}
-        className={classNames("fixed inset-0 z-40 md:static md:z-auto", isOpen ? "pointer-events-auto" : "pointer-events-none")}
-      >
-        {/* Backdrop */}
-        <div
-          onClick={(e) => { e.stopPropagation(); closeChat(); }}
-          className={classNames("md:hidden fixed inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity", isOpen ? "opacity-100" : "opacity-0")}
-        />
+      {isOpen && (
+        <div className="fixed inset-0 z-40 pointer-events-auto md:static md:z-auto">
+          {/* Backdrop */}
+          <div
+            onClick={(e) => { e.stopPropagation(); closeChat(); }}
+            className="fixed inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity md:hidden"
+          />
 
-        {/* Panel */}
-        <div
-          ref={panelRef}
-          role="dialog"
-          aria-label="Chat CINAP"
-          className={classNames(
-            "fixed right-5 bottom-24 w-[380px] max-w-[92vw] h-[560px] rounded-3xl bg-white shadow-2xl ring-2 ring-blue-100 backdrop-blur-sm",
-            "md:translate-y-0 md:scale-100 transition-all duration-300 ease-out",
-            isOpen ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-4 scale-[0.95]",
-            "md:bottom-24 md:right-5",
-            "sm:max-md:bottom-0 sm:max-md:right-0 sm:max-md:left-0 sm:max-md:top-0 sm:max-md:h-screen sm:max-md:w-screen sm:max-md:rounded-none",
-            "pointer-events-auto overflow-hidden"
-          )}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex h-full flex-col overflow-hidden rounded-3xl sm:max-md:rounded-none">
+          {/* Panel */}
+          <div
+            ref={panelRef}
+            id="cinap-chat-panel"
+            role="dialog"
+            aria-label="Chat CINAP"
+            aria-modal="true"
+            className={classNames(
+              "fixed inset-x-4 bottom-4 top-auto h-[560px] max-h-[80vh] rounded-2xl bg-white shadow-2xl ring-2 ring-blue-100 backdrop-blur-sm",
+              "sm:inset-x-6 sm:bottom-6 sm:max-h-[82vh]",
+              "md:inset-x-auto md:left-auto md:right-5 md:bottom-24 md:h-[560px] md:max-h-[85vh] md:w-[380px] md:max-w-[min(380px,_90vw)] md:rounded-3xl",
+              "transition-all duration-300 ease-out opacity-100 translate-y-0 scale-100 md:translate-y-0",
+              "pointer-events-auto overflow-hidden"
+            )}
+            onClick={(e) => e.stopPropagation()}
+          >
+          <div className="flex h-full flex-col overflow-hidden md:rounded-3xl">
             {/* Header */}
             <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 px-6 py-5 text-white shadow-lg">
               <div className="flex items-center gap-4">
@@ -341,8 +342,9 @@ export default function ChatWidget() {
               </p>
             </div>
           </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -1,24 +1,56 @@
 "use client";
+import type { ProfileSummary } from "@/application/profile/ports/ProfileRepo";
 import { useProfile } from "./hooks/useProfile";
 import { useTelegram } from "./hooks/useTelegram";
 
-export default function ProfileScreen() {
-  const { data, error, loading } = useProfile();
-  const { state: tg, busy, link, unlink } = useTelegram();
+function ProfileSkeleton() {
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/70 shadow-2xl backdrop-blur-xl">
+          <div className="relative h-40 bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500">
+            <div className="absolute inset-0 bg-black/10" />
+          </div>
+          <div className="pt-24 pb-10 px-8">
+            <div className="-mt-32 mb-10 h-24 w-24 rounded-full border-4 border-white bg-gradient-to-br from-yellow-200 to-yellow-400 shadow-xl" />
+            <div className="space-y-4">
+              <div className="h-8 w-64 rounded-full bg-slate-200 animate-pulse" />
+              <div className="h-4 w-48 rounded-full bg-slate-200 animate-pulse" />
+              <div className="flex flex-wrap gap-3 pt-4">
+                {[1, 2].map((item) => (
+                  <div key={item} className="h-8 w-32 rounded-full bg-slate-200 animate-pulse" />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="flex items-center space-x-2">
-          <div className="w-4 h-4 bg-blue-500 rounded-full animate-pulse"></div>
-          <div className="w-4 h-4 bg-blue-500 rounded-full animate-pulse" style={{animationDelay: '0.1s'}}></div>
-          <div className="w-4 h-4 bg-blue-500 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
+        <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((el) => (
+            <div
+              key={el}
+              className="rounded-3xl border border-white/20 bg-white/70 p-8 shadow-xl backdrop-blur animate-pulse"
+            >
+              <div className="mb-6 h-10 w-10 rounded-2xl bg-slate-200" />
+              <div className="mb-4 h-9 w-24 rounded-full bg-slate-200" />
+              <div className="h-4 w-32 rounded-full bg-slate-200" />
+            </div>
+          ))}
         </div>
       </div>
-    );
+    </div>
+  );
+}
+
+export default function ProfileScreen({ initialProfile }: { initialProfile: ProfileSummary | null }) {
+  const { data, error, loading } = useProfile(initialProfile);
+  const { state: tg, busy, link, unlink } = useTelegram();
+
+  if (loading && !data) {
+    return <ProfileSkeleton />;
   }
 
-  if (error || !data) {
+  if (!data) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="bg-red-50 border border-red-200 rounded-xl p-6 shadow-lg">
@@ -44,6 +76,11 @@ export default function ProfileScreen() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {error && (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-medium text-amber-800 shadow">
+            {error}
+          </div>
+        )}
         {/* Header con avatar */}
         <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden">
           {/* Banner superior */}

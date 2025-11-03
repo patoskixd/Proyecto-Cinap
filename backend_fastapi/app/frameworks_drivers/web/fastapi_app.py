@@ -10,10 +10,22 @@ import asyncio
 import logging
 
 from app.frameworks_drivers.config.settings import (
-    API_DEBUG, CORS_ORIGINS,
-    GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI,
-    JWT_SECRET, JWT_ISSUER, JWT_MINUTES, FRONTEND_ORIGIN, TEACHER_ROLE_ID,
-    MCP_COMMAND, MCP_ARGS, MCP_CWD, WEBHOOK_PUBLIC_URL,
+    API_DEBUG,
+    CORS_ORIGINS,
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    GOOGLE_REDIRECT_URI,
+    GOOGLE_DEVICE_ID,
+    GOOGLE_DEVICE_NAME,
+    JWT_SECRET,
+    JWT_ISSUER,
+    JWT_MINUTES,
+    FRONTEND_ORIGIN,
+    TEACHER_ROLE_ID,
+    MCP_COMMAND,
+    MCP_ARGS,
+    MCP_CWD,
+    WEBHOOK_PUBLIC_URL,
 )
 from sqlalchemy import delete
 from app.interface_adapters.orm.models_scheduling import CupoModel, EstadoCupo
@@ -66,7 +78,6 @@ def require_auth(request: Request):
 
 logger = logging.getLogger(__name__)
 
-
 async def _reset_google_webhook_cache(redis: Redis | None, *, webhook_url: str) -> None:
     """
     Si la URL pública del webhook cambió, elimina los registros cacheados de
@@ -117,69 +128,87 @@ def _build_calendar_client(session: AsyncSession) -> GoogleCalendarClient:
         invalidate_refresh_token_by_usuario_id=repo.invalidate_refresh_token,
     )
 
-@asynccontextmanager
-async def lifespan(app):
-    await container.startup()
-    if getattr(container, "graph_agent", None) and hasattr(container.graph_agent, "set_confirm_store"):
+def make_lifespan(*, start_scheduler: bool, auto_configure_google: bool, configure_telegram: bool):
+    @asynccontextmanager
+    async def lifespan(app):
+        await container.startup()
+        if getattr(container, "graph_agent", None) and hasattr(container.graph_agent, "set_confirm_store"):
             container.graph_agent.set_confirm_store(confirm_store)
 
-    await _reset_google_webhook_cache(container.redis, webhook_url=WEBHOOK_PUBLIC_URL)
+        await _reset_google_webhook_cache(container.redis, webhook_url=WEBHOOK_PUBLIC_URL)
 
-    # Webhook de Telegram
-    try:
-        await setup_telegram_webhook(WEBHOOK_PUBLIC_URL)
-    except Exception as e:
-        logger.exception("No se pudo configurar webhook de Telegram: %r", e)
+        if configure_telegram:
+            try:
+                await setup_telegram_webhook(WEBHOOK_PUBLIC_URL)
+            except Exception as e:
+                logger.exception("No se pudo configurar webhook de Telegram: %r", e)
 
-    # Webhooks de Google Calendar para asesores y docentes
-    try:
-        if not WEBHOOK_PUBLIC_URL:
-            logger.warning("WEBHOOK_PUBLIC_URL no definido; se omite auto-configuración de Google Calendar")
-        else:
-            async with AsyncSessionLocal() as session:
-                calendar_repo = SqlAlchemyCalendarEventsRepo(session, cache=container.cache)
-                cal_client = _build_calendar_client(session)
-                auto_cfg = AutoConfigureWebhook(
-                    cal=cal_client,
-                    repo=calendar_repo,
-                    webhook_public_url=WEBHOOK_PUBLIC_URL,
-                )
+        if auto_configure_google:
+            try:
+                if not WEBHOOK_PUBLIC_URL:
+                    logger.warning("WEBHOOK_PUBLIC_URL no definido; se omite auto-configuración de Google Calendar")
+                else:
+                    async with AsyncSessionLocal() as session:
+                        calendar_repo = SqlAlchemyCalendarEventsRepo(session, cache=container.cache)
+                        cal_client = _build_calendar_client(session)
+                        auto_cfg = AutoConfigureWebhook(
+                            cal=cal_client,
+                            repo=calendar_repo,
+                            webhook_public_url=WEBHOOK_PUBLIC_URL,
+                        )
 
-                advisors_result = await auto_cfg.configure_for_all_advisors()
-                teachers_result = await auto_cfg.configure_for_all_teachers()
+                        advisors_result = await auto_cfg.configure_for_all_advisors()
+                        teachers_result = await auto_cfg.configure_for_all_teachers()
 
-                logger.warning(
-                    "Auto-config webhooks Google (asesores): nuevos=%s, existentes=%s, omitidos=%s, errores=%s",
-                    advisors_result.get("configured"),
-                    advisors_result.get("already_configured"),
-                    advisors_result.get("skipped"),
-                    advisors_result.get("errors"),
-                )
-                logger.warning(
-                    "Auto-config webhooks Google (docentes): nuevos=%s, existentes=%s, omitidos=%s, errores=%s",
-                    teachers_result.get("configured"),
-                    teachers_result.get("already_configured"),
-                    teachers_result.get("skipped"),
-                    teachers_result.get("errors"),
-                )
-    except Exception as e:
-        logger.exception("No se pudo configurar los webhooks de Google Calendar: %r", e)
+                        logger.warning(
+                            "Auto-config webhooks Google (asesores): nuevos=%s, existentes=%s, omitidos=%s, errores=%s",
+                            advisors_result.get("configured"),
+                            advisors_result.get("already_configured"),
+                            advisors_result.get("skipped"),
+                            advisors_result.get("errors"),
+                        )
+                        logger.warning(
+                            "Auto-config webhooks Google (docentes): nuevos=%s, existentes=%s, omitidos=%s, errores=%s",
+                            teachers_result.get("configured"),
+                            teachers_result.get("already_configured"),
+                            teachers_result.get("skipped"),
+                            teachers_result.get("errors"),
+                        )
+            except Exception as e:
+                logger.exception("No se pudo configurar los webhooks de Google Calendar: %r", e)
 
-    scheduler.start()
-    try:
-        yield
-    except asyncio.CancelledError:
-        pass
-    finally:
+        if start_scheduler:
+            scheduler.start()
         try:
-            scheduler.shutdown(wait=False)
-            await asyncio.shield(container.shutdown())
+            yield
         except asyncio.CancelledError:
             pass
-        except Exception as e:
-            logger.exception("Error durante shutdown: %r", e)
+        finally:
+            if start_scheduler:
+                try:
+                    scheduler.shutdown(wait=False)
+                except asyncio.CancelledError:
+                    pass
+                except Exception as e:
+                    logger.exception("Error durante shutdown del scheduler: %r", e)
+            try:
+                await asyncio.shield(container.shutdown())
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.exception("Error durante shutdown del container: %r", e)
 
-app = FastAPI(title="MCP Assistant", debug=API_DEBUG, lifespan=lifespan)
+    return lifespan
+
+app = FastAPI(
+    title="MCP Assistant",
+    debug=API_DEBUG,
+    lifespan=make_lifespan(
+        start_scheduler=True,
+        auto_configure_google=True,
+        configure_telegram=True,
+    ),
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -195,6 +224,8 @@ container = Container(
     google_client_id=GOOGLE_CLIENT_ID,
     google_client_secret=GOOGLE_CLIENT_SECRET,
     google_redirect_uri=GOOGLE_REDIRECT_URI,
+    google_device_id=GOOGLE_DEVICE_ID,
+    google_device_name=GOOGLE_DEVICE_NAME,
     jwt_secret=JWT_SECRET,
     jwt_issuer=JWT_ISSUER,
     jwt_minutes=JWT_MINUTES,
@@ -373,12 +404,15 @@ asesorias_router = make_asesorias_router(
 )
 app.include_router(asesorias_router)
 
+def _make_telegram_router():
+    return make_telegram_router(
+        cache=container.cache,
+        agent_getter=lambda: container.graph_agent,
+        mcp_client_getter=lambda: container.db_mcp,
+    )
 
-telegram_router = make_telegram_router(
-    cache=container.cache,
-    agent_getter=lambda: container.graph_agent,
-    mcp_client_getter=lambda: container.db_mcp
-)
+
+telegram_router = _make_telegram_router()
 app.telegram_router = telegram_router
 app.include_router(telegram_router)
 
@@ -429,13 +463,38 @@ calendar_router = make_calendar_router(
 app.include_router(calendar_router)
 
 
-google_webhook_router = make_google_calendar_webhook_router(
-    get_session_dep=get_session,
-    cache=container.cache,
-    cal_client_factory=_build_calendar_client,
-)
+def _make_google_calendar_webhook_router():
+    return make_google_calendar_webhook_router(
+        get_session_dep=get_session,
+        cache=container.cache,
+        cal_client_factory=_build_calendar_client,
+    )
+
+
+google_webhook_router = _make_google_calendar_webhook_router()
 
 app.include_router(google_webhook_router)
+
+webhook_app = FastAPI(
+    title="CINAP Webhooks",
+    debug=API_DEBUG,
+    lifespan=make_lifespan(
+        start_scheduler=False,
+        auto_configure_google=False,
+        configure_telegram=True,
+    ),
+)
+
+webhook_app.add_middleware(JSONTimingMiddleware)
+
+webhook_telegram_router = _make_telegram_router()
+webhook_app.telegram_router = webhook_telegram_router
+webhook_app.include_router(webhook_telegram_router)
+webhook_app.include_router(_make_google_calendar_webhook_router())
+
+@webhook_app.get("/api/health")
+async def webhook_health():
+    return {"ok": True}
 
 teacher_confirmations_router = make_teacher_confirmations_router(
     get_session_dep=get_session,

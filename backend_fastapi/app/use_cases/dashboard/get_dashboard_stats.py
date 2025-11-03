@@ -37,6 +37,7 @@ class GetDashboardDataUseCase:
                 "nextAppointments":     next_appointments,
                 "upcomingTotal":        upcoming_total,
                 "adminMetrics":         admin_metrics,
+                "isCalendarConnected":  False,
             }
 
         elif role in ("Asesor", "Profesor"):
@@ -48,6 +49,7 @@ class GetDashboardDataUseCase:
                 "pendingCount": personal.get("pendingCount", 0),
                 "nextAppointments": next_appointments,
                 "upcomingTotal": upcoming_total,
+                "isCalendarConnected": personal.get("calendarConnected", False),
             }
 
         return {
@@ -55,4 +57,5 @@ class GetDashboardDataUseCase:
             "pendingCount": 0,
             "nextAppointments": [],
             "upcomingTotal": 0,
+            "isCalendarConnected": False,
         }

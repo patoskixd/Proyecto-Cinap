@@ -1,11 +1,19 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "@/presentation/styles/globals.css";
 import Navbar from "@/presentation/components/shared/layout/Navbar";
 import Footer from "@/presentation/components/shared/layout/Footer";
 
 export const metadata: Metadata = {
-  title: "CINAP UCT",
-  description: "IA para reservar, modificar y cancelar asesorías docentes.",
+  title: {
+    default: "CINAP UCT",
+    template: "%s | CINAP UCT",
+  },
+  description: "IA para reservar, modificar y cancelar asesorias docentes.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -19,4 +27,3 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   );
 }
-

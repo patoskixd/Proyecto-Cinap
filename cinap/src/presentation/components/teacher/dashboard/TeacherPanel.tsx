@@ -130,7 +130,7 @@ export default function TeacherPanel() {
                     {/* Footer notice */}
                     <div className="mt-4 rounded-lg bg-orange-50 px-3 py-2.5 border border-orange-200">
                       <p className="text-xs font-medium text-orange-800">
-                        Pendiente de confirmación por correo electrónico. Por favor revisa tu bandeja de entrada.
+                        Pendiente de confirmación. Puedes confirmar tu solicitud desde el correo electrónico o directamente en el apartado “Ver tus asesorías” dentro de la plataforma.
                       </p>
                     </div>
                   </li>

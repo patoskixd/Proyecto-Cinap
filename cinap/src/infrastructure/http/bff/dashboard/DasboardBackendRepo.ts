@@ -108,6 +108,9 @@ export class DashboardBackendRepo implements DashboardRepo {
 
     if (!backend.success) throw new Error("Error en la respuesta del servidor");
     const data = backend.data ?? {};
+    const calendarConnected = Boolean(
+      (data as any)?.isCalendarConnected ?? (data as any)?.calendarConnected ?? false
+    );
 
     const roleNorm = (backend.role ?? role ?? "").toString().trim().toLowerCase();
     const isAdmin = roleNorm === "admin";
@@ -133,7 +136,7 @@ export class DashboardBackendRepo implements DashboardRepo {
         upcoming,
         monthCount: adminMetrics.appointmentsThisMonth,
         pendingCount: adminMetrics.pendingCount,
-        isCalendarConnected: true,
+        isCalendarConnected: calendarConnected,
         adminMetrics,
         // Mantén el total que viene del back; sólo si no viene, cae al length
         upcomingTotal: typeof data.upcomingTotal === "number" ? data.upcomingTotal : upcoming.length,
@@ -145,7 +148,7 @@ export class DashboardBackendRepo implements DashboardRepo {
       upcoming,
       monthCount: data.monthCount ?? 0,
       pendingCount: data.pendingCount ?? 0,
-      isCalendarConnected: true,
+      isCalendarConnected: calendarConnected,
       upcomingTotal: typeof data.upcomingTotal === "number" ? data.upcomingTotal : upcoming.length,
     };
   }

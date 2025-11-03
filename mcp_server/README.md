@@ -1,6 +1,6 @@
 # Servidor MCP
 
-El **Servidor MCP** es el encargado de la integración entre el **LLM** y **Google Calendar**.  
+Este **Servidor MCP** es el encargado de la integración entre el **LLM** y **Google Calendar**.  
 Expone un conjunto de *tools* que permiten crear, listar, actualizar y eliminar eventos de calendario desde la conversación con el asistente.
 
 ---
@@ -32,11 +32,11 @@ cp .env.example .env
 Variables necesarias:
 
 ```
-GOOGLE_CREDENTIALS_FILE=credentials.json
-GOOGLE_TOKEN_FILE=token.json
 GOOGLE_HEADLESS=false
 DEFAULT_TZ=America/Santiago
 DEFAULT_CALENDAR_ID=primary
+GOOGLE_CLIENT_ID=(TU_ID_APP)
+GOOGLE_CLIENT_SECRET=(TU_SECRET_APP)
 ```
 
 ---
@@ -55,12 +55,9 @@ uv run --with mcp mcp dev main.py
 
 El servidor MCP implementa las siguientes herramientas:
 
-- **event_create** → Crea un evento en Google Calendar.  
-- **event_list** → Lista eventos dentro de un rango de fechas.  
-- **event_get** → Obtiene un evento por ID.  
-- **event_find** → Busca un evento específico por título en un rango de fechas. 
-- **event_update** → Modifica un evento existente (fecha, hora, título, descripción, asistentes).  
-- **event_delete** → Elimina un evento por ID o título.  
+- **event_create** → Crea un evento en Google Calendar con soporte de asistentes.
+- **event_delete_by_id** → Elimina un evento existente de Google Calendar por su event_id (Google).
+- **event_patch_attendees** → Actualiza el estado de los asistentes (por ejemplo, cuando un docente confirma o cancela su asistencia).
 
 ---
 

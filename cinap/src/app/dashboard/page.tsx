@@ -12,7 +12,6 @@ import { useAuth } from "@/presentation/components/auth/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-
 export default function DashboardPage() {
   const router = useRouter();
   const { me, mounted } = useAuth();
@@ -21,10 +20,9 @@ export default function DashboardPage() {
   const user = isAuthed ? me.user : undefined;
 
   const hasValidRole = user?.role && user.role.trim() !== "";
-  const role = hasValidRole ? normalizeRole(user.role) as Role : null;
+  const normalizedRole = hasValidRole ? (normalizeRole(user.role) as Role) : null;
 
-  // Usar el hook para obtener datos del dashboard
-  const { data, loading, error } = useDashboardData(role, user?.id);
+  const { data, loading, error } = useDashboardData(normalizedRole, user?.id);
 
   useEffect(() => {
     if (mounted && !isAuthed) {
@@ -32,43 +30,96 @@ export default function DashboardPage() {
     }
   }, [mounted, isAuthed, router]);
 
-  if (!mounted) return null;
-  if (!isAuthed) return null;
-  if (loading) return <div className="flex justify-center items-center min-h-screen">Cargando dashboard...</div>;
-  if (!hasValidRole) return <div className="flex justify-center items-center min-h-screen">Cargando...</div>;
-  if (error) return <div className="flex justify-center items-center min-h-screen text-red-600">{error}</div>;
+  if (!mounted || !isAuthed) {
+    return null;
+  }
 
-  // En este punto, role está garantizado como válido por la validación hasValidRole
-  const validRole = role as Role;
+  const validRole = hasValidRole ? normalizedRole : null;
+  const showSkeleton = loading || !validRole || !data;
+  const showError = Boolean(error);
 
   const headers = {
-    teacher: { title: "Panel Docente",      subtitle: "Tus próximas asesorías y recomendaciones", ctaHref: "/profesor/asesorias/agendar", ctaLabel: "Agendar asesoría" },
-    advisor: { title: "Panel Asesor",       subtitle: "Gestiona cupos y solicitudes",             ctaHref: "/asesor/crear-cupos",     ctaLabel: "Abrir cupo" },
-    admin:   { title: "Panel Administrador", subtitle: "Visión general del sistema",              ctaHref: "/admin/registrar-asesor",  ctaLabel: "Registrar asesor" },
+    teacher: {
+      title: "Panel Docente",
+      subtitle: "Tus proximas asesorias y recomendaciones",
+      ctaHref: "/profesor/asesorias/agendar",
+      ctaLabel: "Agendar asesoria",
+    },
+    advisor: {
+      title: "Panel Asesor",
+      subtitle: "Gestiona cupos y solicitudes",
+      ctaHref: "/asesor/crear-cupos",
+      ctaLabel: "Abrir cupo",
+    },
+    admin: {
+      title: "Panel Administrador",
+      subtitle: "Vision general del sistema",
+      ctaHref: "/admin/registrar-asesor",
+      ctaLabel: "Registrar asesor",
+    },
   } as const;
 
+  const shouldRenderChat = !showSkeleton && !showError && validRole && validRole !== "admin";
+
   return (
-    <div className="mx-auto max-w-[1200px] px-6 py-8">
-      <DashboardHeader
-        title={headers[validRole].title}
-        subtitle={headers[validRole].subtitle}
-        ctaHref={headers[validRole].ctaHref}
-        ctaLabel={headers[validRole].ctaLabel}
-      />
+    <main className="min-h-screen bg-slate-50">
+      <div className="mx-auto max-w-[1200px] px-6 py-8">
+        {showError ? (
+          <DashboardError message={error ?? "Ocurrio un error al cargar el dashboard."} />
+        ) : showSkeleton ? (
+          <DashboardSkeleton />
+        ) : (
+          <>
+            <DashboardHeader
+              title={headers[validRole].title}
+              subtitle={headers[validRole].subtitle}
+              ctaHref={headers[validRole].ctaHref}
+              ctaLabel={headers[validRole].ctaLabel}
+            />
 
-      <StatusCards
-        role={validRole}
-        isCalendarConnected={data.isCalendarConnected}
-        monthCount={data.monthCount}
-        pendingCount={data.pendingCount}
-        adminMetrics={data.adminMetrics}
-      />
+            <StatusCards
+              role={validRole}
+              isCalendarConnected={data.isCalendarConnected}
+              monthCount={data.monthCount}
+              pendingCount={data.pendingCount}
+              adminMetrics={data.adminMetrics}
+            />
 
-      <RoleSections role={validRole} data={data} />
+            <RoleSections role={validRole} data={data} />
+          </>
+        )}
+      </div>
 
-      {validRole !== "admin" && <ChatWidget />}
+      {shouldRenderChat && <ChatWidget />}
+    </main>
+  );
+}
 
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-8 animate-pulse" aria-hidden="true">
+      <div className="h-40 rounded-2xl bg-slate-200" />
 
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="h-40 rounded-2xl bg-slate-200" />
+        <div className="h-40 rounded-2xl bg-slate-200" />
+        <div className="h-40 rounded-2xl bg-slate-200" />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
+        <div className="h-[420px] rounded-2xl bg-slate-200" />
+        <div className="h-[420px] rounded-2xl bg-slate-200" />
+      </div>
+    </div>
+  );
+}
+
+function DashboardError({ message }: { message: string }) {
+  return (
+    <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700 shadow-sm">
+      <h2 className="text-lg font-semibold text-red-800">No pudimos cargar el dashboard</h2>
+      <p className="mt-2 text-sm">{message}</p>
+      <p className="mt-4 text-xs text-red-600">Intenta recargar la pagina o vuelve mas tarde.</p>
     </div>
   );
 }

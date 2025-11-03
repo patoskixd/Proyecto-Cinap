@@ -1,6 +1,6 @@
 import { httpGetCached, httpPost } from "@/infrastructure/http/client";
-import type { SlotsRepo } from "@/application/advisor/slots/ports/SlotsRepo";
-import type { CreateSlotsData, CreateSlotsResult } from "@/domain/advisor/slots";
+import type { SlotsRepo, CreateSlotsResult } from "@/application/advisor/slots/ports/SlotsRepo";
+import type { CreateSlotsData } from "@/domain/advisor/slots";
 
 type UIRulePayload = {
   day: string;
@@ -11,7 +11,7 @@ type UIRulePayload = {
 
 export class SlotsHttpRepo implements SlotsRepo {
   async getCreateSlotsData(): Promise<CreateSlotsData> {
-    return httpGetCached<CreateSlotsData>("advisor/slots/create-data", { ttlMs: 60_000 });
+    return httpGetCached<CreateSlotsData>("/slots/create-data", { ttlMs: 60_000 });
   }
   
   async createSlots(input: {
@@ -37,10 +37,20 @@ export class SlotsHttpRepo implements SlotsRepo {
       })),
     };
 
-    const res = await httpPost<{ createdSlots: number }>("advisor/slots/open", payload);
-    return { createdSlots: res.createdSlots ?? 0 };
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[SlotsHttpRepo] createSlots payload", payload);
+    }
+
+    const res = await httpPost<{ createdSlots: number; skipped?: number }>("/slots/open", payload);
+
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[SlotsHttpRepo] createSlots response", res);
+    }
+
+    const result: CreateSlotsResult = { createdSlots: res.createdSlots ?? 0 };
+    if (typeof res.skipped === "number") {
+      result.skipped = res.skipped;
+    }
+    return result;
   }
 }
-
-
-

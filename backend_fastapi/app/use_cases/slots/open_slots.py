@@ -52,7 +52,8 @@ class OpenSlotsUseCase:
             raise ValueError("El asesor no está asociado al servicio seleccionado.")
 
         dur = await self.repo.get_servicio_minutes(inp.service_id)
-        notas = " / ".join(x for x in [inp.location.strip(), inp.room.strip(), (inp.roomNotes or "").strip()] if x) or None
+        notas_text = (inp.roomNotes or "").strip()
+        notas = notas_text or None
 
         segments: list[tuple[datetime, datetime]] = []
         for r in inp.schedules:
