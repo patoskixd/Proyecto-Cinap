@@ -9,16 +9,32 @@ export default function Benefits() {
 
             <div className="mt-8 flex flex-col gap-4">
               {[
-                { icon: "⚡", title: "Respuesta Instantánea", desc: "Confirmaciones y cambios procesados al instante" },
-                { icon: "🎯", title: "Precisión Inteligente", desc: "Evita conflictos de horarios automáticamente" },
-                { icon: "📊", title: "Análisis Avanzado", desc: "Estadísticas y reportes de uso personalizados" },
-                { icon: "🔒", title: "Seguridad Garantizada", desc: "Protección de datos y privacidad total" },
+                { 
+                  icon: <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>, 
+                  title: "Respuesta Instantánea", 
+                  desc: "Confirmaciones y cambios procesados al instante" 
+                },
+                { 
+                  icon: <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>, 
+                  title: "Precisión Inteligente", 
+                  desc: "Evita conflictos de horarios automáticamente" 
+                },
+                { 
+                  icon: <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>, 
+                  title: "Análisis Avanzado", 
+                  desc: "Estadísticas y reportes de uso personalizados" 
+                },
+                { 
+                  icon: <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>, 
+                  title: "Seguridad Garantizada", 
+                  desc: "Protección de datos y privacidad total" 
+                },
               ].map((b) => (
                 <div
                   key={b.title}
                   className="flex items-start gap-4 rounded-xl bg-white p-6 shadow-[0_5px_15px_rgba(0,0,0,0.08)] transition-transform hover:translate-x-2"
                 >
-                  <div className="flex items-center justify-center rounded-lg bg-blue-600/10 p-3 text-2xl">
+                  <div className="flex items-center justify-center rounded-lg bg-blue-600/10 p-3">
                     {b.icon}
                   </div>
                   <div>

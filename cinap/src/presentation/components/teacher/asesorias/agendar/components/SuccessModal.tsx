@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-export function SuccessModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function SuccessModal({ open }: { open: boolean }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
@@ -23,10 +23,10 @@ export function SuccessModal({ open, onClose }: { open: boolean; onClose: () => 
           Ir al Dashboard
         </Link>
         <button
-          onClick={onClose}
+          onClick={() => window.location.reload()}
           className="mt-2 block w-full text-sm font-semibold text-blue-600 hover:text-blue-700"
         >
-          Cerrar
+          Agendar otra asesoría
         </button>
       </div>
     </div>

@@ -44,7 +44,8 @@ function ProfileSkeleton() {
 
 export default function ProfileScreen({ initialProfile }: { initialProfile: ProfileSummary | null }) {
   const { data, error, loading } = useProfile(initialProfile);
-  const { state: tg, busy, link, unlink } = useTelegram();
+  const isAdmin = data?.user?.role?.toLowerCase() === 'admin';
+  const { state: tg, busy, link, unlink } = useTelegram(!isAdmin);
 
   if (loading && !data) {
     return <ProfileSkeleton />;
@@ -113,59 +114,63 @@ export default function ProfileScreen({ initialProfile }: { initialProfile: Prof
                     {user.role}
                   </span>
                   
-                  <span className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium shadow-lg transition-all duration-300 ${
-                    tg.linked 
-                      ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 text-blue-700' 
-                      : 'bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700'
-                  }`}>
-                    <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.09 0 2.16-.18 3.16-.5L19 23l1.5-4.84C21.46 16.75 22 14.46 22 12c0-5.52-4.48-10-10-10z"/>
-                    </svg>
-                    {tg.linked ? `Telegram vinculado` : "Sin vincular"}
-                  </span>
+                  {user.role.toLowerCase() !== 'admin' && (
+                    <span className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium shadow-lg transition-all duration-300 ${
+                      tg.linked 
+                        ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 text-blue-700' 
+                        : 'bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700'
+                    }`}>
+                      <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.09 0 2.16-.18 3.16-.5L19 23l1.5-4.84C21.46 16.75 22 14.46 22 12c0-5.52-4.48-10-10-10z"/>
+                      </svg>
+                      {tg.linked ? `Telegram vinculado` : "Sin vincular"}
+                    </span>
+                  )}
                 </div>
               </div>
 
-              {/* Botones de Telegram mejorados */}
-              <div className="flex flex-col sm:flex-row gap-3">
-                <button
-                  type="button"
-                  onClick={link}
-                  disabled={busy || tg.linked}
-                  className="group relative overflow-hidden px-8 py-4 rounded-2xl font-semibold text-white shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 active:scale-95"
-                  style={{
-                    background: tg.linked 
-                      ? 'linear-gradient(135deg, #EAB308, #CA8A04)' 
-                      : 'linear-gradient(135deg, #2563EB, #1D4ED8)'
-                  }}
-                >
-                  <span className="relative z-10 flex items-center">
-                    <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.09 0 2.16-.18 3.16-.5L19 23l1.5-4.84C21.46 16.75 22 14.46 22 12c0-5.52-4.48-10-10-10z"/>
-                    </svg>
-                    {btnLabel}
-                  </span>
-                  <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-white/0 transform translate-x-full group-hover:translate-x-0 transition-transform duration-500"></div>
-                </button>
-
-                {tg.linked && (
+              {/* Botones de Telegram mejorados - Solo para asesores y docentes */}
+              {user.role.toLowerCase() !== 'admin' && (
+                <div className="flex flex-col sm:flex-row gap-3">
                   <button
                     type="button"
-                    onClick={unlink}
-                    disabled={busy}
-                    className="group relative overflow-hidden px-8 py-4 rounded-2xl font-semibold text-white bg-gradient-to-r from-red-500 to-red-600 shadow-xl transition-all duration-300 disabled:opacity-50 transform hover:scale-105 active:scale-95"
-                    title="Desvincular Telegram de tu cuenta"
+                    onClick={link}
+                    disabled={busy || tg.linked}
+                    className="group relative overflow-hidden px-8 py-4 rounded-2xl font-semibold text-white shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 active:scale-95"
+                    style={{
+                      background: tg.linked 
+                        ? 'linear-gradient(135deg, #EAB308, #CA8A04)' 
+                        : 'linear-gradient(135deg, #2563EB, #1D4ED8)'
+                    }}
                   >
                     <span className="relative z-10 flex items-center">
-                      <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                      <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.09 0 2.16-.18 3.16-.5L19 23l1.5-4.84C21.46 16.75 22 14.46 22 12c0-5.52-4.48-10-10-10z"/>
                       </svg>
-                      {busy ? "Desvinculando…" : "Desvincular"}
+                      {btnLabel}
                     </span>
                     <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-white/0 transform translate-x-full group-hover:translate-x-0 transition-transform duration-500"></div>
                   </button>
-                )}
-              </div>
+
+                  {tg.linked && (
+                    <button
+                      type="button"
+                      onClick={unlink}
+                      disabled={busy}
+                      className="group relative overflow-hidden px-8 py-4 rounded-2xl font-semibold text-white bg-gradient-to-r from-red-500 to-red-600 shadow-xl transition-all duration-300 disabled:opacity-50 transform hover:scale-105 active:scale-95"
+                      title="Desvincular Telegram de tu cuenta"
+                    >
+                      <span className="relative z-10 flex items-center">
+                        <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                        {busy ? "Desvinculando…" : "Desvincular"}
+                      </span>
+                      <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-white/0 transform translate-x-full group-hover:translate-x-0 transition-transform duration-500"></div>
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { GetTelegramMe } from "@/application/telegram/usecases/GetTelegramMe";
 import { GetTelegramLink } from "@/application/telegram/usecases/GetTelegramLink";
 import { TelegramHttpRepo } from "@/infrastructure/telegram/TelegramHttpRepo";
@@ -10,12 +10,13 @@ const ucMe = new GetTelegramMe(repo);
 const ucLink = new GetTelegramLink(repo);
 const ucUnlink = new UnlinkTelegram(repo);
 
-export function useTelegram() {
+export function useTelegram(enabled = true) {
   const [state, setState] = useState<{ linked: boolean; username?: string | null }>({ linked: false });
   const [busy, setBusy] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
+    if (!enabled) return;
     try {
       const result = await ucMe.execute();
       setState(result);
@@ -24,10 +25,12 @@ export function useTelegram() {
       // En caso de error, mantenemos el estado actual como no vinculado
       setState({ linked: false, username: null });
     }
-  };
+  }, [enabled]);
 
   useEffect(() => { 
-    refresh(); 
+    if (enabled) {
+      refresh(); 
+    }
     
     // Cleanup function para limpiar el polling si el componente se desmonta
     return () => {
@@ -36,7 +39,7 @@ export function useTelegram() {
         pollRef.current = null;
       }
     };
-  }, []);
+  }, [enabled, refresh]);
 
   const startPollingOnce = () => {
     if (pollRef.current) return;

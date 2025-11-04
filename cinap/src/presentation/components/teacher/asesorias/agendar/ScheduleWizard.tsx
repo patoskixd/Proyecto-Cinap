@@ -23,8 +23,8 @@ export default function ScheduleWizard(props: {
   const { categories, servicesByCategory, advisorsByService, defaultTimezone } = props;
 
   const { step, state, services, advisors, currentMonth, setCurrentMonth, selectedDate, setSelectedDate, openSlots,
-          loadingSlots, slotsError, selectCategory, selectService, selectAdvisor, selectSlot, canGoNext, goNext,
-          goPrev, submitting, error, showSuccess, setShowSuccess, onConfirmar,} = useScheduleWizard({ servicesByCategory, advisorsByService, defaultTimezone });
+          daysWithAvailability, loadingSlots, loadingMonth, slotsError, selectCategory, selectService, selectAdvisor, selectSlot, canGoNext, goNext,
+          goPrev, submitting, error, showSuccess, onConfirmar,} = useScheduleWizard({ servicesByCategory, advisorsByService, defaultTimezone });
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-6">
@@ -52,7 +52,9 @@ export default function ScheduleWizard(props: {
             setSelectedDate={setSelectedDate}
             state={state}
             openSlots={openSlots}
+            daysWithAvailability={daysWithAvailability}
             loading={loadingSlots}
+            loadingMonth={loadingMonth}
             error={slotsError}
             onSelectSlot={selectSlot}
           />
@@ -79,7 +81,7 @@ export default function ScheduleWizard(props: {
         />
 
         <ErrorModal message={error} />
-        <SuccessModal open={showSuccess} onClose={() => setShowSuccess(false)} />
+        <SuccessModal open={showSuccess} />
       </section>
     </div>
   );

@@ -16,10 +16,7 @@ try:
 except ImportError:
     audioop = None
 
-try:
-    import ffmpeg
-except ImportError:
-    ffmpeg = None
+
 
 from app.frameworks_drivers.config.db import get_session as get_session_dep
 from app.interface_adapters.gateways.db.sqlalchemy_telegram_repo import SqlAlchemyTelegramRepo
@@ -124,6 +121,15 @@ ASR_CONNECT_TIMEOUT = 1.0
 MCP_TIMEOUT_AGGRESSIVE = 1.5
 PENDING_ACTION_TTL = 20  # 10 minutos para confirmar/cancelar
 
+# Límites de concurrencia
+MAX_CONCURRENT_ASR = 50  # Máximo de transcripciones simultáneas 
+MAX_CONCURRENT_AGENT = 20  # Máximo de consultas al LLM simultáneas
+AGENT_TIMEOUT = 30  # Timeout para agent.invoke 
+
+# Semáforos para controlar concurrencia
+_asr_semaphore = asyncio.Semaphore(MAX_CONCURRENT_ASR)
+_agent_semaphore = asyncio.Semaphore(MAX_CONCURRENT_AGENT)
+
 LIST_STATE_TTL = 1800  # 30 min
 PAGE_SIZE_DEFAULT = 6
 
@@ -167,6 +173,7 @@ router = APIRouter(prefix="/telegram", tags=["telegram"])
 cache = None
 agent_getter = None
 mcp_client_getter = None
+confirm_store_getter = None
 
 
 def _is_ack(s: str) -> bool:
@@ -236,7 +243,8 @@ async def _get_telegram_client():
         _telegram_client = httpx.AsyncClient(
             timeout=httpx.Timeout(TELEGRAM_TIMEOUT_AGGRESSIVE, connect=1.0),
             http2=True,
-            limits=httpx.Limits(max_connections=50, max_keepalive_connections=20),
+            # Aumentado para 400 usuarios: más conexiones concurrentes
+            limits=httpx.Limits(max_connections=100, max_keepalive_connections=40),
             headers={"User-Agent": "TelegramBot/1.0", "Connection": "keep-alive"}
         )
     return _telegram_client
@@ -250,7 +258,8 @@ async def _get_asr_client():
         _asr_client = httpx.AsyncClient(
             timeout=httpx.Timeout(ASR_TIMEOUT + 2, connect=ASR_CONNECT_TIMEOUT),
             http2=False,
-            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+            # Aumentado para 400 usuarios: más conexiones para ASR
+            limits=httpx.Limits(max_connections=100, max_keepalive_connections=40),
             headers={**headers, "Connection": "keep-alive"},
             trust_env=True
         )
@@ -477,10 +486,12 @@ def _analyze_audio_quality_basic(audio_bytes: bytes) -> str:
 
 def _convert_to_wav_for_analysis(audio_bytes: bytes) -> bytes:
     try:
-        return _audio_format_legacy(audio_bytes)
-    except Exception:
+        # Si ya es WAV, retornar tal cual
         if audio_bytes.startswith(b'RIFF') and b'WAVE' in audio_bytes[:20]:
             return audio_bytes
+        # Si no es WAV, no podemos convertir sin ffmpeg
+        raise Exception("Audio no es WAV y no se puede convertir sin ffmpeg")
+    except Exception:
         raise Exception("No se puede convertir audio para análisis")
 
 def _validate_audio_energy(audio_bytes: bytes) -> str:
@@ -699,72 +710,12 @@ async def asr_transcribe_filelike_optimized(filename: str, file_bytes: bytes, mi
     except Exception as e:
         return 500, str(e)
 
-async def _audio_format_optimized(audio_bytes: bytes, target_ar: int = 16000) -> bytes:
-    if shutil.which('ffmpeg') is None:
-        log.info("ffmpeg no encontrado en PATH, omitiendo conversión optimizada")
-        return audio_bytes
-    cmd = f'ffmpeg -hide_banner -loglevel error -i pipe:0 -f wav -acodec pcm_s16le -ac 1 -ar {target_ar} pipe:1'
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *shlex.split(cmd),
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
-        stdout, stderr = await proc.communicate(input=audio_bytes)
-        if proc.returncode != 0:
-            raise RuntimeError(f"ffmpeg error: {stderr.decode(errors='ignore')}")
-        log.info(f"Audio convertido: {len(audio_bytes)} -> {len(stdout)} bytes")
-        return stdout
-    except Exception as e:
-        log.debug(f"Conversión optimizada fallida: {e}")
-        if isinstance(e, FileNotFoundError) or "not found" in str(e).lower() or "no se puede encontrar" in str(e).lower():
-            log.info("ffmpeg no encontrado o inaccesible, usando audio original sin conversión")
-            return audio_bytes
-        return _audio_format_legacy(audio_bytes)
-
-def _audio_format_legacy(audio_bytes: bytes) -> bytes:
-    try:
-        if ffmpeg is None:
-            raise ImportError("ffmpeg no disponible")
-        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as src_tmp:
-            src_tmp.write(audio_bytes)
-            src_path = src_tmp.name
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as dst_tmp:
-            dst_path = dst_tmp.name
-        try:
-            t = time.perf_counter()
-            (
-                ffmpeg
-                .input(src_path)
-                .output(dst_path, format='wav', acodec='pcm_s16le', ac=1, ar=WAV_AR)
-                .overwrite_output()
-                .run(capture_stdout=True, capture_stderr=True, quiet=True)
-            )
-            with open(dst_path, "rb") as f:
-                converted_bytes = f.read()
-            log.info(f"ffmpeg_convert_ms={round((time.perf_counter()-t)*1000,1)} in={len(audio_bytes)} out={len(converted_bytes)}")
-            return converted_bytes
-        except FileNotFoundError:
-            log.info("ffmpeg binario no encontrado al usar ffmpeg-python, usando audio original")
-            return audio_bytes
-        except OSError as e:
-            log.info(f"ffmpeg no disponible (OSError): {e}; usando audio original")
-            return audio_bytes
-        finally:
-            for path in [src_path, dst_path]:
-                try: os.remove(path)
-                except Exception: pass
-    except ImportError:
-        log.info("ffmpeg-python no disponible, usando audio original")
-        return audio_bytes
-    except Exception as e:
-        log.warning(f"Error convirtiendo audio: {e}")
-        return audio_bytes
 
 async def _asr_fallback_wav_optimized(audio_bytes: bytes, filename: str) -> str | None:
     try:
-        wav_bytes = await _audio_format_optimized(audio_bytes)
+        # Usar audio original sin conversión 
         status, text = await asr_transcribe_filelike_optimized(
-            filename.replace('.ogg', '.wav'), wav_bytes, "audio/wav"
+            filename.replace('.ogg', '.wav'), audio_bytes, "audio/wav"
         )
         if 200 <= status < 300:
             return _clean_transcript_text(text)
@@ -786,99 +737,97 @@ async def asr_transcribe(audio_bytes: bytes, filename: str = "audio.ogg", cache=
         text = _normalizar_siglas(text)
         return ASRResult(text=text, confidence=0.9, processing_time=time.time() - start_time)
 
-    transcribe_url = f"{ASR_BASE_URL.rstrip('/')}/v1/audio/transcriptions"
-    original_size = len(audio_bytes)
-    log.info(f"Audio original: {original_size} bytes")
-    try:
-        if len(audio_bytes) > 1024 * 1024:
-            log.info("Audio grande detectado, enviando directo al ASR (sin conversión previa)")
-        else:
-            log.info("Audio no requiere conversión por tamaño")
-    except Exception as e:
-        log.warning(f"Error evaluando formato de audio: {e}")
+    # Control de concurrencia: limitar transcripciones simultáneas
+    async with _asr_semaphore:
+        transcribe_url = f"{ASR_BASE_URL.rstrip('/')}/v1/audio/transcriptions"
+        original_size = len(audio_bytes)
+        log.debug(f"Audio original: {original_size} bytes")
 
-    client = await _get_asr_client()
-    mime = "audio/ogg"
-    if audio_bytes[:4] == b"RIFF" and b"WAVE" in audio_bytes[:16]:
-        mime = "audio/wav"
+        client = await _get_asr_client()
+        mime = "audio/ogg"
+        if audio_bytes[:4] == b"RIFF" and b"WAVE" in audio_bytes[:16]:
+            mime = "audio/wav"
 
-    files = {"file": (filename, audio_bytes, mime)}
-    data = {
-        "model": ASR_MODEL_NAME,
-        "language": ASR_LANG,
-        "temperature": "0.0",
-        "response_format": "verbose_json",
-        "timestamp_granularities": ["segment"],
-    }
-    initial_prompt = _build_asr_initial_prompt()
-    if initial_prompt:
-        data["prompt"] = initial_prompt
-        data["initial_prompt"] = initial_prompt
-
-    try:
-        async with astage("telegram.asr"):
-            r = await client.post(transcribe_url, data=data, files=files)
-
-        if r.status_code >= 400:
-            log.info(f"ASR fallida con formato original ({r.status_code}), probando WAV...")
-            fallback_text = await _asr_fallback_wav_optimized(audio_bytes, filename)
-            if fallback_text:
-                return ASRResult(text=fallback_text, confidence=0.7, processing_time=time.time() - start_time)
-            return None
-
-        if r.status_code != 200:
-            log.warning("ASR %s: %s", r.status_code, r.text[:200])
-            return None
+        files = {"file": (filename, audio_bytes, mime)}
+        data = {
+            "model": ASR_MODEL_NAME,
+            "language": ASR_LANG,
+            "temperature": "0.0",
+            "response_format": "verbose_json",
+            "timestamp_granularities": ["segment"],
+        }
+        initial_prompt = _build_asr_initial_prompt()
+        if initial_prompt:
+            data["prompt"] = initial_prompt
+            data["initial_prompt"] = initial_prompt
 
         try:
-            j = r.json()
-        except Exception:
-            log.warning("Error parseando respuesta ASR JSON")
+            async with astage("telegram.asr"):
+                r = await client.post(transcribe_url, data=data, files=files)
+
+            if r.status_code >= 400:
+                log.info(f"ASR fallida con formato original ({r.status_code}), probando WAV...")
+                fallback_text = await _asr_fallback_wav_optimized(audio_bytes, filename)
+                if fallback_text:
+                    return ASRResult(text=fallback_text, confidence=0.7, processing_time=time.time() - start_time)
+                return None
+
+            if r.status_code != 200:
+                log.warning("ASR %s: %s", r.status_code, r.text[:200])
+                return None
+
+            try:
+                j = r.json()
+            except Exception:
+                log.warning("Error parseando respuesta ASR JSON")
+                return None
+
+            transcript = j.get("text") or j.get("transcript") or j.get("result")
+            if not transcript:
+                log.warning(f"ASR no retornó texto. JSON completo: {j}")
+                return None
+
+            confidence = 0.8
+            language = j.get("language", ASR_LANG)
+            segments = j.get("segments", [])
+            if segments:
+                confidences = [seg.get("avg_logprob", 0) for seg in segments if seg.get("avg_logprob")]
+                if confidences:
+                    confidence = min(max(sum(confidences) / len(confidences) + 1.0, 0.0), 1.0)
+
+            transcript_original = transcript
+            transcript = _clean_transcript_text(transcript)
+            transcript = _prenormalizar_fonetico(transcript)
+            transcript_before_normalization = transcript
+            transcript = _normalizar_siglas(transcript)
+
+            if transcript != transcript_original:
+                log.info(f"DESPUÉS LIMPIEZA: '{transcript}' (antes: '{transcript_original}')")
+            if transcript != transcript_before_normalization:
+                log.info(f"DESPUÉS NORMALIZACIÓN: '{transcript}' (antes: '{transcript_before_normalization}')")
+
+            if transcript:
+                await _cache_set_asr_transcription(audio_hash, transcript, cache)
+
+            result = ASRResult(
+                text=transcript,
+                confidence=confidence,
+                language=language,
+                segments=segments,
+                processing_time=time.time() - start_time
+            )
+            return result
+        except Exception as e:
+            log.warning(f"Error en transcripción: {e}")
             return None
-
-        transcript = j.get("text") or j.get("transcript") or j.get("result")
-        if not transcript:
-            log.warning(f"ASR no retornó texto. JSON completo: {j}")
-            return None
-
-        confidence = 0.8
-        language = j.get("language", ASR_LANG)
-        segments = j.get("segments", [])
-        if segments:
-            confidences = [seg.get("avg_logprob", 0) for seg in segments if seg.get("avg_logprob")]
-            if confidences:
-                confidence = min(max(sum(confidences) / len(confidences) + 1.0, 0.0), 1.0)
-
-        transcript_original = transcript
-        transcript = _clean_transcript_text(transcript)
-        transcript = _prenormalizar_fonetico(transcript)
-        transcript_before_normalization = transcript
-        transcript = _normalizar_siglas(transcript)
-
-        if transcript != transcript_original:
-            log.info(f"DESPUÉS LIMPIEZA: '{transcript}' (antes: '{transcript_original}')")
-        if transcript != transcript_before_normalization:
-            log.info(f"DESPUÉS NORMALIZACIÓN: '{transcript}' (antes: '{transcript_before_normalization}')")
-
-        if transcript:
-            await _cache_set_asr_transcription(audio_hash, transcript, cache)
-
-        result = ASRResult(
-            text=transcript,
-            confidence=confidence,
-            language=language,
-            segments=segments,
-            processing_time=time.time() - start_time
-        )
-        return result
-    except Exception as e:
-        log.warning(f"Error en transcripción: {e}")
-        return None
 
 async def transcribe_optimized(audio_bytes: bytes, cache=None) -> ASRResult | None:
     return await asr_transcribe(audio_bytes, "audio.ogg", cache)
 
-#  Intent Classification
+
+# ESTRATEGIA: Clasificador MUY PERMISIVO que envía la mayoría de consultas 
+# Solo filtramos saludos muy simples. Todo lo demás va al LLM para mejor precisión.
+
 class IntentClassification:
     def __init__(self, intent_type: str, confidence: float,
                  extracted_params: dict = None, requires_llm: bool = False):
@@ -891,53 +840,80 @@ def classify_user_intent(asr_result: ASRResult) -> IntentClassification:
     text = asr_result.text.lower().strip()
     confidence_boost = min(asr_result.confidence * 0.2, 0.1)
 
+    # Saludos simples (muy cortos)
     greeting_patterns = ["hola", "hi", "hello", "buenas", "buenos días", "buenas tardes", "buenas noches", "saludos", "qué tal", "cómo estás"]
     if any(p in text for p in greeting_patterns) and len(text.split()) <= 3:
         return IntentClassification("greeting", 0.9 + confidence_boost, requires_llm=False)
 
-    calendar_simple_patterns = [
-        (r"agendar.*(\d{1,2}).*(\d{1,2})", {"action": "schedule"}),
-        (r"cancelar.*cita", {"action": "cancel"}),
-        (r"ver.*agenda", {"action": "view"}),
-        (r"disponibilidad.*(\w+)", {"action": "availability"}),
-        (r"horario.*libre", {"action": "free_slots"}),
+    #  PALABRAS CLAVE QUE ACTIVAN LLM+MCP
+    
+    # Palabras relacionadas con servicios/asesores
+    service_keywords = [
+        "servicio", "servicios", "asesor", "asesores", "profesor", "profesores", 
+        "docente", "docentes", "teacher", "teachers", "advisor", "advisors",
+        "recursos educativos", "comunidades de aprendizaje", "4prot", 
+        "google sites", "spatial", "ayudantes", "compromisos académicos"
     ]
-    if re.search(r"(lista(me)?|mu[eé]stame|mostrar|ver).*(mis )?(eventos|asesor[ií]as|citas)", text):
-        return IntentClassification(
-            "calendar_simple",
-            0.9 + confidence_boost,
-            extracted_params={"action": "view"},
-            requires_llm=False
-        )
-
-    for pattern, params in calendar_simple_patterns:
-        if re.search(pattern, text):
-            return IntentClassification("calendar_simple", 0.8 + confidence_boost, extracted_params=params, requires_llm=False)
-
-    professor_patterns = [
-        (r"profesor.*de.*(\w+)", {"subject": "extracted"}),
-        (r"asesor.*(\w+)", {"type": "advisor"}),
-        (r"docente.*matem[aá]tica", {"subject": "matematicas"}),
-        (r"teacher.*english", {"subject": "ingles"}),
+    
+    # Palabras relacionadas con calendario/asesorías
+    calendar_keywords = [
+        "asesoría", "asesoria", "asesorías", "asesorias",
+        "cita", "citas", "reunión", "reunion", "reuniones",
+        "evento", "eventos", "event", "events",
+        "agenda", "agendar", "calendario", "calendar",
+        "horario", "horarios", "disponibilidad", "disponible",
+        "slot", "slots", "cupo", "cupos", "programar", "reservar", "reserva",
+        "confirmar", "confirma", "confirmación", "asistencia",
+        "cancelar", "cancela", "cancelación"
     ]
-    for pattern, params in professor_patterns:
-        match = re.search(pattern, text)
-        if match:
-            return IntentClassification("professor_simple", 0.7 + confidence_boost, extracted_params=params, requires_llm=False)
-
-    complex_indicators = ["quiero", "necesito", "me gustaría", "podrías", "puedes", "ayúdame", "explicar", "cómo", "cuál", "cuándo", "dónde", "por favor", "favor", "consulta sobre"]
-    academic_context = ["profesor", "asesor", "cita", "agenda", "horario", "materia", "asignatura", "tutoría", "asesoría", "clase"]
-
-    has_complex = any(i in text for i in complex_indicators)
+    
+    # Acciones comunes (verbos)
+    action_keywords = [
+        "lista", "listame", "listar", "mostrar", "muestra", "ver", "dame",
+        "buscar", "busca", "encuentra", "necesito", "quiero",
+        "agendar", "crear", "cancelar", "modificar", "cambiar",
+        "consulta", "consultar", "información", "info"
+    ]
+    
+    # Palabras de fechas/tiempo 
+    time_keywords = [
+        "hoy", "mañana", "semana", "mes", "día", "hora",
+        "enero", "febrero", "marzo", "abril", "mayo", "junio",
+        "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+        "lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"
+    ]
+    
+    # Si menciona servicios/asesores 
+    if any(kw in text for kw in service_keywords):
+        return IntentClassification("requires_llm", 0.9 + confidence_boost, requires_llm=True)
+    
+    # Si menciona calendario/asesorías 
+    if any(kw in text for kw in calendar_keywords):
+        return IntentClassification("requires_llm", 0.9 + confidence_boost, requires_llm=True)
+    
+    # Si usa un verbo de acción 
+    has_action = any(kw in text for kw in action_keywords)
+    if has_action:
+        return IntentClassification("requires_llm", 0.8 + confidence_boost, requires_llm=True)
+    
+    # Si menciona fechas/tiempo  contexto académico agendar/consultar
+    has_time = any(kw in text for kw in time_keywords)
+    academic_context = ["profesor", "asesor", "cita", "agenda", "horario", "materia", "asignatura", "tutoría", "asesoría", "clase", "curso"]
     has_academic = any(c in text for c in academic_context)
-
-    if has_complex and has_academic:
-        return IntentClassification("complex", 0.6 + confidence_boost, requires_llm=True)
-
+    
+    if has_time and has_academic:
+        return IntentClassification("requires_llm", 0.8 + confidence_boost, requires_llm=True)
+    
+    # Si solo tiene contexto académico 
     if has_academic:
-        return IntentClassification("calendar_simple", 0.5 + confidence_boost, requires_llm=False)
+        return IntentClassification("requires_llm", 0.7 + confidence_boost, requires_llm=True)
+    
+    # Si menciona tiempo solo 
+    if has_time:
+        return IntentClassification("requires_llm", 0.6 + confidence_boost, requires_llm=True)
 
-    return IntentClassification("unknown", 0.3, requires_llm=True)
+    # Cualquier otra cosa que no sea saludo 
+    return IntentClassification("unknown", 0.5, requires_llm=True)
 
 
 #  MCP Tools Mapping
@@ -957,7 +933,7 @@ async def _maybe_store_pending_from_mcp(result, chat_id: int, cache=None):
             return
         payload = None
 
-        # Formatos tópicos (ajusta a tu payload real)
+        # Formatos tópicos 
         if result.get("pending_action"):
             payload = result["pending_action"]
         elif result.get("status") in ("preview", "pending") and (result.get("tool") or result.get("args")):
@@ -1357,26 +1333,37 @@ async def route_to_llm_plus_mcp(asr_result: ASRResult, chat_id: int, agent_gette
             # Nada que preguntar; evita invocación innecesaria
             return None
 
-        timeout = 45  # audio suele activar tools; dale margen
-        async with astage("telegram.llm_plus_mcp"):
-            log.info(
-                f"LLM invocation: chat_id={chat_id} text_len={len(text_in)} uid={'yes' if user_id else 'no'}"
-            )
-            try:
-                result = await asyncio.wait_for(
-                    agent.invoke(text_in, thread_id=f"tg:{chat_id}"),
-                    timeout=timeout
+        # Control de concurrencia para agent
+        async with _agent_semaphore:
+            async with astage("telegram.llm_plus_mcp"):
+                log.info(
+                    f"LLM invocation: chat_id={chat_id} text_len={len(text_in)} uid={'yes' if user_id else 'no'}"
                 )
-            except asyncio.TimeoutError:
-                log.warning(f"LLM+MCP timeout ({timeout}s) para audio transcrito (chat_id={chat_id})")
-                return " La consulta está tomando más tiempo del esperado\\. Intenta con una pregunta más específica\\."
-            except Exception as e:
-                log.error(f"Error en agent.invoke (audio): {e}")
-                if "maximum context length" in str(e):
-                    return " Tu consulta es muy larga o tienes mucho historial\\. Intenta con una pregunta más breve o empieza una nueva conversación\\."
-                return " Error procesando tu consulta\\. Intenta de nuevo\\."
+                try:
+                    result = await asyncio.wait_for(
+                        agent.invoke(text_in, thread_id=f"tg:{chat_id}"),
+                        timeout=AGENT_TIMEOUT
+                    )
+                except asyncio.TimeoutError:
+                    log.warning(f"LLM+MCP timeout ({AGENT_TIMEOUT}s) para audio transcrito (chat_id={chat_id})")
+                    return "La consulta está tomando más tiempo del esperado. Intenta con una pregunta más específica."
+                except Exception as e:
+                    log.error(f"Error en agent.invoke (audio): {e}")
+                    if "maximum context length" in str(e):
+                        return "Tu consulta es muy larga o tienes mucho historial. Intenta con una pregunta más breve."
+                    return "Error procesando tu consulta. Intenta de nuevo."
 
-        response = result if isinstance(result, str) else (str(result) if result is not None else "")
+        # Convertir respuesta a string si es dict/list 
+        if isinstance(result, str):
+            response = result
+        elif isinstance(result, (dict, list)):
+            try:
+                response = json.dumps(result, ensure_ascii=False, indent=2)
+                log.warning(f"LLM returned dict/list (tool calls?): {response[:200]}")
+            except Exception:
+                response = str(result)
+        else:
+            response = str(result) if result is not None else ""
 
         # En modo relajado no se fuerza dominio; _enforce_domain_reply será no-op si STRICT_DOMAIN_ENFORCEMENT=False
         response = _enforce_domain_reply(text_in, response or "")
@@ -1493,11 +1480,12 @@ async def intelligent_routing_system(asr_result: ASRResult, chat_id: int, agent_
 
 
 #  Telegram Router
-def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=None, get_session_dep=get_session_dep):
+def make_telegram_router(*, cache=None, agent_getter=None, mcp_client_getter=None, confirm_store_getter=None, get_session_dep=get_session_dep):
     # Exponer dependencias a las funciones de ruta a través del módulo
     globals()["cache"] = cache
     globals()["agent_getter"] = agent_getter
     globals()["mcp_client_getter"] = mcp_client_getter
+    globals()["confirm_store_getter"] = confirm_store_getter
     return router
 
 async def setup_telegram_webhook(public_url: str | None = None):
@@ -2048,6 +2036,24 @@ def _extract_cinap_list(raw_text: str) -> tuple[str, dict | None]:
     clean = CINAP_LIST_RE.sub("", raw_text).strip()
     return clean, payload if isinstance(payload, dict) else None
 
+def _extract_cinap_confirm(raw_text: str) -> tuple[str, dict | None]:
+    """
+    Devuelve (texto_sin_marcador, payload_dict) si encuentra CINAP_CONFIRM.
+    payload = {"tool": "...", "args": {...}, "action_description": "..."}
+    """
+    if not raw_text or not isinstance(raw_text, str):
+        return raw_text, None
+    m = CINAP_CONFIRM_RE.search(raw_text)
+    if not m:
+        return raw_text, None
+    b64 = m.group(1)
+    try:
+        payload = json.loads(base64.b64decode(b64).decode("utf-8"))
+    except Exception:
+        payload = None
+    clean = CINAP_CONFIRM_RE.sub("", raw_text).strip()
+    return clean, payload if isinstance(payload, dict) else None
+
 def _truncate(s: str, n: int = 28) -> str:
     return (s[: n-1] + "…" ) if isinstance(s, str) and len(s) > n else (s or "")
 
@@ -2068,34 +2074,36 @@ def _build_list_keyboard(items: list[dict], key: str, page: int, page_size: int,
     start = page * page_size
     page_items = items[start:start + page_size]
     k = (kind or "").lower()
-    # Solo listas "accionables" tendrán Confirmar/Cancelar
+    
+    # Solo listas "accionables" tendrán botones de Confirmar/Cancelar
     can_act = k in {
         "list_asesorias", "list_my_events", "list_upcoming_events",
         "list_calendar_events", "asesorias", "eventos"
     }
     allow_confirm = _role_allows_confirm(user_role)
     allow_cancel = _role_allows_cancel(user_role)
+    
     try:
         log.info(f"Inline keyboard role={user_role} confirm={allow_confirm} cancel={allow_cancel} kind={k}")
     except Exception:
         pass
 
     rows = []
-    for idx, it in enumerate(page_items):
-        abs_idx = start + idx
-        title_btn   = {"text": _truncate(it.get("title") or "Ver detalle"), "callback_data": f"LIT|{key}|{abs_idx}"}
-        confirm_btn = {"text": "✅ Confirmar", "callback_data": f"LCONFIRM|{key}|{abs_idx}"}
-        cancel_btn  = {"text": "❌ Cancelar", "callback_data": f"LCANCEL|{key}|{abs_idx}"}
-        rows.append([title_btn])
-        if can_act:
+    
+    # Solo agregar botones de acción (Confirmar/Cancelar) para items accionables
+    # NO agregar botones de "Ver detalle" o título que dupliquen el texto
+    if can_act:
+        for idx, it in enumerate(page_items):
+            abs_idx = start + idx
             action_row = []
             if allow_confirm:
-                action_row.append(confirm_btn)
+                action_row.append({"text": f"Confirmar ({abs_idx+1})", "callback_data": f"LCONFIRM|{key}|{abs_idx}"})
             if allow_cancel:
-                action_row.append(cancel_btn)
+                action_row.append({"text": f"Cancelar ({abs_idx+1})", "callback_data": f"LCANCEL|{key}|{abs_idx}"})
             if action_row:
-                rows.append(action_row)   # solo si corresponde
+                rows.append(action_row)
 
+    # Navegación
     nav = []
     if page > 0:
         nav.append({"text": "◀ Anterior", "callback_data": f"LPG|{key}|{page-1}"})
@@ -2103,6 +2111,8 @@ def _build_list_keyboard(items: list[dict], key: str, page: int, page_size: int,
         nav.append({"text": "Siguiente ▶", "callback_data": f"LPG|{key}|{page+1}"})
     if nav:
         rows.append(nav)
+    
+    # Botón cerrar
     rows.append([{"text": "Cerrar", "callback_data": f"LCLOSE|{key}"}])
     return {"inline_keyboard": rows}
 
@@ -2137,11 +2147,85 @@ def _render_page_text(items: list[dict], page: int, page_size: int, *, kind: str
         body = "Sin resultados."
     else:
         body = "\n\n".join(lines)
+    
+    # Traducir el kind a español si no hay título explícito
     if title:
         header = title.strip()
-        if header:
-            return f"{header}\n{body}".strip()
+    else:
+        header = _translate_kind_to_spanish(kind)
+    
+    if header:
+        return f"{header}\n{body}".strip()
     return body
+
+def _translate_kind_to_spanish(kind: str | None) -> str:
+    """Traduce el 'kind' técnico a un título amigable en español."""
+    if not kind:
+        return "Resultados"
+    
+    k = kind.lower().strip()
+    
+    # Log para debugging
+    try:
+        log.debug(f"Traduciendo kind: '{k}'")
+    except Exception:
+        pass
+    
+    # Mapeo de kinds a títulos en español 
+    translations = {
+        # Variantes de servicios
+        "list_services": "Lista de Servicios",
+        "services": "Servicios",
+        "service": "Servicios",
+        "list_service": "Lista de Servicios",
+
+        # Variantes de asesores
+        "list_advisors": "Lista de Asesores",
+        "advisors": "Asesores",
+        "advisor": "Asesores",
+        "list_advisor": "Lista de Asesores",
+
+        # Variantes de asesorías
+        "list_asesorias": "Lista de Asesorías",
+        "asesorias": "Asesorías",
+        "asesoria": "Asesorías",
+        "list_asesoria": "Lista de Asesorías",
+
+        # Variantes de eventos
+        "list_my_events": "Mis Eventos",
+        "list_upcoming_events": "Próximos Eventos",
+        "list_calendar_events": "Eventos del Calendario",
+        "eventos": "Eventos",
+        "evento": "Eventos",
+        "events": "Eventos",
+        "event": "Eventos",
+
+        # Variantes de profesores/docentes
+        "list_professors": "Lista de Profesores",
+        "list_teachers": "Lista de Docentes",
+        "professors": "Profesores",
+        "professor": "Profesores",
+        "teachers": "Docentes",
+        "teacher": "Docentes",
+        "docentes": "Docentes",
+        "docente": "Docentes",
+
+        # Variantes de horarios
+        "list_slots": "Horarios Disponibles",
+        "list_availability": "Disponibilidad",
+        "slots": "Horarios",
+        "availability": "Disponibilidad",
+    }
+
+    result = translations.get(k, f"{k.replace('_', ' ').title()}")
+    
+    # Log del resultado
+    try:
+        log.debug(f"Traducción de '{k}' -> '{result}'")
+    except Exception:
+        pass
+    
+    return result
 
 async def _send_list_message(chat_id: int, raw_text: str, *, user_role: str | None = None):
     text_wo_marker, payload = _extract_cinap_list(raw_text)
@@ -2153,14 +2237,102 @@ async def _send_list_message(chat_id: int, raw_text: str, *, user_role: str | No
     await _save_list_state(key, state)
     page = 0
     page_size = PAGE_SIZE_DEFAULT
-    title = payload.get("kind") or "Resultados"
-    human_readable = _render_page_text(state["items"], page, page_size, kind=state["kind"], title=title)
+    # No usar el título del payload, usar la traducción automática basada en 'kind'
+    human_readable = _render_page_text(state["items"], page, page_size, kind=state["kind"], title=None)
     text_display = _mdv2_escape(human_readable)
     if user_role is None:
         user_role = await _get_role_cached(chat_id=chat_id)
     kb = _build_list_keyboard(state["items"], key, page, page_size, state["kind"], user_role=user_role)
     await bot.send_message(chat_id, text_display, disable_web_page_preview=True, allow_sending_without_reply=True, reply_markup=kb)
     return True
+
+async def _send_confirm_message(chat_id: int, raw_text: str, *, thread_id: str | None = None) -> bool:
+    """
+    Detecta CINAP_CONFIRM y envía mensaje con botones Sí/No inline.
+    Retorna True si procesó confirmación, False si no encontró marcador.
+    
+    Ahora usa el confirm_store para obtener tool+args en lugar del marker.
+    """
+    text_wo_marker, payload = _extract_cinap_confirm(raw_text)
+    if not payload or not isinstance(payload, dict):
+        return False  # no hay confirmación pendiente
+    
+    # Necesitamos el thread_id para buscar en confirm_store
+    if not thread_id:
+        log.warning("_send_confirm_message: No thread_id provided, cannot retrieve action from confirm_store")
+        return False
+    
+    # Obtener tool+args del confirm_store usando thread_id
+    if not confirm_store_getter:
+        log.error("confirm_store_getter no está configurado")
+        return False
+    
+    confirm_store = confirm_store_getter()
+    if not confirm_store:
+        log.error("confirm_store_getter() retornó None")
+        return False
+    
+    try:
+        pending_action = await confirm_store.get(thread_id)
+        if not pending_action:
+            log.warning(f"No se encontró acción pendiente en confirm_store para thread_id: {thread_id}")
+            return False
+        
+        tool_name = pending_action.get("tool", "")
+        tool_args = pending_action.get("args", {})
+        
+        if not tool_name:
+            log.error(f"Action en confirm_store sin tool_name: {pending_action}")
+            return False
+        
+        # Crear descripción de la acción
+        action_desc = _describe_action(tool_name, tool_args)
+        
+        # Guardar la acción pendiente en cache con toda la info (para recuperarla en el callback)
+        key = f"confirm_pending:{chat_id}:{int(time.time()*1000)}"
+        await _save_list_state(key, {
+            "tool": tool_name,
+            "args": tool_args,
+            "action_description": action_desc,
+            "thread_id": thread_id,
+            "created_at": int(time.time())
+        })
+        
+        # Crear texto del mensaje
+        confirmation_text = f"{text_wo_marker}\n\n¿Confirmas {action_desc}?"
+        text_display = _mdv2_escape(confirmation_text)
+        
+        # Crear botones Sí/No
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "Sí", "callback_data": f"CONF_YES|{key}"},
+                    {"text": "No", "callback_data": f"CONF_NO|{key}"}
+                ]
+            ]
+        }
+        
+        await bot.send_message(chat_id, text_display, disable_web_page_preview=True, allow_sending_without_reply=True, reply_markup=keyboard)
+        return True
+        
+    except Exception as e:
+        log.error(f"Error obteniendo acción del confirm_store: {e}", exc_info=True)
+        return False
+
+def _describe_action(tool_name: str, tool_args: dict) -> str:
+    """Genera una descripción humanizada de la acción"""
+    if tool_name == "schedule_asesoria":
+        inp = tool_args.get("input", {})
+        service = inp.get("service", "asesoría")
+        advisor = inp.get("advisor", "")
+        start = inp.get("start", "")
+        return f"agendar {service}" + (f" con {advisor}" if advisor else "") + (f" el {start}" if start else "")
+    elif tool_name == "confirm_asesoria":
+        return "confirmar asistencia a la asesoría"
+    elif tool_name == "cancel_asesoria":
+        return "cancelar la asesoría"
+    else:
+        return "esta acción"
 
 async def _is_duplicate_update(update_id: int) -> bool:
     if not cache or not update_id:
@@ -2262,7 +2434,12 @@ async def _process_audio_background(chat_id: int, file_id: str, file_unique_id: 
 
         # Autenticidad
         if not _validate_transcript_authenticity(transcript):
-            await _send_direct_message(chat_id, " Audio no claro o con ruido\\. Intenta de nuevo\\.")
+            await _send_direct_message(chat_id, "🎙️ Audio no claro o con ruido. Intenta de nuevo.")
+            return
+
+        # Validación temprana: evitar procesar queries muy cortas/vacías
+        if len(transcript.strip()) < 3:
+            await _send_direct_message(chat_id, "🔇 No detecté suficiente contenido. Intenta hablar más claro.")
             return
 
         if not _is_domain_related(transcript) and not _is_ack(transcript):
@@ -2393,7 +2570,15 @@ async def _process_audio_background(chat_id: int, file_id: str, file_unique_id: 
         async with astage("telegram.intelligent_routing"):
             response = await intelligent_routing_system(asr_result, chat_id, agent_getter, mcp_client_getter, cache)
 
-        #  si la respuesta trae CINAP_LIST, muéstrala con UI y sal
+        #  Primero intenta si es confirmación con botones Sí/No
+        try:
+            confirm_sent = await _send_confirm_message(chat_id, response, thread_id=f"tg:{chat_id}")
+            if confirm_sent:
+                return  # Ya enviamos confirmación con botones
+        except Exception as e:
+            log.warning(f"CINAP_CONFIRM render failed: {e}")
+
+        #  Si no es confirmación, intenta si es lista con UI
         try:
             audio_role = await _get_role_cached(chat_id=chat_id)
             rendered = await _send_list_message(chat_id, response, user_role=audio_role)
@@ -2402,7 +2587,7 @@ async def _process_audio_background(chat_id: int, file_id: str, file_unique_id: 
         except Exception as e:
             log.warning(f"CINAP_LIST render (audio) failed: {e}")
 
-        # Si no es lista, envía transcript + respuesta como antes
+        # Si no es lista ni confirmación, envía transcript + respuesta como antes
         safe_transcript = _mdv2_escape(transcript)
         safe_response  = _mdv2_escape(response)
         response_text  = f" _{safe_transcript}_\n\n {safe_response}"
@@ -2513,6 +2698,7 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                         if not resolved_user_id:
                             await _send_link_required(chat_id)
                             return {"ok": True}
+                        
                         log.info(f"Iniciando background task audio: chat_id={chat_id}, file_id={file_id[:8]}...")
                         asyncio.create_task(_process_audio_background(chat_id, file_id, file_unique_id, audio_obj))
                     else:
@@ -2726,9 +2912,16 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                                 else:
                                     reply = " Error procesando tu consulta. Intenta de nuevo."
 
-                        #  HOTFIX list_asesorias (reintento con user_id) 
+                        #   Convertir dict/list a string antes de procesar
+                        if isinstance(reply, (dict, list)):
+                            try:
+                                reply = json.dumps(reply, ensure_ascii=False, indent=2)
+                            except Exception:
+                                reply = str(reply)
+                        
+                        # list_asesorias 
                         try:
-                            reply_str = json.dumps(reply, ensure_ascii=False) if isinstance(reply, (dict, list)) else str(reply)
+                            reply_str = str(reply)
 
                             if (
                                 "Error executing tool list_asesorias" in reply_str
@@ -2792,14 +2985,24 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
 
                         # En modo relajado no se fuerza dominio; _enforce_domain_reply será no-op
                         final_reply = _enforce_domain_reply(text, reply)
-                        #  Si hay lista CINAP, la renderizamos con teclado + paginación:
+                        
+                        #  Primero intenta si es confirmación con botones Sí/No
+                        try:
+                            confirm_sent = await _send_confirm_message(chat_id, final_reply, thread_id=f"tg:{chat_id}")
+                            if confirm_sent:
+                                return {"ok": True}  # Ya enviamos confirmación con botones
+                        except Exception as e:
+                            log.warning(f"CINAP_CONFIRM render failed: {e}")
+                        
+                        #  Si no es confirmación, intenta si hay lista CINAP
                         try:
                             rendered = await _send_list_message(chat_id, final_reply, user_role=role_name)
                             if rendered:
                                 return {"ok": True}
                         except Exception as e:
                             log.warning(f"CINAP_LIST render failed: {e}")
-                        # Si no hay lista, enviamos como texto normal:
+                        
+                        # Si no es lista ni confirmación, enviamos como texto normal:
                         safe_reply_fast = _mdv2_escape(final_reply)
                         if len(safe_reply_fast) > 4000:
                             for part in _chunk(safe_reply_fast, 3900):
@@ -2847,7 +3050,152 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                         await _send_link_required(int(chat_id))
                     return {"ok": True}
 
-                try:                            
+                try:
+                    # Handler para confirmaciones con botones Sí/No
+                    if data.startswith("CONF_YES|") or data.startswith("CONF_NO|"):
+                        is_yes = data.startswith("CONF_YES|")
+                        key = data.split("|", 1)[1]
+                        
+                        # Cargar la acción pendiente
+                        pending_action = await _load_list_state(key)
+                        
+                        if not pending_action:
+                            await bot.edit_message(
+                                int(chat_id), int(msg_id),
+                                _mdv2_escape("Esta confirmación ha expirado. Intenta de nuevo."),
+                                disable_web_page_preview=True
+                            )
+                            if cq_id:
+                                try:
+                                    await bot.answer_callback(cq_id, text="Confirmación expirada")
+                                except Exception:
+                                    pass
+                            return {"ok": True}
+                        
+                        if is_yes:
+                            # Usuario confirmó - invocar al agent con "sí" para que use su fastpath
+                            thread_id = pending_action.get("thread_id") or f"tg:{chat_id}"
+                            
+                            if not agent_getter:
+                                error_message = "Agent getter no está configurado"
+                                log.error(error_message)
+                            else:
+                                agent = agent_getter()
+                                if not agent:
+                                    error_message = "No se pudo obtener instancia del agent"
+                                    log.error("agent_getter() retornó None")
+                                else:
+                                    # Actualizar mensaje para mostrar que se está procesando
+                                    await bot.edit_message(
+                                        int(chat_id), int(msg_id),
+                                        _mdv2_escape("Procesando..."),
+                                        disable_web_page_preview=True
+                                    )
+                                    
+                                    try:
+                                        # Invocar al agent con "sí" - el agent usará su fastpath de confirmación
+                                        log.info(f"Invocando agent con confirmación para thread_id: {thread_id}")
+                                        result = await asyncio.wait_for(
+                                            agent.invoke("sí", thread_id=thread_id),
+                                            timeout=AGENT_TIMEOUT
+                                        )
+                                        
+                                        # Actualizar mensaje con resultado
+                                        success_msg = _mdv2_escape(result or "✅ Confirmado exitosamente")
+                                        await bot.edit_message(
+                                            int(chat_id), int(msg_id),
+                                            success_msg,
+                                            disable_web_page_preview=True
+                                        )
+                                        
+                                        if cq_id:
+                                            try:
+                                                await bot.answer_callback(cq_id, text="✅ Confirmado")
+                                            except Exception:
+                                                pass
+                                        
+                                        # Limpiar la acción pendiente del cache local
+                                        try:
+                                            if cache and key:
+                                                await cache.delete(key)
+                                        except Exception as e:
+                                            log.warning(f"Error limpiando cache: {e}")
+                                        
+                                        return {"ok": True}
+                                        
+                                    except asyncio.TimeoutError:
+                                        error_message = "Timeout confirmando acción"
+                                        log.error(f"Timeout al invocar agent para confirmación")
+                                    except Exception as e:
+                                        error_message = str(e)
+                                        log.error(f"Error invocando agent para confirmación: {e}", exc_info=True)
+                                        
+                                        error_msg = f"Error al confirmar la acción."
+                                        if error_message:
+                                            error_msg += f"\n\nDetalle: {error_message[:200]}"
+                                        
+                                        await bot.edit_message(
+                                            int(chat_id), int(msg_id),
+                                            _mdv2_escape(error_msg),
+                                            disable_web_page_preview=True
+                                        )
+                                        
+                                        if cq_id:
+                                            try:
+                                                await bot.answer_callback(cq_id, text="Error", show_alert=True)
+                                            except Exception:
+                                                pass
+                                        
+                                        return {"ok": True}
+                        else:
+                            # Usuario canceló - invocar al agent para que limpie el confirm_store
+                            thread_id = pending_action.get("thread_id") or f"tg:{chat_id}"
+                            if agent_getter:
+                                agent = agent_getter()
+                                if agent:
+                                    try:
+                                        # Invocar con "no" para que el agent cancele (con timeout corto)
+                                        await asyncio.wait_for(
+                                            agent.invoke("no", thread_id=thread_id),
+                                            timeout=5  # Solo limpia cache, no necesita mucho tiempo
+                                        )
+                                    except asyncio.TimeoutError:
+                                        log.warning(f"Timeout invocando agent para cancelación (thread_id={thread_id})")
+                                    except Exception as e:
+                                        log.warning(f"Error invocando agent para cancelación: {e}")
+                            
+                            action_desc = pending_action.get("action_description", "la acción")
+                            cancel_msg = f"{action_desc.capitalize()} cancelada."
+                            
+                            await bot.edit_message(
+                                int(chat_id), int(msg_id),
+                                _mdv2_escape(cancel_msg),
+                                disable_web_page_preview=True
+                            )
+                            
+                            if cq_id:
+                                try:
+                                    await bot.answer_callback(cq_id, text="Cancelado")
+                                except Exception:
+                                    pass
+                        
+                        # Limpiar la acción pendiente del cache local
+                        try:
+                            if cache and key:
+                                await cache.delete(key)
+                        except Exception as e:
+                            log.warning(f"Error limpiando pending_key: {e}")
+                        
+                        return {"ok": True}
+                        # Limpiar la acción pendiente del cache
+                        try:
+                            if cache:
+                                await cache.delete(f"list_state:{key}")
+                        except Exception:
+                            pass
+                        
+                        return {"ok": True}
+                    
                     # Paginación
                     if data.startswith("LPG|"):
                         _, key, page_str = data.split("|", 2)
@@ -2856,7 +3204,11 @@ async def webhook(req: Request, session: AsyncSession = Depends(get_session_dep)
                         kind  = state.get("kind", "")
                         page  = max(0, int(page_str))
 
-                        human_readable = _render_page_text(items, page, PAGE_SIZE_DEFAULT, kind=kind, title=state.get("kind"))
+                        # Log para debugging
+                        log.info(f"Paginación - kind recibido: '{kind}', página: {page}")
+
+                        # Usar title=None para que se aplique la traducción automática
+                        human_readable = _render_page_text(items, page, PAGE_SIZE_DEFAULT, kind=kind, title=None)
                         text = _mdv2_escape(human_readable)
                         user_role = await _get_role_cached(chat_id=chat_id)
                         kb   = _build_list_keyboard(items, key, page, PAGE_SIZE_DEFAULT, kind, user_role=user_role)

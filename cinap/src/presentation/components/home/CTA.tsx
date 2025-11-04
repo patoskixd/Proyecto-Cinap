@@ -17,7 +17,9 @@ export default function CTA() {
             className="mt-10 inline-flex items-center gap-3 rounded-full bg-white px-8 py-4 text-lg font-bold text-blue-600 shadow-[0_10px_30px_rgba(0,0,0,0.2)] transition-all hover:-translate-y-0.5 hover:shadow-[0_15px_40px_rgba(0,0,0,0.3)]"
           >
             <span>Comenzar Gratis</span>
-            <div className="text-xl">🚀</div>
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+            </svg>
           </Link>
         </div>
       </section>
