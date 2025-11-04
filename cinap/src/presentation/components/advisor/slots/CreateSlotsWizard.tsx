@@ -210,7 +210,7 @@ export default function CreateSlotsWizard() {
         )}
 
         <FooterNav step={step} canNext={!!canNext} prev={prev} next={next} submit={submit} />
-        <SuccessModal open={showSuccess} total={createdCount} skipped={skippedCount} onClose={() => setShowSuccess(false)} />
+        <SuccessModal open={showSuccess} total={createdCount} skipped={skippedCount} />
         <ErrorModal open={showError} message={errorMsg} conflicts={errorConflicts} onClose={() => setShowError(false)}/>
 
       </section>

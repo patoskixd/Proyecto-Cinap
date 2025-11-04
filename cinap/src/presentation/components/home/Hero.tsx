@@ -17,8 +17,12 @@ export default function Hero() {
         {/* Contenido */}
         <div className="relative z-10 mx-auto grid max-w-[1200px] grid-cols-1 items-center gap-8 px-6 md:grid-cols-2 md:gap-16">
           <div>
-            <div className="mb-6 inline-flex items-center rounded-full border border-blue-600/20 bg-blue-600/10 px-4 py-2 text-sm font-semibold text-blue-600">
-              🤖 Inteligencia Artificial
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-600/20 bg-blue-600/10 px-4 py-2 text-sm font-semibold text-blue-600">
+              <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M13 7H7v6h6V7z"/>
+                <path fillRule="evenodd" d="M7 2a1 1 0 012 0v1h2V2a1 1 0 112 0v1h2a2 2 0 012 2v2h1a1 1 0 110 2h-1v2h1a1 1 0 110 2h-1v2a2 2 0 01-2 2h-2v1a1 1 0 11-2 0v-1H9v1a1 1 0 11-2 0v-1H5a2 2 0 01-2-2v-2H2a1 1 0 110-2h1V9H2a1 1 0 010-2h1V5a2 2 0 012-2h2V2zM5 5h10v10H5V5z" clipRule="evenodd"/>
+              </svg>
+              <span>Inteligencia Artificial</span>
             </div>
 
             <h1 className="text-balance text-4xl font-extrabold leading-tight text-neutral-900 sm:text-5xl">
@@ -44,16 +48,18 @@ export default function Hero() {
                 className="inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-blue-600 to-blue-700 px-6 py-3 text-lg font-semibold text-white shadow-[0_8px_25px_rgba(37,99,235,0.3)] transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_35px_rgba(37,99,235,0.4)]"
               >
                 <span>Comenzar Ahora</span>
-                <div>→</div>
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+                </svg>
               </Link>
 
               <a
                 href="#servicios"
                 className="inline-flex items-center gap-2 rounded-full border-2 border-neutral-200 px-6 py-3 text-lg font-semibold text-neutral-600 transition-all hover:-translate-y-0.5 hover:border-blue-600 hover:text-blue-600"
               >
-                <div className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[10px] leading-none text-white">
-                  ▶
-                </div>
+                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd"/>
+                </svg>
                 <span>Ver Demo</span>
               </a>
             </div>
@@ -73,14 +79,23 @@ export default function Hero() {
 
                 <div className="flex h-[calc(100%-64px)] flex-col gap-3 p-6">
                   <div className="flex items-start gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-xl">🤖</div>
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100">
+                      <svg className="h-5 w-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M13 7H7v6h6V7z"/>
+                        <path fillRule="evenodd" d="M7 2a1 1 0 012 0v1h2V2a1 1 0 112 0v1h2a2 2 0 012 2v2h1a1 1 0 110 2h-1v2h1a1 1 0 110 2h-1v2a2 2 0 01-2 2h-2v1a1 1 0 11-2 0v-1H9v1a1 1 0 11-2 0v-1H5a2 2 0 01-2-2v-2H2a1 1 0 110-2h1V9H2a1 1 0 010-2h1V5a2 2 0 012-2h2V2zM5 5h10v10H5V5z" clipRule="evenodd"/>
+                      </svg>
+                    </div>
                     <div className="max-w-[80%] rounded-2xl bg-blue-600 px-3 py-2 text-sm text-white">
                       ¡Hola! ¿En qué puedo ayudarte con tus asesorías?
                     </div>
                   </div>
 
                   <div className="flex flex-row-reverse items-start gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-xl">👨‍🏫</div>
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100">
+                      <svg className="h-5 w-5 text-neutral-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"/>
+                      </svg>
+                    </div>
                     <div className="max-w-[80%] rounded-2xl bg-neutral-100 px-3 py-2 text-sm text-neutral-800">
                       Necesito programar una asesoría para mañana
                     </div>

@@ -5,10 +5,9 @@ type Props = {
   open: boolean;
   total: number;
   skipped?: number;
-  onClose(): void;
 };
 
-export default function SuccessModal({ open, total, skipped = 0, onClose }: Props) {
+export default function SuccessModal({ open, total, skipped = 0 }: Props) {
   if (!open) return null;
   const effective = total ?? 0;
   const skippedInfo = skipped > 0 ? ` (${skipped} omitidos)` : "";
@@ -31,10 +30,10 @@ export default function SuccessModal({ open, total, skipped = 0, onClose }: Prop
           Ir al Dashboard
         </Link>
         <button
-          onClick={onClose}
+          onClick={() => window.location.reload()}
           className="mt-2 block w-full text-sm font-semibold text-neutral-500 hover:text-neutral-700"
         >
-          Cerrar
+          Abrir nuevos cupos
         </button>
       </div>
     </div>

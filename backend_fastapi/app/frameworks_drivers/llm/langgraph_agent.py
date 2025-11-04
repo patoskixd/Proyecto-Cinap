@@ -448,7 +448,18 @@ class LangGraphRunner:
                     pass
 
             with stage("agent.present.extract"):
-                return _strip_think(out[-1].content if out else "")
+                last_msg = out[-1] if out else None
+                if last_msg:
+                    # Verificar si hay tool_calls sin procesar
+                    if hasattr(last_msg, 'tool_calls') and last_msg.tool_calls:
+                        import logging
+                        log = logging.getLogger("langgraph")
+                        log.warning(f"AIMessage con tool_calls no procesados: {last_msg.tool_calls}")
+                        # Intentar obtener el contenido de todos los mensajes
+                        all_contents = [m.content for m in out if hasattr(m, 'content') and m.content]
+                        return "\n".join(all_contents) if all_contents else "No pude procesar la respuesta"
+                    return _strip_think(last_msg.content if hasattr(last_msg, 'content') else str(last_msg))
+                return ""
 
         async with astage("agent.total"):
             return await asyncio.to_thread(_run)

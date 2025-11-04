@@ -13,7 +13,9 @@ export function Step2Calendar({
   setSelectedDate,
   state,
   openSlots,
+  daysWithAvailability,
   loading,
+  loadingMonth,
   error,
   onSelectSlot,
 }: {
@@ -23,7 +25,9 @@ export function Step2Calendar({
   setSelectedDate: (d: Date | null) => void;
   state: WizardState;
   openSlots: FoundSlot[];
+  daysWithAvailability: Set<string>;
   loading: boolean;
+  loadingMonth: boolean;
   error: string | null;
   onSelectSlot: (slot: FoundSlot) => void;
 }) {
@@ -76,34 +80,54 @@ export function Step2Calendar({
             ))}
           </div>
 
-          <div className="grid grid-cols-7 gap-1 p-2 md:gap-2 md:p-3">
-            {monthCells.map((cell, idx) => {
-              if (!cell) return <div key={`empty-${idx}`} className="h-10 rounded-lg bg-transparent md:h-12" />;
-              const isTodayCell = isSameDay(cell, new Date()) && cell.getMonth() === currentMonth.getMonth();
-              const selected = isSameDay(cell, selectedDate);
-              const weekend = weekIndexMon0(cell) > 4;
-              const past = isPastDate(cell);
+          {loadingMonth ? (
+            <div className="p-8">
+              <LoadingStateCard
+                title="Cargando disponibilidad..."
+                subtitle="Consultando el mes completo"
+                className="border-0 bg-transparent shadow-none"
+                spinnerClassName="h-8 w-8 border-2 border-blue-600"
+                titleClassName="mb-1 text-lg text-blue-900"
+                subtitleClassName="text-sm text-blue-700"
+              />
+            </div>
+          ) : (
+            <div className="grid grid-cols-7 gap-1 p-2 md:gap-2 md:p-3">
+              {monthCells.map((cell, idx) => {
+                if (!cell) return <div key={`empty-${idx}`} className="h-10 rounded-lg bg-transparent md:h-12" />;
+                
+                const isTodayCell = isSameDay(cell, new Date()) && cell.getMonth() === currentMonth.getMonth();
+                const selected = isSameDay(cell, selectedDate);
+                const weekend = weekIndexMon0(cell) > 4;
+                const past = isPastDate(cell);
+                
+                // Check if this day has availability
+                const dateStr = cell.toISOString().slice(0, 10);
+                const hasAvailability = daysWithAvailability.has(dateStr);
+                const noAvailability = !past && !weekend && !hasAvailability;
 
-              return (
-                <button
-                  key={cell.toISOString()}
-                  type="button"
-                  onClick={() => !past && setSelectedDate(cell)}
-                  disabled={past}
-                  className={cx(
-                    "flex h-10 w-full items-center justify-center rounded-lg border text-[15px] font-bold text-neutral-800 transition md:h-12",
-                    past && "cursor-not-allowed border-slate-100 bg-slate-50 text-slate-400",
-                    !past && !selected && weekend && "border-slate-100 bg-slate-50 text-neutral-600",
-                    !past && !selected && !weekend && "border-slate-200 bg-white hover:border-blue-600",
-                    selected && !past && "border-blue-500 bg-blue-100 text-blue-800 ring-1 ring-blue-300",
-                    isTodayCell && !selected && !past && "border-blue-300 bg-blue-50 text-blue-800"
-                  )}
-                >
-                  {cell.getDate()}
-                </button>
-              );
-            })}
-          </div>
+                return (
+                  <button
+                    key={cell.toISOString()}
+                    type="button"
+                    onClick={() => !past && !noAvailability && setSelectedDate(cell)}
+                    disabled={past || noAvailability}
+                    className={cx(
+                      "flex h-10 w-full items-center justify-center rounded-lg border text-[15px] font-bold transition md:h-12",
+                      past && "cursor-not-allowed border-slate-100 bg-slate-50 text-slate-400",
+                      weekend && !past && "cursor-not-allowed border-slate-100 bg-slate-50 text-neutral-600",
+                      noAvailability && "cursor-not-allowed border-red-100 bg-red-50/30 text-red-400 line-through",
+                      !past && !selected && !weekend && hasAvailability && "border-slate-200 bg-white text-neutral-800 hover:border-blue-600",
+                      selected && !past && hasAvailability && "border-blue-500 bg-blue-100 text-blue-800 ring-1 ring-blue-300",
+                      isTodayCell && !selected && !past && hasAvailability && "border-blue-300 bg-blue-50 text-blue-800"
+                    )}
+                  >
+                    {cell.getDate()}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Horas del día seleccionado */}

@@ -409,6 +409,7 @@ def _make_telegram_router():
         cache=container.cache,
         agent_getter=lambda: container.graph_agent,
         mcp_client_getter=lambda: container.db_mcp,
+        confirm_store_getter=lambda: confirm_store,
     )
 
 
