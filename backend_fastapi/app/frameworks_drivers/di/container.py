@@ -75,7 +75,7 @@ class Container:
         self.oauth = GoogleOAuthClient(
             client_id=google_client_id,
             client_secret=google_client_secret,
-            scope="openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events",
+            scope="openid email profile https://www.googleapis.com/auth/calendar.events",
             device_id=self._google_device_id,
             device_name=self._google_device_name,
         )
@@ -134,6 +134,8 @@ class Container:
             model_name=self._llm_model_name,
             db_path=self._langgraph_db_path,
             main_loop=self.main_loop,
+            public_clients={"db"},
+            deny_tools={"calendar_event_upsert"}
         )
         self.graph_agent.configure_openai(
             base_url=VLLM_BASE_URL,

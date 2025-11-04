@@ -454,7 +454,10 @@ class LangGraphRunner:
             return await asyncio.to_thread(_run)
 
 class LangGraphAgent:
-    def __init__(self, mcps: dict[str, MCPStdioClient], *, model_name: str, db_path: str, main_loop):
+    def __init__(self, mcps: dict[str, MCPStdioClient], *, model_name: str, db_path: str, main_loop,
+                 public_clients: set[str] | None = None,
+                 allow_tools: set[str] | None = None,
+                 deny_tools: set[str] | None = None):
         self._mcps = mcps
         self._tool_to_client: dict[str, str] = {}
         self._model_name = model_name
@@ -462,6 +465,9 @@ class LangGraphAgent:
         self._runner: LangGraphRunner | None = None
         self._main_loop = main_loop
         self._confirm_store = None
+        self._public_clients = set(public_clients or set(mcps.keys()))
+        self._allow_tools = set(allow_tools or [])
+        self._deny_tools = set(deny_tools or [])
 
     def set_confirm_store(self, store) -> None:
         self._confirm_store = store
@@ -525,23 +531,45 @@ class LangGraphAgent:
 
                             try:
                                 if isinstance(preview_res, dict):
-                                    next_hint = None
                                     data = preview_res.get("data") or {}
-                                    if isinstance(data, dict):
-                                        next_hint = data.get("next_hint")
-                                    if not next_hint:
-                                        next_hint = preview_res.get("next_hint")
+                                    next_hint = (data.get("next_hint") or preview_res.get("next_hint")) if isinstance(data, dict) else None
 
-                                    if next_hint:
-                                        post = [{
-                                            "tool": next_hint.get("next_tool"),
-                                            "args": next_hint.get("suggested_args")
-                                        }]
-                                        await self._confirm_store.patch(thread_id, {"post_confirm": post})
+                                    if isinstance(next_hint, dict) and next_hint.get("run_immediately") and \
+                                    (next_hint.get("next_tool") == "event_find_overlap"):
+
+                                        args2 = dict(next_hint.get("suggested_args") or {})
+
+                                        c2 = self._client_for_tool("event_find_overlap")
+                                        async with astage("mcp.rpc", extra={"tool": "event_find_overlap", "phase": "preview.immediate"}):
+                                            res2 = await c2.call_tool("event_find_overlap", args2)
+
+                                        attach_key = next_hint.get("attach_result_as") or "calendar_conflicts"
+                                        conflicts = []
+                                        if isinstance(res2, dict):
+                                            conflicts = (res2.get("conflicts")
+                                                        or ((res2.get("data") or {}).get("conflicts"))
+                                                        or [])
+                                            if not isinstance(conflicts, list):
+                                                conflicts = []
+                                        preview_res.setdefault("data", {})[attach_key] = conflicts
+
+                                        if conflicts:
+                                            prev_say = (preview_res.get("say") or "").rstrip()
+                                            warn = "⚠️ Ya existe un evento en ese horario."
+                                            preview_res["say"] = f"{prev_say}\n\n{warn}" if prev_say else warn
+
+                                    else:
+                                        if next_hint:
+                                            post = [{
+                                                "tool": next_hint.get("next_tool"),
+                                                "args": next_hint.get("suggested_args")
+                                            }]
+                                            await self._confirm_store.patch(thread_id, {"post_confirm": post})
                             except Exception:
                                 pass
 
                             preview_text = _format_mcp_result(preview_res, name)
+
                             if isinstance(preview_res, dict) and preview_res.get("ok") is False:
                                 await self._confirm_store.pop(thread_id)
                                 return preview_text
@@ -592,13 +620,19 @@ class LangGraphAgent:
                 name = str(fn.get("name") or "")
                 if not name:
                     continue
-                public_name = name
 
-                self._tool_to_client[public_name] = label
+                self._tool_to_client[name] = label
+
+                if label not in self._public_clients:
+                    continue
+                if self._allow_tools and name not in self._allow_tools:
+                    continue
+                if name in self._deny_tools:
+                    continue
 
                 schema = fn.get("parameters") or {"type": "object", "properties": {}}
-                ModelIn = _pydantic_model_from_json_schema(f"{public_name}_Input", schema)
-                tools.append(self._make_tool(public_name, fn.get("description") or "", ModelIn))
+                ModelIn = _pydantic_model_from_json_schema(f"{name}_Input", schema)
+                tools.append(self._make_tool(name, fn.get("description") or "", ModelIn))
         return tools
     
     def _client_for_tool(self, tool_name: str) -> MCPStdioClient:
