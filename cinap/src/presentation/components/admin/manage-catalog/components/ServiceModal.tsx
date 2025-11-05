@@ -1,33 +1,45 @@
+"use client";
+
 import React, { useState } from "react";
 
-type Values = { name: string; description: string };
+type Values = { name: string; durationMinutes: number };
 
-export default function CategoryModal({
+export default function ServiceModal({
   title,
   defaultValues,
   onClose,
   onSubmit,
-  size = "md",
 }: {
   title: string;
   defaultValues?: Partial<Values>;
   onClose: () => void;
   onSubmit: (payload: Values) => void | Promise<void>;
-  size?: "sm" | "md" | "lg" | "xl";
 }) {
   const [name, setName] = useState(defaultValues?.name ?? "");
-  const [description, setDescription] = useState(defaultValues?.description ?? "");
+  const [durationStr, setDurationStr] = useState<string>(
+    defaultValues?.durationMinutes != null ? String(defaultValues.durationMinutes) : "30"
+  );
+
+  const handleDurationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    if (v === "") { setDurationStr(""); return; }
+    const digits = v.replace(/[^\d]/g, "");
+    const normalized = digits.replace(/^0+(?=\d)/, "");
+    setDurationStr(normalized);
+  };
+
+  const handleBlur = () => {
+    if (durationStr === "") return;
+    const n = parseInt(durationStr, 10);
+    if (!Number.isNaN(n)) setDurationStr(String(Math.max(5, n)));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ name, description });
+    const n = parseInt(durationStr, 10);
+    if (Number.isNaN(n)) return;
+    onSubmit({ name, durationMinutes: Math.max(5, n) });
   };
-
-  const maxWidthClass = 
-    size === "sm" ? "max-w-md" :
-    size === "md" ? "max-w-xl" :
-    size === "lg" ? "max-w-6xl" :
-    "max-w-7xl";
 
   return (
     <div
@@ -36,7 +48,7 @@ export default function CategoryModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className={`w-full ${maxWidthClass} bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden transform animate-in zoom-in-95 duration-200`}>
+      <div className="w-full max-w-xl bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden transform animate-in zoom-in-95 duration-200">
         {/* Header con gradiente */}
         <div className="h-20 bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 relative">
           <div className="absolute inset-0 bg-black/10"></div>
@@ -65,25 +77,29 @@ export default function CategoryModal({
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <label className="block">
-              <span className="block text-sm font-semibold text-gray-700 mb-2">Nombre de la categoría</span>
+              <span className="block text-sm font-semibold text-gray-700 mb-2">Nombre del servicio</span>
               <input 
                 required 
                 value={name} 
                 onChange={(e) => setName(e.target.value)}
                 className="w-full rounded-xl border-2 border-blue-200 bg-white/90 px-4 py-3 text-gray-900 placeholder-gray-500 outline-none transition-all duration-300 focus:border-yellow-500 focus:ring-4 focus:ring-yellow-100 focus:bg-white" 
-                placeholder="Ingresa el nombre de la categoría" 
+                placeholder="Ingresa el nombre del servicio" 
               />
             </label>
 
             <label className="block">
-              <span className="block text-sm font-semibold text-gray-700 mb-2">Descripción</span>
-              <textarea 
-                required 
-                rows={3} 
-                value={description} 
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full rounded-xl border-2 border-blue-200 bg-white/90 px-4 py-3 text-gray-900 placeholder-gray-500 outline-none transition-all duration-300 focus:border-yellow-500 focus:ring-4 focus:ring-yellow-100 focus:bg-white resize-none" 
-                placeholder="Describe la categoría y su propósito" 
+              <span className="block text-sm font-semibold text-gray-700 mb-2">Duración (minutos)</span>
+              <input
+                required
+                type="number"
+                inputMode="numeric"
+                min={5}
+                step={5}
+                placeholder="30"
+                value={durationStr}
+                onChange={handleDurationChange}
+                onBlur={handleBlur}
+                className="w-full rounded-xl border-2 border-blue-200 bg-white/90 px-4 py-3 text-gray-900 placeholder-gray-500 outline-none transition-all duration-300 focus:border-yellow-500 focus:ring-4 focus:ring-yellow-100 focus:bg-white"
               />
             </label>
 
@@ -99,7 +115,7 @@ export default function CategoryModal({
                 type="submit"
                 className="px-6 py-3 bg-gradient-to-r from-blue-600 to-yellow-500 hover:from-blue-700 hover:to-yellow-600 text-white font-medium rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
               >
-                {defaultValues ? "Guardar Cambios" : "Crear Categoría"}
+                {defaultValues?.name ? "Guardar Cambios" : "Crear Servicio"}
               </button>
             </div>
           </form>

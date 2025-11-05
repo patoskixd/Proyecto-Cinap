@@ -227,7 +227,7 @@ def make_admin_catalog_router(*, get_session_dep: Callable[[], AsyncSession], jw
     ):
         await require_user(request)
 
-        c = (session.execute(sa.select(CategoriaModel).where(CategoriaModel.id == UUID(cat_id)))).scalar_one_or_none()
+        c = (await session.execute(sa.select(CategoriaModel).where(CategoriaModel.id == UUID(cat_id)))).scalar_one_or_none()
         if not c:
             raise HTTPException(status_code=404, detail="Categoría no encontrada")
 

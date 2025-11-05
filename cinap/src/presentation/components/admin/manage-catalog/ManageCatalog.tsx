@@ -9,9 +9,8 @@ import { parseError } from "@/presentation/components/shared/Toast/parseError";
 import CatalogStats from "./components/CatalogStats";
 import SectionCard from "./components/SectionCard";
 import AdminCategoryCard from "./components/AdminCategoryCard";
-import Modal from "./components/BaseModal";
-import CategoryForm from "./components/CategoryForm";
-import ServiceForm from "./components/ServiceForm";
+import CategoryModal from "./components/CategoryModal";
+import ServiceModal from "./components/ServiceModal";
 import ServicesModal from "./components/ServicesModal";
 import ConfirmModal from "./components/ConfirmModal";
 import ToastProvider, { notify } from "../../shared/Toast/ToastProvider";
@@ -218,38 +217,36 @@ export default function ManageCatalog() {
 
       {/* Crear categoría */}
       {createOpen && (
-        <Modal onClose={() => setCreateOpen(false)} title="Crear Nueva Categoría">
-          <CategoryForm
-            onCancel={() => setCreateOpen(false)}
-            onSubmit={async (payload) => {
-              try {
-                await createCategory(payload);
-                setCreateOpen(false);
-                notify("Categoría creada", "success");
-              } catch (e: any) {
-                notify(parseError(e), "error");
-              }
-            }}
-          />
-        </Modal>
+        <CategoryModal
+          title="Crear Nueva Categoría"
+          onClose={() => setCreateOpen(false)}
+          onSubmit={async (payload) => {
+            try {
+              await createCategory(payload);
+              setCreateOpen(false);
+              notify("Categoría creada", "success");
+            } catch (e: any) {
+              notify(parseError(e), "error");
+            }
+          }}
+        />
       )}
 
       {/* Editar categoría (abre confirm al guardar) */}
       {editOpen.open && editOpen.category && (
-        <Modal onClose={() => setEditOpen({ open: false, category: null })} title="Editar Categoría">
-          <CategoryForm
-            defaultValues={{ name: editOpen.category.name, description: editOpen.category.description }}
-            onCancel={() => setEditOpen({ open: false, category: null })}
-            onSubmit={(payload) => {
-              setPendingCatEdit({
-                id: editOpen.category!.id,
-                name: payload.name,
-                description: payload.description,
-                original: { name: editOpen.category!.name, description: editOpen.category!.description },
-              });
-            }}
-          />
-        </Modal>
+        <CategoryModal
+          title="Editar Categoría"
+          defaultValues={{ name: editOpen.category.name, description: editOpen.category.description }}
+          onClose={() => setEditOpen({ open: false, category: null })}
+          onSubmit={(payload) => {
+            setPendingCatEdit({
+              id: editOpen.category!.id,
+              name: payload.name,
+              description: payload.description,
+              original: { name: editOpen.category!.name, description: editOpen.category!.description },
+            });
+          }}
+        />
       )}
 
       {/* Modal de servicios (sin botón de agregar dentro) */}
@@ -281,39 +278,37 @@ export default function ManageCatalog() {
 
       {/* Crear servicio */}
       {createServiceFor && (
-        <Modal onClose={() => setCreateServiceFor(null)} title={`Crear servicio — ${createServiceFor.name}`}>
-          <ServiceForm
-            defaultValues={{ durationMinutes: 30 }}
-            onCancel={() => setCreateServiceFor(null)}
-            onSubmit={async (payload) => {
-              try {
-                await createService(createServiceFor.id, { ...payload, active: true });
-                setCreateServiceFor(null);
-                notify("Servicio creado", "success");
-              } catch (e:any) {
-                notify(parseError(e), "error");
-              }
-            }}
-          />
-        </Modal>
+        <ServiceModal
+          title={`Crear servicio — ${createServiceFor.name}`}
+          defaultValues={{ durationMinutes: 30 }}
+          onClose={() => setCreateServiceFor(null)}
+          onSubmit={async (payload) => {
+            try {
+              await createService(createServiceFor.id, { ...payload, active: true });
+              setCreateServiceFor(null);
+              notify("Servicio creado", "success");
+            } catch (e:any) {
+              notify(parseError(e), "error");
+            }
+          }}
+        />
       )}
 
       {/* Editar servicio (abre confirm al guardar) */}
       {serviceEditing && (
-        <Modal onClose={() => setServiceEditing(null)} title="Editar servicio">
-          <ServiceForm
-            defaultValues={{ name: serviceEditing.name, durationMinutes: serviceEditing.durationMinutes }}
-            onCancel={() => setServiceEditing(null)}
-            onSubmit={(payload) => {
-              setPendingSvcEdit({
-                id: serviceEditing.id,
-                name: payload.name,
-                durationMinutes: payload.durationMinutes,
-                original: { name: serviceEditing.name, durationMinutes: serviceEditing.durationMinutes },
-              });
-            }}
-          />
-        </Modal>
+        <ServiceModal
+          title="Editar servicio"
+          defaultValues={{ name: serviceEditing.name, durationMinutes: serviceEditing.durationMinutes }}
+          onClose={() => setServiceEditing(null)}
+          onSubmit={(payload) => {
+            setPendingSvcEdit({
+              id: serviceEditing.id,
+              name: payload.name,
+              durationMinutes: payload.durationMinutes,
+              original: { name: serviceEditing.name, durationMinutes: serviceEditing.durationMinutes },
+            });
+          }}
+        />
       )}
 
       {/* Confirmar eliminar categoría */}

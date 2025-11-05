@@ -5,29 +5,49 @@ import Link from "next/link";
 export function SuccessModal({ open }: { open: boolean }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl ring-1 ring-blue-200">
-        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-blue-100 to-blue-200 border-2 border-blue-300">
-          <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
+    <div 
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) window.location.reload();
+      }}
+    >
+      <div className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden transform animate-in zoom-in-95 duration-200">
+        {/* Header con gradiente */}
+        <div className="h-16 bg-gradient-to-r from-green-500 via-emerald-600 to-blue-600 relative">
+          <div className="absolute inset-0 bg-black/10"></div>
         </div>
-        <h3 className="text-lg font-bold text-blue-900">¡Asesoría confirmada!</h3>
-        <p className="mt-1 text-sm text-blue-700">
-          Tu asesoría ha sido programada. Pronto recibirás un correo de confirmación.
-        </p>
-        <Link
-          href="/dashboard"
-          className="mt-4 inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-blue-600 to-blue-700 px-6 py-3 font-semibold text-white shadow-md transition hover:from-blue-700 hover:to-blue-800"
-        >
-          Ir al Dashboard
-        </Link>
-        <button
-          onClick={() => window.location.reload()}
-          className="mt-2 block w-full text-sm font-semibold text-blue-600 hover:text-blue-700"
-        >
-          Agendar otra asesoría
-        </button>
+
+        {/* Contenido */}
+        <div className="px-6 py-6 -mt-4 relative text-center">
+          {/* Ícono de éxito */}
+          <div className="flex justify-center mb-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full shadow-xl border-4 border-white flex items-center justify-center">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+          </div>
+
+          <h3 className="text-xl font-bold text-gray-900 mb-2">¡Asesoría confirmada!</h3>
+          <p className="text-gray-600 mb-6">
+            Tu asesoría ha sido programada. Pronto recibirás un correo de confirmación.
+          </p>
+
+          <div className="flex flex-col gap-3">
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-700 hover:to-emerald-700 text-white font-medium rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
+            >
+              Ir al Dashboard
+            </Link>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-all duration-200"
+            >
+              Agendar otra asesoría
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
