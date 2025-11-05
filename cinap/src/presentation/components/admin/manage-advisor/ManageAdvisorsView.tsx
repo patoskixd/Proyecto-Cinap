@@ -365,7 +365,7 @@ export default function ManageAdvisorsView() {
         <ConfirmDialog
           open={confirmDelete.open}
           title="Eliminar asesor"
-          message={`¿Estás seguro de que deseas ELIMINAR a ${confirmDelete.advisor?.basic.name}? Esta acción no se puede deshacer.`}
+          message={`¿Estás seguro de que deseas eliminar a ${confirmDelete.advisor?.basic.name}? Esta acción no se puede deshacer.`}
           confirmText="Eliminar"
           onConfirm={handleConfirmDelete}
           onClose={() => setConfirmDelete({ open: false })}

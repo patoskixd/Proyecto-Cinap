@@ -53,15 +53,15 @@ export default function Hero() {
                 </svg>
               </Link>
 
-              <a
-                href="#servicios"
+              <Link
+                href="/ayuda"
                 className="inline-flex items-center gap-2 rounded-full border-2 border-neutral-200 px-6 py-3 text-lg font-semibold text-neutral-600 transition-all hover:-translate-y-0.5 hover:border-blue-600 hover:text-blue-600"
               >
-                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd"/>
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
                 </svg>
-                <span>Ver Demo</span>
-              </a>
+                <span>Ver Guías</span>
+              </Link>
             </div>
           </div>
 

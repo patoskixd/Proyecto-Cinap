@@ -65,22 +65,12 @@ export default function ErrorModal({ open, message, conflicts, onClose }: Props)
     >
       <div className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden transform animate-in zoom-in-95 duration-200">
         {/* Header con gradiente */}
-        <div className="h-16 bg-gradient-to-r from-red-500 via-rose-600 to-red-700 relative">
-          <div className="absolute inset-0 bg-black/10"></div>
+        <div className="border-b border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100 py-4 sm:py-5">
+          <h3 className="text-center text-lg font-semibold text-blue-900 sm:text-xl">No se pudieron crear los cupos</h3>
         </div>
 
         {/* Contenido */}
-        <div className="px-6 py-6 -mt-4 relative text-center">
-          {/* Ícono de error */}
-          <div className="flex justify-center mb-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-red-400 to-rose-500 rounded-full shadow-xl border-4 border-white flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </div>
-          </div>
-
-          <h3 className="text-xl font-bold text-gray-900 mb-2">No se pudieron crear los cupos</h3>
+        <div className="px-6 py-6 relative text-center">
           <p className="text-gray-600 mb-4">{displayMessage}</p>
 
           {list.length > 0 && (
@@ -97,7 +87,7 @@ export default function ErrorModal({ open, message, conflicts, onClose }: Props)
 
           <button
             onClick={onClose}
-            className="mt-6 w-full px-6 py-3 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-medium rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
+            className="mt-6 w-full rounded-full bg-red-100/80 backdrop-blur-sm border border-red-200/50 px-6 py-3 font-semibold text-red-700 shadow-md transition-all duration-200 hover:bg-red-200/80 hover:shadow-lg hover:-translate-y-0.5"
           >
             Cerrar
           </button>

@@ -116,7 +116,7 @@ export default function ReservationsView({ role, state }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="mb-6 rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-yellow-50/20 p-6 shadow-lg backdrop-blur-sm">
+      <div className="mb-6 rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-blue-50/20 p-6 shadow-lg backdrop-blur-sm">
         <div className="mb-4">
           <h2 className="mb-1 text-lg font-semibold text-blue-900">Filtros de busqueda</h2>
           <p className="text-sm text-blue-700">
@@ -171,8 +171,11 @@ export default function ReservationsView({ role, state }: Props) {
               id={dateFromFieldId}
               type="date"
               value={filters.dateFrom}
-              onChange={(e) => updateFilter((prev) => ({ ...prev, dateFrom: e.target.value }))}
+              onChange={(e) => {
+                updateFilter((prev) => ({ ...prev, dateFrom: e.target.value }));
+              }}
               className="w-full rounded-lg border-2 border-blue-200 bg-white/80 p-2.5 text-sm text-blue-900 transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
+              placeholder="Selecciona una fecha"
             />
           </div>
 

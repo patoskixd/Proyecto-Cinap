@@ -210,5 +210,5 @@ export function useScheduleWizard({
 
   return { step, setStep, state, setState, services, advisors, currentMonth, setCurrentMonth, selectedDate, setSelectedDate, openSlots,
            daysWithAvailability, loadingSlots, loadingMonth, slotsError, selectCategory, selectService, selectAdvisor, selectSlot, canGoNext, goNext, goPrev, submitting,
-           error, showSuccess, setShowSuccess, onConfirmar, } as const;
+           error, setError, showSuccess, setShowSuccess, onConfirmar, } as const;
 }

@@ -24,7 +24,7 @@ export default function ScheduleWizard(props: {
 
   const { step, state, services, advisors, currentMonth, setCurrentMonth, selectedDate, setSelectedDate, openSlots,
           daysWithAvailability, loadingSlots, loadingMonth, slotsError, selectCategory, selectService, selectAdvisor, selectSlot, canGoNext, goNext,
-          goPrev, submitting, error, showSuccess, onConfirmar,} = useScheduleWizard({ servicesByCategory, advisorsByService, defaultTimezone });
+          goPrev, submitting, error, showSuccess, onConfirmar, setError } = useScheduleWizard({ servicesByCategory, advisorsByService, defaultTimezone });
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-6">
@@ -80,7 +80,7 @@ export default function ScheduleWizard(props: {
           onConfirm={onConfirmar}
         />
 
-        <ErrorModal message={error} />
+        <ErrorModal message={error} onClose={() => setError(null)} />
         <SuccessModal open={showSuccess} />
       </section>
     </div>

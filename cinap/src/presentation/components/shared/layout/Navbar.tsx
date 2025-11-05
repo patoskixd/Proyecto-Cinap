@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useAuth } from "@/presentation/components/auth/hooks/useAuth";
 import { useState, useEffect } from "react";
 import { AuthedBar } from "@/presentation/components/shared/layout/navbar/AutherBar";
@@ -28,13 +29,13 @@ export default function Navbar() {
       <div className="hidden items-center gap-6 md:flex">
         <Link
           href={{ pathname: "/", hash: "inicio" }}
-          className="relative px-3 py-2 font-medium text-blue-800 transition-all duration-300 hover:text-blue-600 after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-0 after:bg-gradient-to-r after:from-blue-600 after:to-yellow-500 after:transition-all after:duration-300 hover:after:w-full"
+          className="relative px-3 py-2 font-medium text-blue-800 transition-all duration-300 hover:text-blue-600 after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-0 after:bg-blue-600 after:transition-all after:duration-300 hover:after:w-full"
         >
           Inicio
         </Link>
         <Link
           href={{ pathname: "/", hash: "servicios" }}
-          className="relative px-3 py-2 font-medium text-blue-800 transition-all duration-300 hover:text-blue-600 after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-0 after:bg-gradient-to-r after:from-blue-600 after:to-yellow-500 after:transition-all after:duration-300 hover:after:w-full"
+          className="relative px-3 py-2 font-medium text-blue-800 transition-all duration-300 hover:text-blue-600 after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-0 after:bg-blue-600 after:transition-all after:duration-300 hover:after:w-full"
         >
           Servicios
         </Link>
@@ -42,15 +43,12 @@ export default function Navbar() {
 
       <Link
         href="/auth/login"
-        className="group relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 px-6 py-3 font-semibold text-white shadow-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:scale-105"
+        className="inline-flex items-center gap-3 rounded-full bg-blue-600 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:-translate-y-1 hover:bg-blue-700 hover:shadow-xl"
       >
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-700 via-blue-800 to-yellow-600 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-        <div className="relative flex items-center gap-2">
-          <svg className="h-5 w-5 transition-transform duration-300 group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-          </svg>
-          <span>Iniciar Sesion</span>
-        </div>
+        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+        </svg>
+        <span>Iniciar Sesión</span>
       </Link>
     </>
   );
@@ -62,10 +60,17 @@ export default function Navbar() {
       <div className="mx-auto flex max-w-[1200px] items-center justify-between px-8 py-4 md:px-8">
         <Link
           href={brandHref}
-          className="flex items-center text-2xl font-bold bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 bg-clip-text text-transparent"
+          className="flex items-center gap-3"
           aria-label="Ir a CINAP"
         >
-          CINAP
+          <Image
+            src="/uct-logo.png"
+            alt="Logo UCT"
+            width={40}
+            height={40}
+            className="h-10 w-10 object-contain"
+          />
+          <span className="text-2xl font-bold text-blue-700">CINAP</span>
         </Link>
 
         <div className="flex flex-1 items-center justify-end gap-6">

@@ -31,15 +31,15 @@ export default function ManageAdvisorsHeader({
   const hasFilters = Boolean(query.trim()) || Boolean(categoryId) || Boolean(serviceId);
 
   return (
-    <div className="mb-6 rounded-3xl border border-blue-200/50 bg-gradient-to-br from-white via-blue-50/40 to-yellow-50/30 p-6 shadow-xl backdrop-blur-md md:mb-8 md:p-8">
+    <div className="mb-6 rounded-3xl border border-blue-100/50 bg-white/80 p-6 shadow-xl backdrop-blur-md ring-1 ring-blue-100/50 md:mb-8 md:p-8">
       <div className="mb-6 flex flex-col gap-3 text-center md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-blue-900">Gestión de Asesores</h1>
-          <p className="mt-1 text-blue-700">Administra y organiza tu equipo de asesores</p>
+          <h2 className="text-2xl font-bold text-gray-900">Gestión de asesores</h2>
+          <p className="mt-1 text-sm text-gray-600">Administra los asesores del sistema</p>
         </div>
-        <div className="inline-flex items-center gap-2 rounded-full bg-white/85 px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm ring-1 ring-blue-200/60">
-          <span className="h-2 w-2 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 shadow" />
-          <span>{total} Asesores Totales </span>
+        <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm ring-1 ring-blue-200/60">
+          <span className="h-2 w-2 rounded-full bg-blue-600 shadow" />
+          <span>{total} asesores registrados</span>
         </div>
       </div>
 

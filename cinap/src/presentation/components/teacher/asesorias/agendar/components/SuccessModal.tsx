@@ -12,23 +12,13 @@ export function SuccessModal({ open }: { open: boolean }) {
       }}
     >
       <div className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden transform animate-in zoom-in-95 duration-200">
-        {/* Header con gradiente */}
-        <div className="h-16 bg-gradient-to-r from-green-500 via-emerald-600 to-blue-600 relative">
-          <div className="absolute inset-0 bg-black/10"></div>
+        {/* Header */}
+        <div className="border-b border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100 px-6 py-4">
+          <h3 className="text-xl font-bold text-blue-900">¡Asesoría confirmada!</h3>
         </div>
 
         {/* Contenido */}
-        <div className="px-6 py-6 -mt-4 relative text-center">
-          {/* Ícono de éxito */}
-          <div className="flex justify-center mb-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full shadow-xl border-4 border-white flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-          </div>
-
-          <h3 className="text-xl font-bold text-gray-900 mb-2">¡Asesoría confirmada!</h3>
+        <div className="px-6 py-6 text-center">
           <p className="text-gray-600 mb-6">
             Tu asesoría ha sido programada. Pronto recibirás un correo de confirmación.
           </p>
@@ -36,7 +26,7 @@ export function SuccessModal({ open }: { open: boolean }) {
           <div className="flex flex-col gap-3">
             <Link
               href="/dashboard"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-700 hover:to-emerald-700 text-white font-medium rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-100/80 backdrop-blur-sm border border-blue-200/50 text-blue-700 font-semibold rounded-xl shadow-md hover:bg-blue-200/80 hover:shadow-lg transition-all duration-200"
             >
               Ir al Dashboard
             </Link>
