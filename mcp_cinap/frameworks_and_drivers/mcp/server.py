@@ -593,6 +593,7 @@ def build_mcp() -> FastMCP:
             if not asesor_usuario_id:
                 return {"ok": False, "error": {"code": "MISSING_ADVISOR_USER", "message": "No se encontró el usuario del asesor"}}
 
+            docente_refresh_token = await _google_refresh_token(uow.session, docente_usuario_id)
             asesor_refresh_token = await _google_refresh_token(uow.session, asesor_usuario_id)
             attendees = [docente_email] if docente_email else []
 
@@ -663,7 +664,32 @@ def build_mcp() -> FastMCP:
                     f"¿Confirmas reservar con {preview['asesor']} ({preview['servicio']}) "
                     f"el {_fmt_local(chosen.inicio)}–{chosen.fin.astimezone(TZ_CL).strftime('%H:%M')}?"
                 )
-                return {"ok": True, "say": say, "data": {"preview": preview}}
+
+                suggested_args = {
+                    "start": preview["inicio"],
+                    "end": preview["fin"],
+                    "calendar_id": "primary",
+                }
+                if docente_refresh_token:
+                    suggested_args["refresh_token"] = docente_refresh_token
+                else:
+                    pass
+
+                next_hint_overlap = {
+                    "next_tool": "event_find_overlap",
+                    "suggested_args": suggested_args,
+                    "run_immediately": True,
+                    "attach_result_as": "calendar_conflicts"
+                }
+
+                return {
+                    "ok": True,
+                    "say": say,
+                    "data": {
+                        "preview": preview,
+                        "next_hint": next_hint_overlap
+                    }
+                }
 
             nueva = AsesoriaORM(
                 docente_id=docente_id,

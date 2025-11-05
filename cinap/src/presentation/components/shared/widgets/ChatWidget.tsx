@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { ChatHttpAgent } from "@/infrastructure/chat/chatHttpAgent";
 import { makeSendChatMessage } from "@/application/chat/usecases/SendChatMessage";
 import { useAuth } from "@/presentation/components/auth/hooks/useAuth";
+import ReactMarkdown from "react-markdown";
 
 type Role = "user" | "assistant";
 type ChatMessage = { id: string; role: Role; content: string; createdAt: string };
@@ -289,8 +290,13 @@ export default function ChatWidget() {
 
             {/* Mensajes */}
             <div ref={listRef} className="flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-blue-50/30 to-white p-6">
-              {messages.map((m) => (
-                <MessageBubble key={m.id} message={m} onQuickSend={sendQuick} />
+              {messages.map((m, i) => (
+                <MessageBubble
+                  key={m.id}
+                  message={m}
+                  onQuickSend={sendQuick}
+                  hasUserReplyAfter={messages.slice(i + 1).some(mm => mm.role === "user")}
+                />
               ))}
               {isLoading && (
                 <div className="flex items-start gap-3">
@@ -477,7 +483,15 @@ function parseCinapConfirmMarker(content: string): { clean: string; confirm: nul
   return { clean, confirm: last };
 }
 
-function MessageBubble({ message, onQuickSend }: { message: ChatMessage; onQuickSend?: (text: string) => void }) {
+function MessageBubble({
+  message,
+  onQuickSend,
+  hasUserReplyAfter,
+}: {
+  message: ChatMessage;
+  onQuickSend?: (text: string) => void;
+  hasUserReplyAfter?: boolean;
+}) {
   const time = useMemo(
     () => new Date(message.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
     [message.createdAt]
@@ -486,6 +500,15 @@ function MessageBubble({ message, onQuickSend }: { message: ChatMessage; onQuick
 
   const { clean: afterList, list } = useMemo(() => parseCinapListMarker(message.content), [message.content]);
   const { clean, confirm } = useMemo(() => parseCinapConfirmMarker(afterList), [afterList]);
+
+  const [decided, setDecided] = useState(false);
+  const handleChoice = useCallback((ans: "sí" | "no") => {
+    if (decided || hasUserReplyAfter) return;
+    setDecided(true);
+    onQuickSend?.(ans);
+  }, [decided, hasUserReplyAfter, onQuickSend]);
+
+  const disabled = decided || !!hasUserReplyAfter;
 
   return (
     <div className={classNames("flex items-start gap-3", isUser && "flex-row-reverse")}>
@@ -500,21 +523,39 @@ function MessageBubble({ message, onQuickSend }: { message: ChatMessage; onQuick
           )}
           style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
         >
-          {clean}
+          <ReactMarkdown
+            components={{
+              strong: ({children}) => <strong className="font-semibold">{children}</strong>,
+              em: ({children}) => <em className="italic">{children}</em>,
+              li: ({children}) => <li className="list-disc ml-5">{children}</li>,
+              a: (props) => <a {...props} target="_blank" rel="noreferrer" className="text-blue-600 underline" />,
+            }}
+          >
+            {clean}
+          </ReactMarkdown>
           {(!isUser && list?.items?.length) ? <PaginatedList items={list.items} /> : null}
 
-          {/* Botones de confirmación */}
           {!isUser && confirm ? (
             <div className="mt-3 flex items-center gap-2 justify-center">
               <button
-                onClick={() => onQuickSend?.("sí")}
-                className="rounded-xl px-3 py-1.5 text-sm text-white bg-blue-600 hover:bg-blue-700 shadow-sm"
+                onClick={() => handleChoice("sí")}
+                disabled={disabled}
+                aria-disabled={disabled}
+                className={classNames(
+                  "rounded-xl px-3 py-1.5 text-sm text-white bg-blue-600 hover:bg-blue-700 shadow-sm",
+                  disabled && "opacity-50 pointer-events-none hover:bg-blue-600"
+                )}
               >
                 Sí
               </button>
               <button
-                onClick={() => onQuickSend?.("no")}
-                className="rounded-xl px-3 py-1.5 text-sm text-blue-700 border border-blue-200 bg-white hover:bg-blue-50 shadow-sm"
+                onClick={() => handleChoice("no")}
+                disabled={disabled}
+                aria-disabled={disabled}
+                className={classNames(
+                  "rounded-xl px-3 py-1.5 text-sm text-blue-700 border border-blue-200 bg-white hover:bg-blue-50 shadow-sm",
+                  disabled && "opacity-50 pointer-events-none hover:bg-white"
+                )}
               >
                 No
               </button>
