@@ -38,12 +38,6 @@ export default function Navbar() {
         >
           Servicios
         </Link>
-        <Link
-          href={{ pathname: "/", hash: "contacto" }}
-          className="relative px-3 py-2 font-medium text-blue-800 transition-all duration-300 hover:text-blue-600 after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-0 after:bg-gradient-to-r after:from-blue-600 after:to-yellow-500 after:transition-all after:duration-300 hover:after:w-full"
-        >
-          Contacto
-        </Link>
       </div>
 
       <Link

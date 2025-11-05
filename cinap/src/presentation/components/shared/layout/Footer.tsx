@@ -11,14 +11,14 @@ export default function Footer() {
           </div>
 
           <div className="flex gap-6">
-            <a href="#" className="text-sm text-blue-200 transition-colors hover:text-yellow-400 font-medium">
+            <a href="/terminos" className="text-sm text-blue-200 transition-colors hover:text-yellow-400 font-medium">
               Términos
             </a>
-            <a href="#" className="text-sm text-blue-200 transition-colors hover:text-yellow-400 font-medium">
+            <a href="/privacidad" className="text-sm text-blue-200 transition-colors hover:text-yellow-400 font-medium">
               Privacidad
             </a>
-            <a href="#" className="text-sm text-blue-200 transition-colors hover:text-yellow-400 font-medium">
-              Soporte
+            <a href="/ayuda" className="text-sm text-blue-200 transition-colors hover:text-yellow-400 font-medium">
+              Ayuda
             </a>
           </div>
         </div>

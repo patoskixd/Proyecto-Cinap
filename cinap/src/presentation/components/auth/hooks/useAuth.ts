@@ -14,7 +14,14 @@ const signOutUC = makeSignOut(repo);
 const reissueUC = makeReissue(repo);
 
 const LOGIN_PATH = "/auth/login";
-const PUBLIC_EXACT = new Set<string>(["/", "/auth/login", "/auth/google/callback"]);
+const PUBLIC_EXACT = new Set<string>([
+  "/",
+  "/auth/login",
+  "/auth/google/callback",
+  "/terminos",
+  "/privacidad",
+  "/ayuda",
+]);
 const PUBLIC_PREFIXES = ["/auth", "/public"];
 const isPublicRoute = (p: string | null) =>
   !p || PUBLIC_EXACT.has(p) || PUBLIC_PREFIXES.some((x) => p.startsWith(x));

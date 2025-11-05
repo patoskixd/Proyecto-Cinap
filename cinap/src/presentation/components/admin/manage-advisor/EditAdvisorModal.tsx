@@ -61,7 +61,12 @@ export default function EditAdvisorModal({ open, advisor, catalog, onClose, onSa
   if (!open || !advisor) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
+    <div 
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="w-full max-w-4xl max-h-[95vh] bg-white/95 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-2xl border border-white/20 overflow-hidden transform animate-in zoom-in-95 duration-200 flex flex-col">
         {/* Header con gradiente */}
         <div className="h-16 sm:h-20 bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 relative flex-shrink-0">
@@ -214,7 +219,12 @@ export default function EditAdvisorModal({ open, advisor, catalog, onClose, onSa
 
       {/* confirmación */}
       {askConfirm && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div 
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setAskConfirm(false);
+          }}
+        >
           <div className="w-full max-w-sm sm:max-w-md bg-white/95 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-2xl border border-white/20 overflow-hidden">
             {/* Header */}
             <div className="h-12 sm:h-16 bg-gradient-to-r from-yellow-500 to-blue-600 relative">
