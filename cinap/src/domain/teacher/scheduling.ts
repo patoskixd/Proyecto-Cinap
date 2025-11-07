@@ -45,3 +45,21 @@ export type CreateAsesoriaOut = {
   sala_numero?: string | null;
   recurso_alias?: string | null;
 };
+
+export type CalendarConflict = {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  html_link?: string;
+};
+
+export type CheckConflictsInput = {
+  start: string;  // ISO datetime string
+  end: string;    // ISO datetime string
+};
+
+export type CheckConflictsOutput = {
+  conflicts: CalendarConflict[];
+  error?: string;
+};

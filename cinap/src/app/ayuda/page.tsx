@@ -3,7 +3,7 @@
 import AyudaNavigation from "@/presentation/components/ayuda/AyudaNavigation";
 import GuiasSection from "@/presentation/components/ayuda/GuiasSection";
 import GuiasCompletasSection from "@/presentation/components/ayuda/GuiasCompletasSection";
-import FAQSection from "@/presentation/components/ayuda/FAQSection";
+
 
 // Página de Ayuda con guías rápidas, guías completas y FAQ
 // Incluye navegación con anclas: /ayuda#guias-rapidas, /ayuda#guias-completas, /ayuda#faq
@@ -33,7 +33,6 @@ export default function AyudaPage() {
         <AyudaNavigation />
         <GuiasSection />
         <GuiasCompletasSection />
-        <FAQSection />
       </div>
     </div>
   );

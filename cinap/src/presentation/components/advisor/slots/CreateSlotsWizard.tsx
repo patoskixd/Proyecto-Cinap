@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Category, CategoryId, Service } from "./types";
-import type { Resource, SlotRule } from "@/domain/advisor/slots";
+import type { Resource, SlotRule, CalendarConflict } from "@/domain/advisor/slots";
 import { normalizeSchedules, type UIRule } from "@/application/advisor/slots/usecases/NormalizeSchedules";
 import { GetCreateSlotsData } from "@/application/advisor/slots/usecases/GetCreateSlotsData";
 import { CreateSlots } from "@/application/advisor/slots/usecases/CreateSlots";
@@ -19,6 +19,7 @@ import Step3Schedules from "./steps/Step3Schedules";
 import Step4Confirm from "./steps/Step4Confirm";
 import ErrorModal from "./components/ErrorModal";
 import LoadingStateCard from "@/presentation/components/shared/LoadingStateCard";
+import { ConflictWarningModal } from "./components/ConflictWarningModal";
 
 export default function CreateSlotsWizard() {
   const [loading, setLoading] = useState(true);
@@ -79,11 +80,41 @@ export default function CreateSlotsWizard() {
   const [createdCount, setCreatedCount] = useState<number>(0);
   const [skippedCount, setSkippedCount] = useState<number>(0);
 
+  const [calendarConflicts, setCalendarConflicts] = useState<CalendarConflict[]>([]);
+  const [showConflictModal, setShowConflictModal] = useState(false);
+  const [conflictLoading, setConflictLoading] = useState(false);
+
   const submit = async () => {
     if (!serviceId || !recursoId) return;
 
     const repo = new SlotsHttpRepo();
-    const uc = new CreateSlots(repo);
+
+    // Primero verificar conflictos de calendario
+    try {
+      const result = await repo.checkConflicts({
+        schedules: normalized.merged as unknown as SlotRule[],
+        tz: "America/Santiago",
+      });
+
+      if (result.conflicts && result.conflicts.length > 0) {
+        // Hay conflictos, mostrar modal
+        setCalendarConflicts(result.conflicts);
+        setShowConflictModal(true);
+        return; // No continuar hasta que el usuario decida
+      }
+    } catch (error) {
+      console.error("[CreateSlotsWizard] Error checking conflicts", error);
+      // Continuar de todas formas si falla la verificación
+    }
+
+    // Si no hay conflictos o el usuario confirmó, proceder a crear
+    await performCreateSlots();
+  };
+
+  const performCreateSlots = async (skipConflicts = false) => {
+    if (!serviceId || !recursoId) return;
+
+    const repo = new SlotsHttpRepo();
     const resourceLabel = selectedResource
       ? [selectedResource.campus, selectedResource.building].filter(Boolean).join(" — ")
       : "";
@@ -91,12 +122,10 @@ export default function CreateSlotsWizard() {
       ? [selectedResource.alias, selectedResource.number].filter(Boolean).join(" — ")
       : "";
 
-    if (process.env.NODE_ENV !== "production") {
-      console.debug("[CreateSlotsWizard] schedules", normalized.merged);
-    }
+    setConflictLoading(true);
 
     try {
-      const res = await uc.exec({
+      const res = await new CreateSlots(repo).exec({
         advisorId: undefined,
         categoryId: categoryId!,
         serviceId,
@@ -105,10 +134,12 @@ export default function CreateSlotsWizard() {
         room: roomLabel,
         roomNotes,
         schedules: normalized.merged as unknown as SlotRule[],
+        skipConflicts,
       } as any);
 
       setCreatedCount(res.createdSlots);
       setSkippedCount(res.skipped ?? 0);
+      setShowConflictModal(false);
       setShowSuccess(true);
 
     } catch (error: unknown) {
@@ -132,13 +163,17 @@ export default function CreateSlotsWizard() {
       if (err instanceof HttpError && err.status === 409) {
         setErrorMsg(message || "Las siguientes horas ya están ocupadas para este recurso.");
         setErrorConflicts(conflicts);
+        setShowConflictModal(false);
         setShowError(true);
         return;
       }
 
       setErrorMsg(message || "Ocurrió un error al crear los cupos.");
       setErrorConflicts(conflicts);
+      setShowConflictModal(false);
       setShowError(true);
+    } finally {
+      setConflictLoading(false);
     }
   };
 
@@ -212,6 +247,17 @@ export default function CreateSlotsWizard() {
         <FooterNav step={step} canNext={!!canNext} prev={prev} next={next} submit={submit} />
         <SuccessModal open={showSuccess} total={createdCount} skipped={skippedCount} />
         <ErrorModal open={showError} message={errorMsg} conflicts={errorConflicts} onClose={() => setShowError(false)}/>
+        <ConflictWarningModal
+          open={showConflictModal}
+          conflicts={calendarConflicts}
+          onCancel={() => {
+            setShowConflictModal(false);
+            setCalendarConflicts([]);
+          }}
+          onConfirm={() => performCreateSlots(false)}
+          onSkipConflicts={() => performCreateSlots(true)}
+          loading={conflictLoading}
+        />
 
       </section>
     </div>

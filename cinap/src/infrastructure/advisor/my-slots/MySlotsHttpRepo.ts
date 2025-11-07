@@ -60,7 +60,7 @@ export class HttpMySlotsRepo implements MySlotsRepo {
     if (service) qs.set("service", service);
     if (campus) qs.set("campus", campus);
 
-    const res = await fetch(`/api/advisor/my-slots?${qs.toString()}`, {
+    const res = await fetch(`/api/slots/my?${qs.toString()}`, {
       method: "GET",
       cache: "no-store",
       credentials: "include",
@@ -77,7 +77,7 @@ export class HttpMySlotsRepo implements MySlotsRepo {
   }
 
   async updateMySlot(id: string, patch: Partial<MySlot>): Promise<MySlot> {
-    const res = await fetch(`/api/advisor/my-slots/${id}`, {
+    const res = await fetch(`/api/slots/${id}`, {
       method: "PATCH",
       credentials: "include",
       headers: { "content-type": "application/json", accept: "application/json" },
@@ -106,7 +106,7 @@ export class HttpMySlotsRepo implements MySlotsRepo {
   }
 
   async deleteMySlot(id: string): Promise<void> {
-    const res = await fetch(`/api/advisor/my-slots/${id}`, {
+    const res = await fetch(`/api/slots/${id}`, {
       method: "DELETE",
       credentials: "include",
       headers: { accept: "application/json" },
@@ -123,7 +123,7 @@ export class HttpMySlotsRepo implements MySlotsRepo {
   }
 
   async reactivateMySlot(id: string): Promise<MySlot> {
-    const res = await fetch(`/api/advisor/my-slots/${id}/reactivate`, {
+    const res = await fetch(`/api/slots/${id}/reactivate`, {
       method: "POST",
       credentials: "include",
       headers: { accept: "application/json" },
@@ -133,7 +133,7 @@ export class HttpMySlotsRepo implements MySlotsRepo {
     const contentType = res.headers.get("content-type") || "";
     const isHtml = contentType.includes("text/html");
     if (isHtml && !res.ok) {
-      throw new Error("Ruta /api/advisor/my-slots/[id]/reactivate no encontrada (404). Revisa tu backend FastAPI.");
+      throw new Error("Ruta /api/slots/[id]/reactivate no encontrada (404). Revisa tu backend FastAPI.");
     }
 
     const data = await parse<MySlot | any>(res);

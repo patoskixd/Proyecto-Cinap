@@ -27,13 +27,6 @@ export default function AyudaNavigation() {
       >
         Guías Completas
       </a>
-      <a
-        href="#faq"
-        onClick={(e) => scrollToSection(e, '#faq')}
-        className="px-6 py-3 bg-white border-2 border-gray-200 rounded-xl font-semibold text-gray-700 transition-all hover:border-blue-500 hover:text-blue-600 hover:shadow-md"
-      >
-        Preguntas Frecuentes
-      </a>
     </nav>
   );
 }
