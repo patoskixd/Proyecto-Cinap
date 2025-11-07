@@ -6,7 +6,8 @@ const items: Item[] = [
   { href: "/admin/gestionar-docente",  title: "Ver Docentes",  description: "Lista completa de docentes",  iconType: "teacher" },
   { href: "/admin/gestionar-asesor",  title: "Ver Asesores",  description: "Lista completa de asesores",  iconType: "advisor" },
   { href: "/admin/gestionar-catalogo", title: "Gestionar Catalogos", description: "Gestionar categorías y servicios de asesorías", iconType: "catalog" },
-  { href: "/admin/gestionar-ubicaciones",  title: "Gestionar Ubicaciones",  description: "Administrar servicios disponibles", iconType: "location" }
+  { href: "/admin/gestionar-ubicaciones",  title: "Gestionar Ubicaciones",  description: "Administrar servicios disponibles", iconType: "location" },
+  { href: "/admin/gestionar-documentos", title: "Gestión de Documentos", description: "Sube o elimina documentos de la base semántica", iconType: "documents" }
 ];
 
 const getIcon = (iconType: string) => {
@@ -34,6 +35,13 @@ const getIcon = (iconType: string) => {
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      );
+    case "documents":
+      return (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M12 20h9M12 4h9M4 8h16M4 16h16" />
         </svg>
       );
     default:

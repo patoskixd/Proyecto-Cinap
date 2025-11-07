@@ -43,7 +43,7 @@ from app.interface_adapters.controllers.admin_catalog_router import make_admin_c
 from app.interface_adapters.controllers.admin_location_router import make_admin_location_router
 from app.interface_adapters.controllers.admin_advisors_router import make_admin_advisors_router
 from app.interface_adapters.controllers.admin_teachers_router import make_admin_teachers_router
-from app.frameworks_drivers.web.semantic import router as semantic_router
+from app.frameworks_drivers.web.semantic import admin_docs_router, semantic_router
 from app.interface_adapters.controllers.dashboard_controller import router as dashboard_router
 from app.interface_adapters.controllers.google_calendar_webhook import make_google_calendar_webhook_router
 from app.interface_adapters.controllers.calendar_router import make_calendar_router
@@ -134,7 +134,7 @@ def make_lifespan(*, start_scheduler: bool, auto_configure_google: bool, configu
         await container.startup()
         if getattr(container, "graph_agent", None) and hasattr(container.graph_agent, "set_confirm_store"):
             container.graph_agent.set_confirm_store(confirm_store)
-
+        """
         await _reset_google_webhook_cache(container.redis, webhook_url=WEBHOOK_PUBLIC_URL)
 
         if configure_telegram:
@@ -176,7 +176,7 @@ def make_lifespan(*, start_scheduler: bool, auto_configure_google: bool, configu
                         )
             except Exception as e:
                 logger.exception("No se pudo configurar los webhooks de Google Calendar: %r", e)
-
+        """
         if start_scheduler:
             scheduler.start()
         try:
@@ -452,6 +452,8 @@ profile_router = make_profile_router(
 app.include_router(profile_router, dependencies=[Depends(require_auth)])
 
 app.include_router(dashboard_router, dependencies=[Depends(require_auth)])
+
+app.include_router(admin_docs_router, tags=["admin_docs"])
 
 app.include_router(semantic_router, tags=["semantic"])
 
