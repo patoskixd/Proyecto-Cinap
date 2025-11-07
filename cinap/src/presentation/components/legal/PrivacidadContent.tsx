@@ -23,7 +23,7 @@ export default function PrivacidadContent() {
           <polyline points="22,6 12,13 2,6"></polyline>
         </svg>
       ),
-      items: ["Rol (docente/asesor/estudiante)", "Unidad académica (cuando aplique)"],
+      items: ["Rol "],
     },
     {
       title: "Datos de Uso",
@@ -34,17 +34,6 @@ export default function PrivacidadContent() {
         </svg>
       ),
       items: ["Historial de reservas/confirmaciones/cancelaciones", "Preferencias de asesorías (p. ej., franja horaria)"],
-    },
-    {
-      title: "Datos Técnicos",
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-          <line x1="8" y1="21" x2="16" y2="21"></line>
-          <line x1="12" y1="17" x2="12" y2="21"></line>
-        </svg>
-      ),
-      items: ["Dirección IP (en logs de seguridad)", "Tipo de navegador y sistema operativo"],
     },
     {
       title: "Datos de Comunicación",
@@ -175,7 +164,7 @@ export default function PrivacidadContent() {
           </Section>
 
           {/* 5. Integraciones con Google */}
-          <Section n="5" title="Integraciones con Google (OAuth y Calendar)">
+          <Section n="5" title="Integraciones con Google">
             <p>
               Para autenticación y gestión de eventos se solicitan los permisos mínimos necesarios (p. ej., perfil, correo y
               acceso al calendario para crear/actualizar/cancelar eventos de asesorías). Usted puede <strong>revocar</strong> los
@@ -188,7 +177,7 @@ export default function PrivacidadContent() {
           <Section n="6" title="Con Quién Compartimos su Información">
             <p className="mb-4">No compartimos datos con terceros no autorizados. Podremos compartir únicamente cuando:</p>
             <ul className="space-y-3">
-              <Li>Sea necesario para operar la Plataforma (p. ej., Google como proveedor de autenticación/calendario).</Li>
+              <Li>Sea necesario para operar la Plataforma.</Li>
               <Li>Sea requerido por ley o autoridad competente, o para proteger derechos institucionales y de los usuarios.</Li>
               <Li>La propia UCT los trate con fines académicos/administrativos y dentro de sus políticas de privacidad.</Li>
             </ul>
