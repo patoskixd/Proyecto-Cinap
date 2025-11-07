@@ -1,8 +1,18 @@
 "use client";
 import React, { useEffect, useState } from "react";
+import type { AdminDocument } from "@/domain/admin/documents";
+import { AdminDocumentsHttpRepo } from "@/infrastructure/admin/documents/AdminDocumentsHttpRepo";
+import { ListDocuments } from "@/application/admin/documents/usecases/ListDocuments";
+import { UploadDocument } from "@/application/admin/documents/usecases/UploadDocument";
+import { DeleteDocument } from "@/application/admin/documents/usecases/DeleteDocument";
+
+const repo = new AdminDocumentsHttpRepo();
+const listUseCase = new ListDocuments(repo);
+const uploadUseCase = new UploadDocument(repo);
+const deleteUseCase = new DeleteDocument(repo);
 
 export default function ManageDocumentsView() {
-  const [docs, setDocs] = useState<any[]>([]);
+  const [docs, setDocs] = useState<AdminDocument[]>([]);
   const [loading, setLoading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [query, setQuery] = useState("");
@@ -10,9 +20,8 @@ export default function ManageDocumentsView() {
   async function fetchDocs() {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/documents", { credentials: "include", cache: "no-store" });
-      if (!res.ok) throw new Error("Error al cargar documentos");
-      setDocs(await res.json());
+      const items = await listUseCase.execute();
+      setDocs(items);
     } catch (err) {
       console.error(err);
     } finally {
@@ -31,8 +40,7 @@ export default function ManageDocumentsView() {
     form.append("file", file);
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/documents/upload", { method: "POST", body: form, credentials: "include" });
-      if (!res.ok) throw new Error("Error al subir archivo");
+      await uploadUseCase.execute(form);
       await fetchDocs();
       setFile(null);
     } catch (err) {
@@ -45,7 +53,7 @@ export default function ManageDocumentsView() {
   async function handleDelete(id: string) {
     if (!confirm("¿Eliminar este documento del índice semántico?")) return;
     try {
-      await fetch(`/api/admin/documents/${id}`, { method: "DELETE", credentials: "include" });
+      await deleteUseCase.execute(id);
       await fetchDocs();
     } catch (err) {
       console.error(err);
@@ -121,7 +129,7 @@ export default function ManageDocumentsView() {
                     <td className="px-4 py-4 text-gray-600">{doc.kind ?? "doc.chunk"}</td>
                     <td className="px-4 py-4 text-gray-600">{doc.chunks ?? 0}</td>
                     <td className="px-4 py-4 text-gray-600">
-                      {new Date(doc.created_at).toLocaleDateString()}
+                      {doc.createdAt ? new Date(doc.createdAt).toLocaleDateString() : "-"}
                     </td>
                     <td className="px-4 py-4 text-right">
                       <button

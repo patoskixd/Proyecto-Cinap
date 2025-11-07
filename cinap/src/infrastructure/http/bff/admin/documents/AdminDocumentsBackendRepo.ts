@@ -1,4 +1,7 @@
-export type AdminDoc = {
+import type { AdminDocumentsRepo } from "@/application/admin/documents/ports/AdminDocumentsRepo";
+import type { AdminDocument, UploadDocumentResponse, DeleteDocumentResponse } from "@/domain/admin/documents";
+
+type AdminDocDTO = {
   id: string;
   name: string;
   url?: string | null;
@@ -7,7 +10,7 @@ export type AdminDoc = {
   created_at?: string;
 };
 
-export class AdminDocumentsBackendRepo {
+export class AdminDocumentsBackendRepo implements AdminDocumentsRepo {
   private readonly baseUrl: string;
   private readonly cookie: string;
   private setCookies: string[] = [];
@@ -39,7 +42,7 @@ export class AdminDocumentsBackendRepo {
     try { return JSON.parse(txt) as T; } catch { throw new Error(txt || `HTTP ${res.status}`); }
   }
 
-  async list(): Promise<AdminDoc[]> {
+  async list(): Promise<AdminDocument[]> {
     const res = await fetch(`${this.baseUrl}/api/admin/documents`, {
       method: "GET",
       headers: { cookie: this.cookie, accept: "application/json" },
@@ -47,10 +50,18 @@ export class AdminDocumentsBackendRepo {
       cache: "no-store",
     });
     if (!res.ok) throw new Error(await res.text() || "No se pudieron listar documentos");
-    return this.parse<AdminDoc[]>(res);
+    const dtos = await this.parse<AdminDocDTO[]>(res);
+    return dtos.map((dto) => ({
+      id: dto.id,
+      name: dto.name,
+      url: dto.url,
+      kind: dto.kind,
+      chunks: dto.chunks,
+      createdAt: dto.created_at || new Date().toISOString(),
+    }));
   }
 
-  async upload(form: FormData): Promise<{ ok: boolean; id: string; name: string }> {
+  async upload(form: FormData): Promise<UploadDocumentResponse> {
     const res = await fetch(`${this.baseUrl}/api/admin/documents/upload`, {
       method: "POST",
       headers: { cookie: this.cookie },
@@ -60,10 +71,15 @@ export class AdminDocumentsBackendRepo {
     });
     const data = await this.parse<any>(res);
     if (!res.ok) throw new Error(data?.detail || data?.message || "Error al subir documento");
-    return data;
+    return {
+      ok: data.ok ?? true,
+      id: data.id,
+      name: data.name,
+      inserted: data.inserted,
+    };
   }
 
-  async remove(id: string): Promise<{ ok: boolean }> {
+  async remove(id: string): Promise<DeleteDocumentResponse> {
     const res = await fetch(`${this.baseUrl}/api/admin/documents/${id}`, {
       method: "DELETE",
       headers: { cookie: this.cookie, accept: "application/json" },
@@ -72,6 +88,9 @@ export class AdminDocumentsBackendRepo {
     });
     const data = await this.parse<any>(res);
     if (!res.ok) throw new Error(data?.detail || data?.message || "No se pudo eliminar el documento");
-    return data;
+    return {
+      ok: data.ok ?? true,
+      deleted: data.deleted,
+    };
   }
 }
