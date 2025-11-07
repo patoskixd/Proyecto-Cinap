@@ -4,6 +4,8 @@ import type {
   CreateAsesoriaOut,
   FindSlotsInput,
   FoundSlot,
+  CheckConflictsInput,
+  CheckConflictsOutput,
 } from "@/domain/teacher/scheduling";
 
 const CL_TZ = "America/Santiago";
@@ -154,6 +156,29 @@ export class AsesoriasBackendRepo implements SchedulingRepo {
     const data = await this.parse<any>(res);
     if (!res.ok)
       throw new Error(data?.detail || data?.message || "No se pudo cargar create-data");
+    return data;
+  }
+
+  async checkConflicts(input: CheckConflictsInput): Promise<CheckConflictsOutput> {
+    const res = await fetch(`${this.baseUrl}/api/calendar/check-conflicts`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        cookie: this.cookie,
+      },
+      credentials: "include",
+      body: JSON.stringify(input),
+      cache: "no-store",
+    });
+
+    this.collectSetCookies(res);
+    
+    if (!res.ok) {
+      return { conflicts: [] };
+    }
+    
+    const data = await this.parse<CheckConflictsOutput>(res);
     return data;
   }
 }

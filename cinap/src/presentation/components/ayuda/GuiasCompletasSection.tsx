@@ -32,185 +32,269 @@ export default function GuiasCompletasSection() {
   const guias = {
     profesor: [
       {
-        title: "Inicio de Sesión y Primer Acceso",
+        title: "Inicio de Sesión y Acceso a la Plataforma",
         steps: [
-          "Ingresa a la plataforma CINAP con tu correo institucional (@uct.cl)",
-          "Haz clic en Iniciar Sesión con Google para autenticarte",
-          "En tu primer acceso, completa tu perfil con información académica",
-          "Acepta los términos y condiciones del servicio",
-          "Explora el dashboard y familiarízate con las opciones disponibles",
+          "Accede al portal y selecciona la opción “Iniciar sesión con Google”.",
+          "Autentícate utilizando tu correo institucional.",
+          "Autoriza los permisos solicitados para sincronizar tu cuenta con Google Calendar.",
+          "Una vez dentro, se mostrará el Panel Docente.",
         ],
       },
       {
-        title: "Solicitar una Asesoría Pedagógica",
+        title: "Vista general del Panel Docente",
         steps: [
-          "En el dashboard, haz clic en Nueva Asesoría o usa el asistente IA",
-          "Selecciona el área de asesoría: metodologías, evaluación, TIC, etc.",
-          "Elige el asesor de tu preferencia o deja que el sistema recomiende",
-          "Selecciona fecha y horario entre las opciones disponibles",
-          "Indica la modalidad: presencial u online (mediante videoconferencia)",
-          "Agrega una descripción breve de lo que necesitas trabajar",
-          "Confirma la reserva y recibirás correo de confirmación",
+          "Al iniciar sesión se muestra el Panel Docente con accesos directos para agendar asesorías y revisar estados.",
+          "Los indicadores superiores informan la sincronización con Google Calendar, el total del mes y las solicitudes pendientes por confirmar.",
+          "La sección “Próximas Asesorías” muestra tus reservas programadas con su estado y acceso al detalle.",
+          "Desde el panel puedes visualizar las asesorías pendientes que requieren confirmación."
         ],
       },
       {
-        title: "Gestionar tus Asesorías",
+        title: "Agendar una Asesoría",
         steps: [
-          "Ve a Mis Asesorías para ver todas tus reservas activas",
-          "Para modificar: selecciona la asesoría y haz clic en Modificar",
-          "Elige nueva fecha/hora y confirma el cambio (con 24h de anticipación)",
-          "Para cancelar: selecciona y haz clic en Cancelar, indica el motivo",
-          "Recibirás notificación de confirmación por correo y Telegram (si vinculado)",
-          "Revisa el historial para consultar asesorías pasadas y materiales compartidos",
+          "Desde el Panel Docente, haz clic en el botón “Agendar asesoría”.",
+          "En el paso Seleccionar, elige la categoría, el servicio y el asesor disponible.",
+          "En el paso Agendar, selecciona la fecha y el horario que mejor se adapten a tu disponibilidad.",
+          "En el paso Confirmar, revisa el resumen de tu asesoría y confirma la solicitud.",
+          "Al confirmar, recibirás un correo electrónico con los detalles y el evento se registrará en Google Calendar una vez confirmado.",
         ],
       },
       {
-        title: "Usar el Asistente de IA",
+        title: "Visualizar Asesorías en el Panel Docente",
         steps: [
-          "Haz clic en el ícono del chat flotante en la esquina inferior derecha",
-          "Escribe tu solicitud en lenguaje natural: Necesito una asesoría de evaluación",
-          "El asistente te mostrará opciones de asesores y horarios disponibles",
-          "Responde a las preguntas del asistente para refinar tu búsqueda",
-          "Confirma la reserva directamente desde el chat",
-          "También puedes preguntar: ¿Cuándo es mi próxima asesoría?",
+          "Las asesorías confirmadas o pendientes se muestran en la sección “Próximas Asesorías”.",
+          "Las asesorías con estado “Pendiente” podrán ser confirmadas desde el correo o directamente desde el sistema.",
+          "El panel también muestra indicadores generales de sincronización con Calendar, asesorías del mes y pendientes por confirmar.",
         ],
       },
       {
-        title: "Vincular Telegram para Notificaciones",
+        title: "Confirmar o Cancelar Asesorías",
         steps: [
-          "Ve a tu perfil haciendo clic en tu nombre (esquina superior derecha)",
-          "En la sección Notificaciones, haz clic en Vincular Telegram",
-          "Se generará un código único de 6 dígitos",
-          "Abre Telegram y busca el bot @CINAPBot_UCT",
-          "Inicia conversación con el bot enviando /start",
-          "Envía tu código de vinculación al bot",
-          "Recibirás confirmación y notificaciones instantáneas desde ese momento",
+          "Ingresa a la sección “Mis asesorías” desde el menú principal o directamente desde el correo de confirmación o Google Calendar.",
+          "Utiliza las pestañas “Próximas” e “Historial” para filtrar tus reservas.",
+          "En cada tarjeta, selecciona “Confirmar” o “Cancelar” según corresponda.",
+          "Toda modificación se refleja automáticamente en el sistema y en Google Calendar.",
+          "Las asesorías confirmadas se marcan como “Completadas” al finalizar y las no confirmadas cambian a “Canceladas”.",
+        ],
+      },
+      {
+        title: "Uso del Asistente de Inteligencia Artificial",
+        steps: [
+          "Abre el chat flotante ubicado en la esquina inferior derecha de la pantalla.",
+          "Formula tus solicitudes en lenguaje natural puedes listar asesores y servicios, verificar disponibilidad, agendar, confirmar o cancelar asesorías, y consultar información institucional",
+          "El asistente interpretará tu solicitud y mostrará opciones disponibles de manera interactiva.",
+          "También puedes usar los botones del chat para confirmar o cancelar con un solo clic.",
+          "Todas las acciones realizadas mediante el asistente se sincronizan en tiempo real con tu cuenta y Google Calendar.",
+        ],
+      },
+      {
+        title: "Perfil del Docente y métricas",
+        steps: [
+          "Desde “Tu perfil” visualiza tus datos de contacto y tu rol.",
+          "Revisa indicadores como asesorías completadas, canceladas, total de asesorías y tasa de éxito.",
+          "Utiliza estas métricas para monitorear tu desempeño y planificar mejoras."
+        ],
+      },
+      {
+        title: "Vincular tu Cuenta de Telegram",
+        steps: [
+          "Desde el avatar de usuario, accede a la opción “Tu perfil”.",
+          "Presiona el botón “Vincular Telegram” para iniciar la vinculación.",
+          "Autoriza la apertura de Telegram y se envía el comando /start al bot institucional de CINAP.",
+          "Una vez vinculada tu cuenta, desde Telegram podrás listar asesores y servicios, verificar disponibilidad, agendar, confirmar o cancelar asesorías, y consultar información institucional.",
+          "Todas las acciones realizadas desde Telegram se sincronizan de forma inmediata con el sistema y con Google Calendar.",
+        ],
+      },
+      {
+        title: "Notificaciones",
+        steps: [
+          "El sistema envía automáticamente correos de confirmación y recordatorios previos a la hora agendada.",
+          "Las asesorías se actualizan de forma automática en Google Calendar al ser confirmadas o modificadas."
         ],
       },
     ],
     asesor: [
       {
-        title: "Configurar tu Perfil de Asesor",
+        title: "Inicio de Sesión y Acceso a la Plataforma",
         steps: [
-          "Accede con tu cuenta institucional y completa tu perfil de asesor",
-          "Especifica tus áreas de especialización y expertise",
-          "Agrega una breve biografía profesional (visible para profesores)",
-          "Configura tu foto de perfil y datos de contacto",
-          "Define tus preferencias de modalidad: presencial, online o híbrido",
+          "Accede al portal y selecciona “Iniciar sesión con Google”.",
+          "Autentícate con tu correo institucional y autoriza los permisos solicitados.",
+          "Se habilitará la sincronización con Google Calendar para gestión de eventos.",
+          "Una vez dentro, se mostrará el Panel del Asesor."
         ],
       },
       {
-        title: "Gestionar tu Disponibilidad",
+        title: "Vista general del Panel del Asesor",
         steps: [
-          "Ve a Disponibilidad en tu panel de asesor",
-          "Define tus bloques horarios semanales disponibles",
-          "Marca excepciones: días festivos, vacaciones o ausencias",
-          "Establece tiempo de preparación entre asesorías (buffer)",
-          "Guarda los cambios y el sistema actualizará automáticamente",
-          "Los profesores solo verán horarios que hayas marcado como disponibles",
+          "Desde el panel podrás abrir cupos, revisar confirmaciones pendientes y consultar tus categorías y servicios activos.",
+          "La sección “Próximas asesorías” muestra tus atenciones programadas y su estado.",
+          "Los indicadores superiores presentan el total del mes y las confirmaciones pendientes."
         ],
       },
       {
-        title: "Atender Solicitudes de Asesoría",
+        title: "Abrir cupos",
         steps: [
-          "Recibirás notificación cuando un profesor solicite asesoría contigo",
-          "Revisa los detalles de la solicitud: tema, modalidad, horario",
-          "Acepta la solicitud si todo está correcto",
-          "Si necesitas cambios, contacta al profesor para coordinar",
-          "Prepara materiales según el tema solicitado",
-          "Conéctate 5 minutos antes si es online, llega puntual si es presencial",
+          "Haz clic en “Abrir cupo”. En “Servicio” selecciona la categoría y el servicio que tengas activo.",
+          "En “Sala” define campus, edificio y sala. Puedes añadir notas operativas si corresponde.",
+          "En “Horarios” elige fecha y rango entre 08:00 y 18:00 de lunes a viernes.",
+          "Configura “Bloques sin cupos” para marcar tramos donde no se crearán cupos como pausas, reuniones, etc.",
+          "Si necesitas repetir la configuración en varios días, selecciónalos en el calendario y utiliza “Guardar en fechas marcadas”.",
+          "En “Confirmar” revisa el resumen y crea los cupos."
         ],
       },
       {
-        title: "Realizar y Documentar Asesorías",
+        title: "Mis cupos",
         steps: [
-          "Conéctate a través del link proporcionado (modalidad online)",
-          "Saluda y confirma objetivos de la sesión con el profesor",
-          "Desarrolla la asesoría según metodología acordada",
-          "Comparte materiales, recursos o documentos de apoyo",
-          "Al finalizar, registra resumen y acuerdos en el sistema",
-          "Marca la asesoría como completada y adjunta materiales si corresponde",
+          "Accede a “Mis cupos” para visualizar todos los cupos creados con sus estados: Abierto, Ocupado, Cancelado o Expirado.",
+          "Filtra por categoría, servicio, campus, estado o fecha para acotar la búsqueda.",
+          "Desde cada tarjeta puedes editar fecha, horario, sala y notas, además, cancelar o eliminar el cupo cuando corresponda.",
+          "Los cambios se reflejan inmediatamente en el sistema y en las vistas de los usuarios."
         ],
       },
       {
-        title: "Acceder a Reportes y Estadísticas",
+        title: "Solicitudes por confirmar",
         steps: [
-          "Ve a Reportes en tu panel de asesor",
-          "Consulta número de asesorías realizadas por período",
-          "Revisa evaluaciones y feedback de los profesores",
-          "Analiza las áreas más solicitadas y tendencias",
-          "Exporta reportes en PDF o Excel para documentación",
-          "Usa esta información para mejorar continuamente tu servicio",
+          "Ingresa a “Solicitudes por confirmar” para revisar asesorías que requieren confirmación por correo de Google o por sistema.",
+          "Cada solicitud muestra la información esencial."
+        ],
+      },
+      {
+        title: "Catálogo de categorías y servicios",
+        steps: [
+          "Desde “Categorías y servicios” consulta qué categorías tienes activas y los servicios disponibles en tu cuenta.",
+          "Revisa el detalle de cada categoría."
+        ],
+      },
+      {
+        title: "Mis próximas asesorías",
+        steps: [
+          "Desde el panel principal, selecciona la opción “Ver todas las asesorías”.",
+          "Utiliza las pestañas “Próximas” e “Historial” para revisar asesorías pendientes, confirmadas o finalizadas.",
+          "En cada tarjeta, utiliza las acciones disponibles para confirmar o cancelar según corresponda.",
+          "También puedes confirmar la asistencia desde el correo recibido o desde el evento en Google Calendar.",
+          "El sistema actualiza los estados automáticamente: las asesorías confirmadas se registran como “Completadas” y las no confirmadas cambian a “Canceladas”."
+        ],
+      },
+      {
+        title: "Uso del Asistente de Inteligencia Artificial",
+        steps: [
+          "Abre el chat flotante ubicado en la esquina inferior derecha de la pantalla.",
+          "Formula tus solicitudes en lenguaje natural puedes listar asesores y servicios, verificar disponibilidad, agendar, confirmar o cancelar asesorías, y consultar información institucional",
+          "El asistente interpretará tu solicitud y mostrará opciones disponibles de manera interactiva.",
+          "También puedes usar los botones del chat para confirmar o cancelar con un solo clic.",
+          "Todas las acciones realizadas mediante el asistente se sincronizan en tiempo real con tu cuenta y Google Calendar.",
+        ],
+      },
+      {
+        title: "Perfil del asesor y métricas",
+        steps: [
+          "Desde “Tu perfil” visualiza tus datos de contacto y tu rol.",
+          "Revisa indicadores como asesorías completadas, canceladas, total de asesorías y tasa de éxito.",
+          "Utiliza estas métricas para monitorear tu desempeño y planificar mejoras."
+        ],
+      },
+      {
+        title: "Vincular tu Cuenta de Telegram",
+        steps: [
+          "Desde el avatar de usuario, accede a la opción “Tu perfil”.",
+          "Presiona el botón “Vincular Telegram” para iniciar la vinculación.",
+          "Autoriza la apertura de Telegram y se envía el comando /start al bot institucional de CINAP.",
+          "Una vez vinculada tu cuenta, desde Telegram podrás listar asesores y servicios, verificar disponibilidad, agendar, confirmar o cancelar asesorías, y consultar información institucional.",
+          "Todas las acciones realizadas desde Telegram se sincronizan de forma inmediata con el sistema y con Google Calendar.",
+        ],
+      },
+
+      {
+        title: "Notificaciones y Seguimiento",
+        steps: [
+          "El sistema envía automáticamente correos de confirmación y recordatorios previos a la hora agendada.",
+          "Las asesorías se actualizan de forma automática en Google Calendar al ser confirmadas o modificadas."
         ],
       },
     ],
     admin: [
       {
-        title: "Acceder al Panel Administrativo",
+        title: "Inicio de sesión y acceso a la plataforma",
         steps: [
-          "Inicia sesión con tu cuenta de administrador",
-          "Ve a Panel de Administración en el menú principal",
-          "Familiarízate con las diferentes secciones: usuarios, asesores, configuración",
-          "Revisa el dashboard con métricas generales del sistema",
-          "Configura preferencias de visualización según tus necesidades",
+          "Accede al portal y selecciona “Iniciar sesión con Google”.",
+          "Autentícate con tu correo institucional y autoriza los permisos solicitados.",
+          "Se habilitará la sincronización con Google Calendar para gestión de eventos.",
+          "Una vez dentro, se mostrará el Panel del Administrador."
         ],
       },
       {
-        title: "Gestionar Usuarios (Profesores)",
+        title: "Vista general del Panel Administrativo",
         steps: [
-          "Ve a Usuarios > Profesores",
-          "Revisa la lista completa de profesores registrados",
-          "Usa filtros para buscar por facultad, carrera o estado",
-          "Activa/desactiva cuentas según sea necesario",
-          "Edita información de perfil si el usuario solicita soporte",
-          "Exporta listados para análisis o reportes institucionales",
+          "En la cabecera se muestran tarjetas con conteos globales.",
+          "La sección “Próximas asesorías” lista reservas del sistema siendo el administrador puede ver el total de citas de asesores y docentes.",
+          "El panel lateral ofrece accesos directos: ver docentes, ver asesores, gestionar catálogos y gestionar ubicaciones.",
+          "Utiliza el botón “Registrar asesor” para iniciar el alta de nuevos perfiles."
         ],
       },
       {
-        title: "Administrar Asesores",
+        title: "Registrar asesores",
         steps: [
-          "Ve a Usuarios > Asesores",
-          "Agrega nuevos asesores completando el formulario",
-          "Asigna áreas de especialización a cada asesor",
-          "Configura permisos y niveles de acceso",
-          "Revisa métricas de desempeño: asesorías completadas, calificaciones",
-          "Desactiva asesores que ya no estén disponibles",
+          "Accede al apartado “Registrar asesor” desde el Panel Administrador para incorporar nuevos miembros al equipo de asesoría.",
+          "En la sección de datos básicos, ingresa el nombre completo y la dirección de correo electrónico institucional del asesor.",
+          "Selecciona las categorías en las cuales el nuevo asesor brindará apoyo académico o pedagógico, conforme a sus áreas de especialización.",
+          "A continuación, define los servicios específicos que podrá ofrecer dentro de cada categoría seleccionada, indicando aquellos que se ajusten a su perfil profesional.",
+          "Finalmente, revisa cuidadosamente el resumen de información y confirma el registro. Una vez completado el proceso, el nuevo asesor quedará habilitado para operar en el sistema."
         ],
       },
       {
-        title: "Supervisar Asesorías",
+        title: "Gestión de Docentes",
         steps: [
-          "Ve a Asesorías > Todas las asesorías",
-          "Revisa estado: programadas, completadas, canceladas",
-          "Filtra por fecha, asesor, profesor o tipo de asesoría",
-          "Intervén en caso de conflictos o problemas reportados",
-          "Verifica que las asesorías se estén completando según lo programado",
-          "Contacta a usuarios en caso de incidencias o patrones inusuales",
+          "Ingresa a “Ver Docentes” para administrar el listado de docentes registrados.",
+          "Utiliza el buscador para filtrar por nombre o correo electrónico.",
+          "Selecciona “Editar” para actualizar nombre o correo según corresponda.",
+          "Si es necesario, utiliza “Eliminar” para remover un registro obsoleto."
         ],
       },
       {
-        title: "Configurar el Sistema",
+        title: "Gestión de Asesores",
         steps: [
-          "Ve a Configuración > Parámetros del sistema",
-          "Ajusta horarios de operación de la plataforma",
-          "Configura tipos de asesorías disponibles",
-          "Establece tiempos mínimos de anticipación para reservas/cancelaciones",
-          "Personaliza plantillas de correos y notificaciones",
-          "Guarda cambios y prueba funcionalidad antes de aplicar en producción",
+          "Accede a “Ver Asesores” para administrar perfiles de asesor.",
+          "Filtra por categoría o servicio para localizar rápidamente al asesor requerido.",
+          "Desde cada tarjeta, utiliza “Editar” para actualizar nombre, correo, categorías y servicios activos.",
+          "Si el perfil ya no corresponde, selecciona “Eliminar” para retirarlo del sistema."
         ],
       },
       {
-        title: "Generar Reportes y Análisis",
+        title: "Gestión de Catálogos de Categorías y Servicios",
         steps: [
-          "Ve a Reportes > Análisis",
-          "Selecciona período: semanal, mensual, semestral o personalizado",
-          "Revisa métricas clave: total asesorías, tasas de cancelación, satisfacción",
-          "Analiza tendencias por facultad, tipo de asesoría o asesor",
-          "Genera gráficos y visualizaciones para presentaciones",
-          "Exporta reportes en diferentes formatos para la dirección",
+          "Abre “Gestionar Catálogos” para administrar categorías y servicios institucionales.",
+          "Revisa los contadores de categorías y servicios activos para verificar el estado general.",
+          "En cada categoría, usa “Editar” para modificar detalles o “Desactivar” para ocultarla temporalmente.",
+          "Utiliza el boton “Agregar” para crear nuevas categorías o añadir servicios y confirma los cambios antes de salir."
+        ],
+      },
+      {
+        title: "Gestión de Ubicaciones",
+        steps: [
+          "Ingresa a “Gestionar Ubicaciones” para administrar campus, edificios y salas.",
+          "Utiliza las pestañas para cambiar entre los tres niveles y el buscador para localizar registros.",
+          "Selecciona el boton “Crear” para añadir un nuevo elemento o el boton “Editar” para actualizar datos tambien puedes presionar los botones de “Desactivar” o “Eliminar” cuando corresponda.",
+          "Verifica la capacidad activa total y la consistencia de la jerarquía antes de guardar."
+        ],
+      },
+      {
+        title: "Próximas asesorías y monitoreo del sistema",
+        steps: [
+          "Desde el panel principal, revisa el bloque “Próximas asesorías” para observar la agenda del sistema.",
+          "El administrador visualiza asesorías de asesores y docentes, con su estado respectivo.",
+          "Realiza seguimiento periódico para anticipar congestión de demanda o necesidad de nuevos servicios."
+        ],
+      },
+      {
+        title: "Perfil del Administrador  y métricas",
+        steps: [
+          "Desde “Tu perfil” visualiza tus datos de contacto y tu rol.",
+          "Revisa indicadores como asesorías completadas, canceladas, total de asesorías y tasa de éxito.",
+          "Utiliza estas métricas para monitorear el desempeño y planificar mejoras."
         ],
       },
     ],
+
   };
 
   return (

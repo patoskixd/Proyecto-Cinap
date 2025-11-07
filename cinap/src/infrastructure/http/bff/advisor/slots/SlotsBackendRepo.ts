@@ -1,5 +1,5 @@
 import type { SlotsRepo, CreateSlotsResult } from "@/application/advisor/slots/ports/SlotsRepo";
-import type { CreateSlotsData, CreateSlotsInput } from "@/domain/advisor/slots";
+import type { CreateSlotsData, CreateSlotsInput, CheckConflictsInput, CheckConflictsOutput } from "@/domain/advisor/slots";
 
 export class SlotsBackendRepo implements SlotsRepo {
   private readonly baseUrl: string;
@@ -43,6 +43,7 @@ export class SlotsBackendRepo implements SlotsRepo {
     const payload = {
       ...input,
       tz: "America/Santiago",
+      skipConflicts: input.skipConflicts ?? false,
       schedules: input.schedules.map((s) => ({
         day: s.day,
         startTime: s.startTime,
@@ -85,5 +86,35 @@ export class SlotsBackendRepo implements SlotsRepo {
       result.skipped = data.skipped;
     }
     return result;
+  }
+
+  async checkConflicts(input: CheckConflictsInput): Promise<CheckConflictsOutput> {
+    const payload = {
+      schedules: input.schedules.map((s) => ({
+        day: s.day,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        isoDate: (s as unknown as { isoDate?: string | null }).isoDate ?? null,
+      })),
+      tz: input.tz ?? "America/Santiago",
+    };
+
+    const res = await fetch(`${this.baseUrl}/api/slots/check-conflicts`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        cookie: this.cookie,
+      },
+      credentials: "include",
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      return { conflicts: [] };
+    }
+
+    return this.parse<CheckConflictsOutput>(res);
   }
 }

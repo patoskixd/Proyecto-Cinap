@@ -1,7 +1,7 @@
 from __future__ import annotations
 import httpx, uuid, asyncio, logging, inspect
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from app.use_cases.ports.calendar_port import CalendarPort, CalendarEventInput, CalendarEventOut
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -302,3 +302,83 @@ class GoogleCalendarClient(CalendarPort):
             log.warning(f"PATCH RSVP falló: {r_patch.status_code} {txt}")
             r_patch.raise_for_status()
             return True
+
+    async def find_overlapping_events(
+        self,
+        *,
+        usuario_id: str,
+        start: datetime,
+        end: datetime,
+        calendar_id: str = "primary",
+    ) -> list[dict]:
+        """
+        Busca eventos en el calendario del usuario que se solapen con el rango [start, end).
+        Retorna una lista de eventos conflictivos con información básica.
+        """
+        try:
+            headers = await self._auth_headers_for_user(usuario_id)
+        except Exception as e:
+            log.warning(f"No se pudieron obtener headers para usuario {usuario_id}: {e}")
+            return []
+
+        params = {
+            "timeMin": start.isoformat(),
+            "timeMax": end.isoformat(),
+            "singleEvents": "true",
+            "orderBy": "startTime",
+        }
+        
+        url = f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events"
+        
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                r = await client.get(url, headers=headers, params=params)
+                r.raise_for_status()
+                data = r.json()
+                
+                events = data.get("items", [])
+                conflicts = []
+                
+                for event in events:
+                    event_start = event.get("start", {})
+                    event_end = event.get("end", {})
+                    
+                    start_str = event_start.get("dateTime") or event_start.get("date")
+                    end_str = event_end.get("dateTime") or event_end.get("date")
+                    
+                    if not start_str or not end_str:
+                        continue
+                    
+                    try:
+                        event_start_dt = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+                        event_end_dt = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
+                        
+                        if event_start_dt.tzinfo is None:
+                            event_start_dt = event_start_dt.replace(tzinfo=timezone.utc)
+                        if event_end_dt.tzinfo is None:
+                            event_end_dt = event_end_dt.replace(tzinfo=timezone.utc)
+                        
+                        compare_start = start if start.tzinfo else start.replace(tzinfo=timezone.utc)
+                        compare_end = end if end.tzinfo else end.replace(tzinfo=timezone.utc)
+                            
+                    except Exception:
+                        continue
+                    
+                    # Lógica de solapamiento: event_start < range_end AND range_start < event_end
+                    overlaps = event_start_dt < compare_end and compare_start < event_end_dt
+                    
+                    if overlaps:
+                        conflict = {
+                            "id": event.get("id"),
+                            "title": event.get("summary", "Sin título"),
+                            "start": start_str,
+                            "end": end_str,
+                            "html_link": event.get("htmlLink"),
+                        }
+                        conflicts.append(conflict)
+                
+                return conflicts
+                
+        except Exception as e:
+            log.warning(f"Error buscando eventos solapados para usuario {usuario_id}: {e}")
+            return []

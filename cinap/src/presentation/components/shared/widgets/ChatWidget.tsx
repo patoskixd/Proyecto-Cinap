@@ -205,9 +205,9 @@ export default function ChatWidget() {
         onClick={toggleChat}
         className={classNames(
           "relative flex h-16 w-16 items-center justify-center rounded-full text-white shadow-xl transition-all duration-300 transform",
-          "bg-gradient-to-br from-blue-600 via-blue-700 to-yellow-500 hover:scale-[1.08] hover:shadow-2xl",
-          "focus:outline-none focus:ring-4 focus:ring-blue-300 focus:ring-offset-2",
-          "hover:rotate-3 active:scale-95",
+          "bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 hover:scale-110 hover:shadow-2xl",
+          "focus:outline-none focus:ring-4 focus:ring-blue-400/50 focus:ring-offset-2",
+          "active:scale-95",
           "pointer-events-auto"
         )}
       >
@@ -262,15 +262,15 @@ export default function ChatWidget() {
           >
           <div className="flex h-full flex-col overflow-hidden md:rounded-3xl">
             {/* Header */}
-            <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 px-6 py-5 text-white shadow-lg">
+            <div className="flex items-center justify-between border-b border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100 px-6 py-5 text-blue-900">
               <div className="flex items-center gap-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm font-bold text-lg shadow-sm">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 font-bold text-lg text-white shadow-md">
                   C
                 </div>
                 <div className="flex flex-col">
                   <h3 className="text-lg font-semibold">Chat CINAP</h3>
-                  <div className="mt-0.5 flex items-center gap-2 text-sm opacity-90">
-                    <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-400 shadow-sm" />
+                  <div className="mt-0.5 flex items-center gap-2 text-sm text-blue-700">
+                    <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500 shadow-sm" />
                     <span>Asistente en línea</span>
                   </div>
                 </div>
@@ -278,7 +278,7 @@ export default function ChatWidget() {
 
               <button
                 onClick={(e) => { e.stopPropagation(); closeChat(); }}
-                className="rounded-xl p-2.5 transition-all duration-200 hover:bg-white/20 hover:rotate-90 focus:outline-none focus:ring-2 focus:ring-white/50 backdrop-blur-sm"
+                className="rounded-xl p-2.5 text-blue-700 transition-all duration-200 hover:bg-blue-200/50 hover:rotate-90 focus:outline-none focus:ring-2 focus:ring-blue-400/50"
                 aria-label="Cerrar chat"
               >
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2.5}>
@@ -289,7 +289,7 @@ export default function ChatWidget() {
             </div>
 
             {/* Mensajes */}
-            <div ref={listRef} className="flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-blue-50/30 to-white p-6">
+            <div ref={listRef} className="flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-blue-50/50 via-white to-blue-50/30 p-6">
               {messages.map((m, i) => (
                 <MessageBubble
                   key={m.id}
@@ -311,8 +311,8 @@ export default function ChatWidget() {
             </div>
 
             {/* Input */}
-            <div className="border-t border-blue-200 bg-gradient-to-r from-blue-50/50 to-white p-5">
-              <div className={classNames("flex items-end gap-3 rounded-2xl border-2 bg-white p-3 shadow-sm transition-all", "focus-within:border-blue-500 focus-within:shadow-lg focus-within:ring-2 focus-within:ring-blue-100")}>
+            <div className="border-t border-blue-200/50 bg-gradient-to-r from-blue-50/50 to-white p-5">
+              <div className={classNames("flex items-end gap-3 rounded-2xl border-2 border-blue-200/50 bg-white p-3 shadow-md backdrop-blur-sm transition-all", "focus-within:border-blue-400 focus-within:shadow-lg focus-within:ring-2 focus-within:ring-blue-200/50")}>
                 <textarea
                   ref={textareaRef}
                   rows={1}
@@ -326,7 +326,7 @@ export default function ChatWidget() {
                 <button
                   onClick={handleSend}
                   disabled={isLoading || !input.trim()}
-                  className={classNames("flex h-11 w-11 items-center justify-center rounded-xl text-white transition-all shadow-lg", "bg-gradient-to-br from-blue-600 via-blue-700 to-yellow-500 hover:scale-[1.08] hover:shadow-xl disabled:opacity-50 disabled:scale-100")}
+                  className={classNames("flex h-11 w-11 items-center justify-center rounded-xl text-white transition-all shadow-md", "bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 hover:scale-105 hover:shadow-lg disabled:opacity-50 disabled:scale-100")}
                   aria-label="Enviar mensaje"
                 >
                   {isLoading ? (
@@ -359,8 +359,8 @@ function Avatar({ role }: { role: Role }) {
   return (
     <div
       className={classNames(
-        "mt-0.5 flex h-9 w-9 items-center justify-center rounded-full text-white text-sm font-bold shadow-lg ring-2 ring-white",
-        role === "assistant" ? "bg-gradient-to-br from-blue-600 via-blue-700 to-yellow-500" : "bg-gradient-to-br from-emerald-500 to-emerald-600"
+        "mt-0.5 flex h-9 w-9 items-center justify-center rounded-full text-white text-sm font-bold shadow-md ring-2 ring-white",
+        role === "assistant" ? "bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800" : "bg-gradient-to-br from-emerald-500 to-emerald-600"
       )}
       aria-hidden
     >
@@ -542,8 +542,8 @@ function MessageBubble({
                 disabled={disabled}
                 aria-disabled={disabled}
                 className={classNames(
-                  "rounded-xl px-3 py-1.5 text-sm text-white bg-blue-600 hover:bg-blue-700 shadow-sm",
-                  disabled && "opacity-50 pointer-events-none hover:bg-blue-600"
+                  "rounded-xl px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 shadow-md transition-all hover:-translate-y-0.5",
+                  disabled && "opacity-50 pointer-events-none hover:bg-blue-600 hover:translate-y-0"
                 )}
               >
                 Sí
@@ -553,8 +553,8 @@ function MessageBubble({
                 disabled={disabled}
                 aria-disabled={disabled}
                 className={classNames(
-                  "rounded-xl px-3 py-1.5 text-sm text-blue-700 border border-blue-200 bg-white hover:bg-blue-50 shadow-sm",
-                  disabled && "opacity-50 pointer-events-none hover:bg-white"
+                  "rounded-xl px-4 py-2 text-sm font-medium text-blue-700 border border-blue-200 bg-white hover:bg-blue-50 shadow-md transition-all hover:-translate-y-0.5",
+                  disabled && "opacity-50 pointer-events-none hover:bg-white hover:translate-y-0"
                 )}
               >
                 No

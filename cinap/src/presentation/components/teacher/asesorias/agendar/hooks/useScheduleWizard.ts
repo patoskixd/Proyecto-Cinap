@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { FoundSlot } from "@/domain/teacher/scheduling";
+import type { FoundSlot, CalendarConflict } from "@/domain/teacher/scheduling";
 import type { Advisor, CategoryId, Service, WizardState } from "../types";
 import { SchedulingHttpRepo } from "@/infrastructure/teachers/asesorias/agendar/SchedulingHttpRepo";
 import { isPastDate, startOfDay } from "../utils/date";
@@ -181,6 +181,11 @@ export function useScheduleWizard({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
+  
+  // Estados para conflictos de calendario
+  const [conflicts, setConflicts] = useState<CalendarConflict[]>([]);
+  const [showConflictModal, setShowConflictModal] = useState(false);
+  const [checkingConflicts, setCheckingConflicts] = useState(false);
 
   async function onConfirmar() {
     setError(null);
@@ -193,6 +198,41 @@ export function useScheduleWizard({
       return;
     }
 
+    // Verificar conflictos de calendario antes de confirmar
+    try {
+      setCheckingConflicts(true);
+      const slotData = openSlots.find((s) => s.cupoId === state.slot?.cupoId);
+      
+      if (slotData) {
+        const startDateTime = new Date(`${slotData.date}T${slotData.time}`);
+        const endDateTime = new Date(startDateTime.getTime() + (slotData.duration || 60) * 60000);
+        
+        const result = await api.checkConflicts({
+          start: startDateTime.toISOString(),
+          end: endDateTime.toISOString(),
+        });
+        
+        if (result.conflicts && result.conflicts.length > 0) {
+          setConflicts(result.conflicts);
+          setShowConflictModal(true);
+          setCheckingConflicts(false);
+          return;
+        }
+      }
+    } catch (e: any) {
+      console.warn("Error verificando conflictos:", e);
+    } finally {
+      setCheckingConflicts(false);
+    }
+
+    // Si no hay conflictos o hubo error verificando, proceder con la reserva
+    await executeReservation();
+  }
+
+  async function executeReservation() {
+    setError(null);
+    setShowConflictModal(false);
+    
     try {
       setSubmitting(true);
       await api.reserve({
@@ -201,6 +241,7 @@ export function useScheduleWizard({
         notas: state.notes ?? undefined,
       });
       setShowSuccess(true);
+      setConflicts([]);
     } catch (e: any) {
       setError(e?.message ?? "Error al confirmar");
     } finally {
@@ -210,5 +251,5 @@ export function useScheduleWizard({
 
   return { step, setStep, state, setState, services, advisors, currentMonth, setCurrentMonth, selectedDate, setSelectedDate, openSlots,
            daysWithAvailability, loadingSlots, loadingMonth, slotsError, selectCategory, selectService, selectAdvisor, selectSlot, canGoNext, goNext, goPrev, submitting,
-           error, showSuccess, setShowSuccess, onConfirmar, } as const;
+           error, setError, showSuccess, setShowSuccess, onConfirmar, conflicts, showConflictModal, setShowConflictModal, executeReservation, checkingConflicts, } as const;
 }

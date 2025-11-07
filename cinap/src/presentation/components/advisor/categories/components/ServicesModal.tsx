@@ -26,16 +26,15 @@ export default function ServicesModal({
     >
       <div className="w-full max-w-6xl bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden transform animate-in zoom-in-95 duration-200">
         {/* Header con gradiente */}
-        <div className="h-16 bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 relative">
-          <div className="absolute inset-0 bg-black/10"></div>
-          <div className="flex items-center justify-between px-6 py-4 relative z-10">
-            <h3 className="text-lg font-semibold text-white">{title}</h3>
+        <div className="border-b border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100 py-4 sm:py-5 px-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-blue-900 sm:text-xl">{title}</h3>
             <button
               onClick={onClose}
-              className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white transition-all duration-200"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-blue-600 transition-colors hover:bg-blue-200/50"
               aria-label="Cerrar"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>

@@ -1,6 +1,6 @@
 import { httpGetCached, httpPost } from "@/infrastructure/http/client";
 import type { SlotsRepo, CreateSlotsResult } from "@/application/advisor/slots/ports/SlotsRepo";
-import type { CreateSlotsData } from "@/domain/advisor/slots";
+import type { CreateSlotsData, CheckConflictsInput, CheckConflictsOutput } from "@/domain/advisor/slots";
 
 type UIRulePayload = {
   day: string;
@@ -20,8 +20,9 @@ export class SlotsHttpRepo implements SlotsRepo {
     location: string;
     room: string;
     roomNotes?: string | null;
-    schedules: UIRulePayload[] }
-  ): Promise<CreateSlotsResult> {
+    schedules: UIRulePayload[];
+    skipConflicts?: boolean;
+  }): Promise<CreateSlotsResult> {
     const payload = {
       serviceId: input.serviceId,
       recursoId: (input as any).recursoId ?? null,
@@ -29,6 +30,7 @@ export class SlotsHttpRepo implements SlotsRepo {
       room: input.room ?? "",
       roomNotes: input.roomNotes ?? null,
       tz: "America/Santiago",
+      skipConflicts: input.skipConflicts ?? false,
       schedules: input.schedules.map((s) => ({
         day: s.day,
         startTime: s.startTime,
@@ -52,5 +54,25 @@ export class SlotsHttpRepo implements SlotsRepo {
       result.skipped = res.skipped;
     }
     return result;
+  }
+
+  async checkConflicts(input: CheckConflictsInput): Promise<CheckConflictsOutput> {
+    const payload = {
+      schedules: input.schedules.map((s) => ({
+        day: s.day,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        isoDate: s.isoDate ?? null,
+      })),
+      tz: input.tz ?? "America/Santiago",
+    };
+
+    try {
+      const res = await httpPost<CheckConflictsOutput>("/slots/check-conflicts", payload);
+      return res;
+    } catch (error) {
+      console.error("[SlotsHttpRepo] checkConflicts error", error);
+      return { conflicts: [] };
+    }
   }
 }

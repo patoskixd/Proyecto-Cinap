@@ -88,7 +88,7 @@ export default function MySlotsManager() {
           </div>
           <Link
             href="/asesor/crear-cupos"
-            className="inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl hover:scale-105"
+            className="inline-flex items-center gap-3 rounded-full bg-blue-600 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl hover:bg-blue-700"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -127,7 +127,10 @@ export default function MySlotsManager() {
         <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
           <h3 className="mb-1 text-lg font-semibold text-neutral-900">No hay cupos</h3>
           <p className="mb-4 text-neutral-600">Crea tu primer cupo para comenzar</p>
-          <Link href="/asesor/crear-cupos" className="rounded-full bg-blue-600 px-5 py-2.5 font-semibold text-white hover:bg-blue-700">
+          <Link href="/asesor/crear-cupos" className="inline-flex items-center gap-3 rounded-full bg-blue-600 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl hover:bg-blue-700">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
             Crear cupo
           </Link>
         </div>
@@ -192,22 +195,12 @@ export default function MySlotsManager() {
         >
           <div className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden transform animate-in zoom-in-95 duration-200">
             {/* Header con gradiente */}
-            <div className="h-16 bg-gradient-to-r from-red-500 via-red-600 to-rose-600 relative">
-              <div className="absolute inset-0 bg-black/10"></div>
+            <div className="border-b border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100 py-4 sm:py-5">
+              <h3 className="text-center text-lg font-semibold text-blue-900 sm:text-xl">Eliminar cupo</h3>
             </div>
 
             {/* Contenido */}
-            <div className="px-6 py-6 -mt-4 relative">
-              {/* Ícono de advertencia */}
-              <div className="flex justify-center mb-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-red-400 to-red-500 rounded-full shadow-xl border-4 border-white flex items-center justify-center">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                  </svg>
-                </div>
-              </div>
-
-              <h3 className="text-xl font-bold text-gray-900 text-center mb-2">Eliminar cupo</h3>
+            <div className="px-6 py-6 relative">
               <p className="text-center text-gray-600 mb-4">¿Seguro que deseas eliminar este cupo?</p>
 
               <div className="space-y-2 bg-gradient-to-br from-gray-50 to-red-50/30 rounded-xl p-4 border border-red-200/50">
@@ -228,13 +221,13 @@ export default function MySlotsManager() {
               <div className="flex gap-3 mt-6">
                 <button 
                   onClick={() => setConfirmDelete(null)} 
-                  className="flex-1 px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-all duration-200"
+                  className="flex-1 rounded-full bg-gray-100 px-6 py-3 font-semibold text-gray-700 transition-all duration-200 hover:bg-gray-200"
                 >
                   Cancelar
                 </button>
                 <button 
                   onClick={confirmDeleteYes} 
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-medium rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
+                  className="flex-1 rounded-full bg-red-100/80 backdrop-blur-sm border border-red-200/50 px-6 py-3 font-semibold text-red-700 transition-all duration-200 hover:bg-red-200/80 hover:shadow-lg hover:-translate-y-0.5"
                 >
                   Sí, eliminar
                 </button>

@@ -3,13 +3,15 @@ from typing import Callable, Optional, Literal
 from uuid import UUID
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-
+import logging
 
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Request, Body, Query
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+log = logging.getLogger(__name__)
 
 from app.use_cases.ports.token_port import JwtPort
 from app.use_cases.slots.open_slots import (
@@ -27,6 +29,9 @@ from app.interface_adapters.orm.models_scheduling import (
     AsesoriaModel,
 )
 from app.interface_adapters.orm.models_scheduling import EstadoAsesoria
+from app.interface_adapters.gateways.db.sqlalchemy_user_repo import SqlAlchemyUserRepo
+from app.interface_adapters.gateways.calendar.google_calendar_client import GoogleCalendarClient
+from app.frameworks_drivers.config.settings import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 
 
 class ResourceOut(BaseModel):
@@ -63,6 +68,7 @@ class OpenSlotsIn(BaseModel):
     roomNotes: str | None = None
     schedules: list[RuleIn] = Field(default_factory=list)
     tz: str = "America/Santiago"
+    skipConflicts: bool = False  # Nueva opción para saltar conflictos con calendario
 
 
 class MySlotOut(BaseModel):
@@ -118,6 +124,10 @@ class MySlotsPageOut(BaseModel):
     pages: int
     stats: MySlotsStatsOut
 
+
+class CheckConflictsRequest(BaseModel):
+    schedules: list[RuleIn] = Field(default_factory=list)
+    tz: str = "America/Santiago"
 
 
 def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: JwtPort) -> APIRouter:
@@ -319,6 +329,87 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
             tz=tz,
         )
 
+    @r.post("/check-conflicts")
+    async def check_conflicts_slots(
+        request: Request,
+        session: AsyncSession = Depends(get_session_dep)
+    ):
+        """Verifica si el ASESOR autenticado tiene eventos en su calendario que se solapen con los horarios de slots propuestos"""
+        token = request.cookies.get("app_session")
+        if not token:
+            raise HTTPException(status_code=401, detail="No autenticado")
+        try:
+            data = jwt_port.decode(token)
+        except Exception:
+            raise HTTPException(status_code=401, detail="Token inválido")
+
+        usuario_id = str(data.get("sub"))
+
+        raw = await request.json()
+        try:
+            body = CheckConflictsRequest(**raw)
+        except ValidationError as ve:
+            raise HTTPException(status_code=422, detail=ve.errors())
+
+        # Resolver el asesor_id desde el usuario_id
+        slots_repo = SqlAlchemySlotsRepo(session)
+        asesor_id = await slots_repo.resolve_asesor_id(usuario_id)
+        
+        if not asesor_id:
+            return {"conflicts": [], "error": "El usuario no tiene perfil de asesor"}
+
+        # Obtener refresh_token del ASESOR usando su usuario_id
+        user_repo = SqlAlchemyUserRepo(session, default_role_id=None)
+        refresh_token = await user_repo.get_refresh_token_by_usuario_id(usuario_id)
+        
+        if not refresh_token:
+            return {"conflicts": [], "error": "No hay token de Google Calendar configurado"}
+
+        cal = GoogleCalendarClient(
+            client_id=GOOGLE_CLIENT_ID,
+            client_secret=GOOGLE_CLIENT_SECRET,
+            get_refresh_token_by_usuario_id=user_repo.get_refresh_token_by_usuario_id,
+            invalidate_refresh_token_by_usuario_id=user_repo.invalidate_refresh_token,
+        )
+
+        all_conflicts = []
+        tz = ZoneInfo(body.tz)
+
+        try:
+            for idx, rule in enumerate(body.schedules):
+                if not rule.isoDate:
+                    continue
+                
+                # Parsear inicio y fin del slot
+                start_str = f"{rule.isoDate} {rule.startTime}"
+                end_str = f"{rule.isoDate} {rule.endTime}"
+                start = datetime.strptime(start_str, "%Y-%m-%d %H:%M").replace(tzinfo=tz)
+                end = datetime.strptime(end_str, "%Y-%m-%d %H:%M").replace(tzinfo=tz)
+
+                # Buscar eventos que se solapen
+                events = await cal.find_overlapping_events(
+                    usuario_id=usuario_id,
+                    start=start,
+                    end=end,
+                )
+
+                # Los eventos ya vienen con el formato correcto desde find_overlapping_events
+                all_conflicts.extend(events)
+
+            # Asegurarnos de eliminar duplicados basados en el ID del evento
+            unique_conflicts = []
+            seen_ids = set()
+            for conflict in all_conflicts:
+                event_id = conflict.get("id")
+                if event_id and event_id not in seen_ids:
+                    seen_ids.add(event_id)
+                    unique_conflicts.append(conflict)
+            
+            return {"conflicts": unique_conflicts}
+            
+        except Exception as e:
+            return {"conflicts": [], "error": str(e)}
+
     @r.post("/open")
     async def open_slots(request: Request, session: AsyncSession = Depends(get_session_dep)):
         token = request.cookies.get("app_session")
@@ -335,11 +426,111 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
         except ValidationError as ve:
             raise HTTPException(status_code=422, detail=ve.errors())
 
+        usuario_id = str(data.get("sub"))
+        schedules_to_create = list(payload.schedules)
+
+        # Si skipConflicts=True, filtrar slots que se solapan con eventos del calendario
+        if payload.skipConflicts:
+            # Primero necesitamos obtener la duración del servicio para generar los slots individuales
+            slots_repo = SqlAlchemySlotsRepo(session)
+            asesor_id = await slots_repo.resolve_asesor_id(usuario_id)
+            
+            if not asesor_id:
+                raise HTTPException(status_code=400, detail="El usuario no tiene perfil de asesor")
+            
+            service_duration = await slots_repo.get_servicio_minutes(payload.serviceId)
+            
+            # Obtener refresh token
+            user_repo = SqlAlchemyUserRepo(session, default_role_id=None)
+            refresh_token = await user_repo.get_refresh_token_by_usuario_id(usuario_id)
+            
+            if refresh_token:
+                cal = GoogleCalendarClient(
+                    client_id=GOOGLE_CLIENT_ID,
+                    client_secret=GOOGLE_CLIENT_SECRET,
+                    get_refresh_token_by_usuario_id=user_repo.get_refresh_token_by_usuario_id,
+                    invalidate_refresh_token_by_usuario_id=user_repo.invalidate_refresh_token,
+                )
+                
+                tz = ZoneInfo(payload.tz)
+                
+                # Generar todos los slots individuales y verificar cada uno
+                filtered_schedules_map = {}  # key: isoDate, value: list of (startTime, endTime)
+                skipped_due_to_calendar = 0
+                
+                for rule in payload.schedules:
+                    if not rule.isoDate:
+                        # Reglas sin fecha específica se mantienen
+                        if rule.day not in filtered_schedules_map:
+                            filtered_schedules_map[rule.day] = []
+                        filtered_schedules_map[rule.day].append(rule)
+                        continue
+                    
+                    # Parsear el rango completo
+                    start_str = f"{rule.isoDate} {rule.startTime}"
+                    end_str = f"{rule.isoDate} {rule.endTime}"
+                    range_start = datetime.strptime(start_str, "%Y-%m-%d %H:%M").replace(tzinfo=tz)
+                    range_end = datetime.strptime(end_str, "%Y-%m-%d %H:%M").replace(tzinfo=tz)
+                    
+                    # Generar slots individuales dentro del rango
+                    current_slot_start = range_start
+                    valid_time_ranges = []
+                    
+                    while current_slot_start + timedelta(minutes=service_duration) <= range_end:
+                        slot_end = current_slot_start + timedelta(minutes=service_duration)
+                        
+                        # Verificar este slot individual contra el calendario
+                        try:
+                            events = await cal.find_overlapping_events(
+                                usuario_id=usuario_id,
+                                start=current_slot_start,
+                                end=slot_end,
+                            )
+                            
+                            if events:
+                                skipped_due_to_calendar += 1
+                            else:
+                                # Este slot NO tiene conflictos, agregarlo
+                                valid_time_ranges.append((
+                                    current_slot_start.strftime("%H:%M"),
+                                    slot_end.strftime("%H:%M")
+                                ))
+                        except Exception as e:
+                            # En caso de error, incluir el slot
+                            valid_time_ranges.append((
+                                current_slot_start.strftime("%H:%M"),
+                                slot_end.strftime("%H:%M")
+                            ))
+                        
+                        current_slot_start = slot_end
+                    
+                    # Crear reglas individuales para cada slot válido
+                    if rule.isoDate not in filtered_schedules_map:
+                        filtered_schedules_map[rule.isoDate] = []
+                    
+                    for start_time, end_time in valid_time_ranges:
+                        filtered_schedules_map[rule.isoDate].append(
+                            RuleIn(
+                                day=rule.day,
+                                startTime=start_time,
+                                endTime=end_time,
+                                isoDate=rule.isoDate
+                            )
+                        )
+                
+                # Convertir el mapa de vuelta a lista plana
+                schedules_to_create = []
+                for key, rules in filtered_schedules_map.items():
+                    schedules_to_create.extend(rules)
+            else:
+                pass  # No hay refresh_token, crear todos los slots
+
         uc = OpenSlotsUseCase(SqlAlchemySlotsRepo(session))
         try:
+            # Si skipConflicts=True, pasamos el flag al use case para que no lance excepciones
             res = await uc.exec(
                 OpenSlotsInput(
-                    usuario_id=str(data.get("sub")),
+                    usuario_id=usuario_id,
                     service_id=payload.serviceId,
                     recurso_id=payload.recursoId,
                     location=payload.location,
@@ -349,7 +540,7 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
                         UIRuleIn(
                             day=r.day, startTime=r.startTime, endTime=r.endTime, isoDate=r.isoDate
                         )
-                        for r in payload.schedules
+                        for r in schedules_to_create
                     ],
                     tz=payload.tz,
                 )
@@ -359,6 +550,15 @@ def make_slots_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: 
 
         except OpenSlotsConflict as e:
             await session.rollback()
+            
+            # Si skipConflicts=True, no mostramos error, solo informamos que se omitieron
+            if payload.skipConflicts:
+                return {
+                    "createdSlots": 0,
+                    "skipped": len(e.conflicts),
+                    "message": "Todos los slots se omitieron por conflictos con el recurso o tus cupos existentes"
+                }
+            
             code = getattr(e, "kind", "RESOURCE_BUSY")
             message = (
                 "Estas horas ya están utilizadas para este recurso."

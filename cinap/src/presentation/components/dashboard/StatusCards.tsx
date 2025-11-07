@@ -25,9 +25,6 @@ export default function StatusCards({
         advisorsCount={adminMetrics.advisorsTotal}
         teachersCount={adminMetrics.teachersTotal}
         monthCount={adminMetrics.appointmentsThisMonth}
-        pendingCount={adminMetrics.pendingCount}
-        activeCategories={adminMetrics.activeCategories}
-        activeServices={adminMetrics.activeServices}
       />
     );
   }

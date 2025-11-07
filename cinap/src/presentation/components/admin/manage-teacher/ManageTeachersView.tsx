@@ -242,7 +242,7 @@ export default function ManageTeachersView() {
       <ConfirmDialog
         open={!!confirm && confirm.kind === "delete"}
         title="Confirmar eliminación"
-        message={`Esta acción no se puede deshacer. ¿Eliminar a “${(confirm as any)?.teacher?.name}”?`}
+        message={`¿Estás seguro de que deseas eliminar a ${(confirm as any)?.teacher?.name}? Esta acción no se puede deshacer.`}
         confirmLabel="Eliminar"
         onConfirm={confirmDelete}
         onCancel={() => setConfirm(null)}

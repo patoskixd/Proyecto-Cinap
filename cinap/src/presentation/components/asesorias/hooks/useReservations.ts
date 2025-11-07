@@ -36,7 +36,7 @@ function sanitizeFilters(filters: ReservationsFilters): ReservationListFilters {
   if (filters.category) result.category = filters.category;
   if (filters.service) result.service = filters.service;
   if (filters.status) result.status = filters.status;
-  if (filters.dateFrom) result.dateFrom = filters.dateFrom;
+  if (filters.dateFrom) {result.dateFrom = filters.dateFrom;}
   return result;
 }
 

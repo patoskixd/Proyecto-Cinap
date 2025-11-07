@@ -44,7 +44,7 @@ export default function ReservationCard({
   const showConfirmButton = canConfirm && (isPending || isReconfirmableCancellation);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/20 to-yellow-50/10 shadow-lg backdrop-blur-sm">
+    <div className="overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/20 to-blue-50/10 shadow-lg backdrop-blur-sm">
       <div className="flex items-center justify-between gap-4 border-b border-blue-100 bg-gradient-to-r from-blue-50 to-blue-100 px-6 py-4">
         <div className="flex items-center gap-4">
           <div className="flex flex-col items-center rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 px-3 py-2 text-white shadow-lg">
@@ -61,7 +61,6 @@ export default function ReservationCard({
         </div>
 
         <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${STATUS_STYLES[reservation.status]}`}>
-          <span className="h-2 w-2 rounded-full bg-current" />
           {STATUS_LABEL[reservation.status]}
         </span>
       </div>
@@ -73,23 +72,27 @@ export default function ReservationCard({
         </div>
 
         <div className="flex flex-col gap-2 text-sm text-blue-700">
-          <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 via-blue-700 to-yellow-500 text-sm font-bold text-white shadow-lg ring-2 ring-white">
-              {reservation.advisor.initials}
-            </div>
-            <div>
-              <p className="font-semibold text-blue-900">{reservation.advisor.name}</p>
-              <p className="text-xs text-blue-600">{reservation.advisor.email}</p>
-            </div>
-          </div>
-
-          {role !== "teacher" && reservation.docente ? (
-            <div className="flex items-center gap-2 rounded-lg bg-white/70 px-3 py-2">
-              <svg className="h-4 w-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c0 3.866-3.582 7-8 7 0 3 5.333 4 8 4s8-1 8-4c-4.418 0-8-3.134-8-7z" />
-              </svg>
+          {/* Avatar del Asesor - Mostrar para teacher y admin */}
+          {(role === "teacher" || role === "admin") && (
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-yellow-400 via-yellow-500 to-amber-600 text-sm font-bold text-white shadow-lg ring-2 ring-white">
+                {reservation.advisor.initials}
+              </div>
               <div>
-                <p className="text-sm font-semibold text-blue-900">Docente: {reservation.docente.nombre}</p>
+                <p className="font-semibold text-blue-900">{reservation.advisor.name}</p>
+                <p className="text-xs text-blue-600">{reservation.advisor.email}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Avatar del Docente - Mostrar para advisor y admin */}
+          {(role === "advisor" || role === "admin") && reservation.docente ? (
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 text-sm font-bold text-white shadow-lg ring-2 ring-white">
+                {reservation.docente.nombre.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+              </div>
+              <div>
+                <p className="font-semibold text-blue-900">Docente: {reservation.docente.nombre}</p>
                 <p className="text-xs text-blue-600">{reservation.docente.email}</p>
               </div>
             </div>
@@ -111,10 +114,10 @@ export default function ReservationCard({
             <button
               onClick={onCancel}
               disabled={isCancelling}
-              className="flex flex-1 min-w-[140px] items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-rose-500 to-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-all hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex flex-1 min-w-[140px] items-center justify-center gap-2 rounded-lg bg-red-100/80 backdrop-blur-sm border border-red-200/50 px-4 py-2.5 text-sm font-semibold text-red-700 shadow-md transition-all hover:bg-red-200/80 hover:shadow-lg hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isCancelling ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-red-700 border-t-transparent" />
               ) : (
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -128,10 +131,10 @@ export default function ReservationCard({
             <button
               onClick={onConfirm}
               disabled={isConfirming}
-              className="flex flex-1 min-w-[140px] items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-all hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex flex-1 min-w-[140px] items-center justify-center gap-2 rounded-lg bg-green-100/80 backdrop-blur-sm border border-green-200/50 px-4 py-2.5 text-sm font-semibold text-green-700 shadow-md transition-all hover:bg-green-200/80 hover:shadow-lg hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isConfirming ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-green-700 border-t-transparent" />
               ) : (
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />

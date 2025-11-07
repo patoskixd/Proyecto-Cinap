@@ -47,7 +47,7 @@ export function AuthedBar({
     <div className="relative flex items-center gap-4" ref={dropdownRef}>
       <Link
         href="/dashboard"
-        className="hidden rounded-full border border-blue-200/60 bg-white/70 p-2 text-blue-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-400 hover:text-blue-900 hover:shadow-md sm:inline"
+        className="hidden rounded-xl border border-blue-200/50 bg-blue-100/80 px-4 py-2 text-blue-700 shadow-md backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:shadow-lg sm:inline-flex items-center gap-2 font-medium"
         aria-label="Ir al panel"
       >
         <svg
@@ -55,18 +55,19 @@ export function AuthedBar({
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth="1.8"
+          strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
         >
           <path d="M3 10.5L12 4l9 6.5" />
           <path d="M5 9.5V20h5v-5h4v5h5V9.5" />
         </svg>
+        <span className="text-sm">Panel</span>
       </Link>
 
       <button
         onClick={() => setIsDropdownOpen((prev) => !prev)}
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-blue-700 text-sm font-bold text-white shadow-md transition-all duration-200 hover:shadow-lg hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-300/50 focus:ring-offset-2 focus:ring-offset-white"
+        className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 text-sm font-bold text-white shadow-md transition-all duration-200 hover:shadow-lg hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-400/50 focus:ring-offset-2"
         aria-label="Menu de usuario"
         aria-expanded={isDropdownOpen}
         aria-haspopup="true"

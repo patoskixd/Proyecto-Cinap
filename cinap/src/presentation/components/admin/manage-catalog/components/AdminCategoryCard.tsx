@@ -90,8 +90,8 @@ export default function AdminCategoryCard({
                           w-fit justify-self-start rounded-full border px-2 py-0.5
                           text-xs font-semibold ${
                 isActive
-                  ? "border-green-200/50 bg-gradient-to-r from-green-100 to-green-200 text-green-800"
-                  : "border-gray-200/50 bg-gradient-to-r from-gray-100 to-gray-200 text-gray-800"
+                  ? "border-green-200/50 bg-green-50/80 text-green-700"
+                  : "border-gray-200/50 bg-gray-50/80 text-gray-700"
               }`}
             >
               {isActive ? "Activa" : "Inactiva"}
@@ -139,7 +139,7 @@ export default function AdminCategoryCard({
         <div className={`grid ${isActive ? "grid-cols-2" : "grid-cols-1"} gap-3`}>
           <button
             onClick={onViewServices}
-            className="group/btn relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-blue-700 to-blue-800 px-4 py-3 font-semibold text-white shadow-lg transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-300"
+            className="group/btn relative overflow-hidden rounded-2xl bg-blue-100/80 backdrop-blur-sm border border-blue-200/50 px-4 py-3 font-semibold text-blue-700 shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:bg-blue-200/80 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-300/50"
           >
             <span className="relative inline-flex items-center justify-center gap-2">
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -153,7 +153,7 @@ export default function AdminCategoryCard({
           {onAddService && isActive && (
             <button
               onClick={onAddService}
-              className="group/btn relative overflow-hidden rounded-2xl bg-gradient-to-r from-yellow-500 via-yellow-600 to-yellow-700 px-4 py-3 font-semibold text-blue-900 shadow-lg transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-yellow-300"
+              className="group/btn relative overflow-hidden rounded-2xl bg-green-100/80 backdrop-blur-sm border border-green-200/50 px-4 py-3 font-semibold text-green-700 shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:bg-green-200/80 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-green-300/50"
             >
               <span className="relative inline-flex items-center justify-center gap-2">
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -17,33 +17,35 @@ type Props = {
 
 export default function ReservationsHeader({ title, subtitle, cta, tabs }: Props) {
   return (
-    <div className="mb-6 rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-yellow-50/20 p-6 shadow-lg backdrop-blur-sm md:mb-8 md:p-8">
-      <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-blue-900">{title}</h1>
-          <p className="mt-1 text-blue-700">{subtitle}</p>
+    <>
+      <div className="mb-6 rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-blue-50/20 p-6 shadow-lg backdrop-blur-sm md:mb-8 md:p-8">
+        <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-blue-900">{title}</h1>
+            <p className="mt-1 text-blue-700">{subtitle}</p>
+          </div>
+          {cta ? (
+            <Link
+              href={cta.href}
+              className="inline-flex items-center gap-3 rounded-full bg-blue-600 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl hover:bg-blue-700"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12m6-6H6" />
+              </svg>
+              {cta.label}
+            </Link>
+          ) : null}
         </div>
-        {cta ? (
-          <Link
-            href={cta.href}
-            className="inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl hover:scale-105"
-          >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12m6-6H6" />
-            </svg>
-            {cta.label}
-          </Link>
-        ) : null}
       </div>
 
       {tabs ? (
-        <div className="mt-6 inline-flex overflow-hidden rounded-xl border border-blue-200 bg-white/70 p-1 shadow-lg backdrop-blur">
+        <div className="mb-6 inline-flex overflow-hidden rounded-xl border border-blue-200 bg-white/70 p-1 shadow-lg backdrop-blur">
           <button
             onClick={() => tabs.onSelect("upcoming")}
             className={[
               "inline-flex items-center gap-3 rounded-lg px-6 py-3 text-sm font-semibold transition-all",
               tabs.active === "upcoming"
-                ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg"
+                ? "bg-blue-600 text-white shadow-lg"
                 : "text-blue-700 hover:bg-blue-50",
             ].join(" ")}
           >
@@ -65,7 +67,7 @@ export default function ReservationsHeader({ title, subtitle, cta, tabs }: Props
             className={[
               "ml-1 inline-flex items-center gap-3 rounded-lg px-6 py-3 text-sm font-semibold transition-all",
               tabs.active === "past"
-                ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg"
+                ? "bg-blue-600 text-white shadow-lg"
                 : "text-blue-700 hover:bg-blue-50",
             ].join(" ")}
           >
@@ -84,7 +86,7 @@ export default function ReservationsHeader({ title, subtitle, cta, tabs }: Props
           </button>
         </div>
       ) : null}
-    </div>
+    </>
   );
 }
 

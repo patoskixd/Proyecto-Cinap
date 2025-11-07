@@ -41,12 +41,12 @@ export default function EmptyState({
   };
 
   return (
-    <div className="mb-8 rounded-2xl bg-white p-10 text-center shadow-sm ring-1 ring-slate-100">
+    <div className="mb-8 rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-blue-50/20 p-10 text-center shadow-lg backdrop-blur-sm">
       <div className="mx-auto max-w-xl">
         <div className="mb-4 flex justify-center">{getIcon(icon)}</div>
-        <h2 className="text-2xl font-semibold text-neutral-900">{title}</h2>
+        <h2 className="text-2xl font-semibold text-blue-900">{title}</h2>
         {description && (
-          <p className="mx-auto mt-2 max-w-md text-lg text-neutral-600">{description}</p>
+          <p className="mx-auto mt-2 max-w-md text-lg text-blue-700">{description}</p>
         )}
         {actionHref && actionLabel && (
           <Link

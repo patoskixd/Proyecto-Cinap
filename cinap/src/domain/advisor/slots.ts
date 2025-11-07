@@ -43,4 +43,23 @@ export type CreateSlotsInput = {
   room: string;
   roomNotes?: string;
   schedules: SlotRule[];
+  skipConflicts?: boolean;  // Nueva opción para saltar slots conflictivos
+};
+
+export type CalendarConflict = {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  html_link?: string;
+};
+
+export type CheckConflictsInput = {
+  schedules: SlotRule[];
+  tz?: string;
+};
+
+export type CheckConflictsOutput = {
+  conflicts: CalendarConflict[];
+  error?: string;
 };
