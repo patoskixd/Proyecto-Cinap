@@ -31,6 +31,17 @@ type ActionState = {
   type: "cancel" | "confirm" | null;
 };
 
+function sortReservationsByDate(items: Reservation[], kind: ReservationTab): Reservation[] {
+  const sorted = [...items];
+  sorted.sort((a, b) => {
+    const aTime = Date.parse(a.dateISO);
+    const bTime = Date.parse(b.dateISO);
+    if (Number.isNaN(aTime) || Number.isNaN(bTime)) return 0;
+    return kind === "past" ? bTime - aTime : aTime - bTime;
+  });
+  return sorted;
+}
+
 function sanitizeFilters(filters: ReservationsFilters): ReservationListFilters {
   const result: ReservationListFilters = {};
   if (filters.category) result.category = filters.category;
@@ -78,7 +89,8 @@ export function useReservations() {
         };
         const result = await getPage.exec(params);
         const safeItems = Array.isArray(result.items) ? result.items : [];
-        setItems(safeItems);
+        const sortedItems = sortReservationsByDate(safeItems, kind);
+        setItems(sortedItems);
         setTotal(typeof result.total === "number" ? result.total : safeItems.length);
         setPages(typeof result.pages === "number" && result.pages > 0 ? result.pages : 1);
         setCapabilities(
