@@ -1258,12 +1258,26 @@ def build_mcp() -> FastMCP:
         except Exception as e:
             return {"error": {"code": "HTTP_ERROR", "message": f"{e!s}"}}
 
-        best = data.get("best")
+        best = data.get("best") or {}
+        items = data.get("items") or []
+
+        def _extract_source(best: dict, items: list[dict]) -> Optional[dict]:
+            title = best.get("title")
+            page = best.get("page_no")
+            if not title and items:
+                title = items[0].get("doc_title")
+            if page is None and items:
+                page = items[0].get("page_no")
+            if not title and page is None:
+                return None
+            return {"title": title, "page": page}
+
+        source = _extract_source(best, items)
+
         if best and (best.get("text") or "").strip():
             snippet = (best.get("text") or "").strip()
-            return {"ok": True, "say": snippet}
+            return {"ok": True, "say": snippet, "source": source}
 
-        items = data.get("items") or []
         if not items:
             return {"ok": True, "say": "No encontré resultados para esa consulta."}
 
@@ -1272,6 +1286,10 @@ def build_mcp() -> FastMCP:
         max_len = 700
         if len(body) > max_len:
             body = body[:max_len].rsplit(" ", 1)[0] + "…"
-        return {"ok": True, "say": body}
+
+        if source is None:
+            source = _extract_source({}, [it])
+
+        return {"ok": True, "say": body, "source": source}
 
     return app

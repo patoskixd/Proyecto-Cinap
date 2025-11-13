@@ -46,6 +46,7 @@ CONFIRM_TOOLS = {"schedule_asesoria", "cancel_asesoria", "confirm_asesoria"}
 
 _CINAP_LIST_RE = re.compile(r"<!--CINAP_LIST:.*?-->", re.DOTALL)
 _CINAP_CONFIRM_RE = re.compile(r"<!--CINAP_CONFIRM:.*?-->", re.DOTALL)
+_CINAP_SOURCE_RE = re.compile(r"<!--CINAP_SOURCE:.*?-->", re.DOTALL)
 _MAX_MSG_CHARS = 8000
 
 def _sanitize_for_state(text: str) -> str:
@@ -54,6 +55,7 @@ def _sanitize_for_state(text: str) -> str:
     s = _THINK_RE.sub("", text)
     s = _CINAP_LIST_RE.sub(" [UI list omitted] ", s)
     s = _CINAP_CONFIRM_RE.sub(" [confirm marker omitted] ", s)
+    s = _CINAP_SOURCE_RE.sub(" [source omitted] ", s)
     if len(s) > _MAX_MSG_CHARS:
         s = s[:_MAX_MSG_CHARS] + " …[truncated]"
     return s
@@ -260,6 +262,19 @@ def _attach_confirm_marker(text: str, *, idem: str | None, expires_in_sec: int =
     base = (text or "").strip()
     return (f"{base}\n\n{marker}" if base else marker)
 
+def _attach_source_marker(text: str, source: dict) -> str:
+    title = (source or {}).get("title")
+    page = (source or {}).get("page") or (source or {}).get("page_no")
+    payload = {
+        "kind": "source",
+        "title": title,
+        "page": page,
+    }
+    blob = base64.b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
+    base = (text or "").strip()
+    marker = f"<!--CINAP_SOURCE:{blob}-->"
+    return (f"{base}\n\n{marker}" if base else marker)
+
 def _strip_think(text: str | None) -> str:
     if not isinstance(text, str):
         return ""
@@ -272,6 +287,14 @@ def _fmt_list_item(it: dict) -> str:
 
 def _format_mcp_result(res: dict, tool_name: str) -> str:
     if isinstance(res, dict) and res.get("ok"):
+        if tool_name == "semantic_search":
+            say = (res.get("say") or "").strip()
+            source = res.get("source") or {}
+            if source:
+                say = _attach_source_marker(say, source)
+            if say:
+                return say
+        
         data = res.get("data") or {}
         items = data.get("items") or data.get("events")
         if isinstance(items, list) and items:
