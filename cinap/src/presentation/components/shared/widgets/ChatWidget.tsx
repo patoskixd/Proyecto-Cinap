@@ -483,6 +483,38 @@ function parseCinapConfirmMarker(content: string): { clean: string; confirm: nul
   return { clean, confirm: last };
 }
 
+function parseCinapSourceMarker(content: string): {
+  clean: string;
+  source: null | { title?: string | null; page?: number | null };
+} {
+  const re = /<!--CINAP_SOURCE:([A-Za-z0-9+/=]+)-->/g;
+  let match: RegExpExecArray | null;
+  let last: any = null;
+  let clean = content;
+
+  while ((match = re.exec(content)) !== null) {
+    try {
+      const b64 = match[1];
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const jsonStr = new TextDecoder("utf-8").decode(bytes);
+      last = JSON.parse(jsonStr);
+    } catch {
+      /* ignore */
+    }
+    clean = clean.replace(match[0], "").trim();
+  }
+
+  if (!last) return { clean, source: null };
+
+  return {
+    clean,
+    source: {
+      title: last.title ?? last.doc_title ?? null,
+      page: last.page ?? last.page_no ?? null,
+    },
+  };
+}
+
 function MessageBubble({
   message,
   onQuickSend,
@@ -498,8 +530,9 @@ function MessageBubble({
   );
   const isUser = message.role === "user";
 
-  const { clean: afterList, list } = useMemo(() => parseCinapListMarker(message.content), [message.content]);
-  const { clean, confirm } = useMemo(() => parseCinapConfirmMarker(afterList), [afterList]);
+  const { clean: afterList, list } = useMemo(() => parseCinapListMarker(message.content),[message.content]);
+  const { clean: afterConfirm, confirm } = useMemo(() => parseCinapConfirmMarker(afterList),[afterList]);
+  const { clean, source } = useMemo(() => parseCinapSourceMarker(afterConfirm),[afterConfirm]);
 
   const [decided, setDecided] = useState(false);
   const handleChoice = useCallback((ans: "sí" | "no") => {
@@ -561,6 +594,12 @@ function MessageBubble({
               </button>
             </div>
           ) : null}
+          {!isUser && source && (source.title || source.page) && (
+            <div className="mt-2 pt-2 border-t border-blue-100 text-[11px] text-blue-500">
+              Fuente: {source.title || "Documento institucional"}
+              {source.page ? `, página ${source.page}` : null}
+            </div>
+          )}
         </div>
         <div className={classNames("px-1 text-xs", isUser ? "text-emerald-600" : "text-blue-500")}>{time}</div>
       </div>
