@@ -1,4 +1,4 @@
-export type SlotStatus = "disponible" | "ocupado" | "cancelado" | "expirado";
+export type SlotStatus = "disponible" | "ocupado" | "cancelado" | "expirado" | "realizado";
 
 export type Student = { name: string; email: string };
 

@@ -61,35 +61,29 @@ export default function EditAdvisorModal({ open, advisor, catalog, onClose, onSa
   if (!open || !advisor) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
-      <div className="w-full max-w-4xl max-h-[95vh] bg-white/95 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-2xl border border-white/20 overflow-hidden transform animate-in zoom-in-95 duration-200 flex flex-col">
-        {/* Header con gradiente */}
-        <div className="h-16 sm:h-20 bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 relative flex-shrink-0">
-          <div className="absolute inset-0 bg-black/10"></div>
-          <button
-            className="absolute top-3 right-3 sm:top-4 sm:right-4 w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white transition-all duration-200"
-            onClick={onClose}
-          >
-            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Contenido del modal */}
-        <div className="px-4 sm:px-8 py-4 sm:py-6 -mt-4 sm:-mt-6 relative flex-shrink-0">
-          {/* Ícono del modal */}
-          <div className="flex justify-center mb-3 sm:mb-4">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-yellow-400 to-yellow-500 rounded-full shadow-xl border-4 border-white flex items-center justify-center">
-              <svg className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-              </svg>
+    <div 
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-4xl max-h-[95vh] bg-white/95 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-200/50 overflow-hidden transform animate-in zoom-in-95 duration-200 flex flex-col">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-50 to-blue-100 border-b border-blue-200 flex-shrink-0">
+          <div className="flex items-center justify-between px-4 sm:px-6 py-4 sm:py-5">
+            <div>
+              <h3 className="text-lg sm:text-xl font-semibold text-blue-900">Editar Asesor</h3>
+              <p className="text-xs sm:text-sm text-blue-700 mt-1">Actualiza datos, categorías y servicios</p>
             </div>
-          </div>
-
-          <div className="text-center mb-4 sm:mb-6">
-            <h3 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">Editar Asesor</h3>
-            <p className="text-sm sm:text-base text-gray-600">Actualiza datos, categorías y servicios</p>
+            <button
+              className="w-8 h-8 hover:bg-blue-200/50 rounded-full flex items-center justify-center text-blue-700 transition-colors flex-shrink-0"
+              onClick={onClose}
+              aria-label="Cerrar"
+            >
+              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -205,7 +199,7 @@ export default function EditAdvisorModal({ open, advisor, catalog, onClose, onSa
           </button>
           <button
             onClick={() => setAskConfirm(true)}
-            className="px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-blue-600 to-yellow-500 hover:from-blue-700 hover:to-yellow-600 text-white font-medium rounded-lg sm:rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-sm sm:text-base"
+            className="px-4 sm:px-6 py-2.5 sm:py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg sm:rounded-xl shadow-md hover:shadow-lg transition-all duration-200 text-sm sm:text-base"
           >
             Guardar Cambios
           </button>
@@ -214,24 +208,26 @@ export default function EditAdvisorModal({ open, advisor, catalog, onClose, onSa
 
       {/* confirmación */}
       {askConfirm && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-sm sm:max-w-md bg-white/95 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-2xl border border-white/20 overflow-hidden">
+        <div 
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setAskConfirm(false);
+          }}
+        >
+          <div className="w-full max-w-sm sm:max-w-md bg-white/95 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-200/50 overflow-hidden">
             {/* Header */}
-            <div className="h-12 sm:h-16 bg-gradient-to-r from-yellow-500 to-blue-600 relative">
-              <div className="absolute inset-0 bg-black/10"></div>
-            </div>
-            
-            {/* Content */}
-            <div className="px-4 sm:px-6 py-4 sm:py-6 -mt-2 sm:-mt-4 relative text-center">
-              {/* Ícono */}
-              <div className="flex justify-center mb-3 sm:mb-4">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-yellow-400 to-yellow-500 rounded-full shadow-xl border-4 border-white flex items-center justify-center">
+            <div className="bg-gradient-to-r from-blue-50 to-blue-100 border-b border-blue-200 py-4 sm:py-5">
+              <div className="flex justify-center">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-full flex items-center justify-center">
                   <svg className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
               </div>
-              
+            </div>
+            
+            {/* Content */}
+            <div className="px-4 sm:px-6 py-4 sm:py-6 relative text-center">
               <h4 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">Confirmar edición</h4>
               <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6">¿Deseas guardar los cambios realizados?</p>
               
@@ -253,7 +249,7 @@ export default function EditAdvisorModal({ open, advisor, catalog, onClose, onSa
                       console.error("Error guardando cambios:", error);
                     }
                   }}
-                  className="px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-blue-600 to-yellow-500 hover:from-blue-700 hover:to-yellow-600 text-white font-medium rounded-lg sm:rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-sm sm:text-base"
+                  className="px-4 sm:px-6 py-2.5 sm:py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg sm:rounded-xl shadow-md hover:shadow-lg transition-all duration-200 text-sm sm:text-base"
                 >
                   Confirmar
                 </button>

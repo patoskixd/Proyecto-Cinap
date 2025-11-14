@@ -41,7 +41,9 @@ CORS_ORIGINS = [o.strip() for o in _get("CORS_ORIGINS", "http://localhost:3000")
 
 GOOGLE_CLIENT_ID     = _get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = _get("GOOGLE_CLIENT_SECRET")
-GOOGLE_REDIRECT_URI  = _get("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
+GOOGLE_REDIRECT_URI  = _get("GOOGLE_REDIRECT_URI", "http://localhost:8010/api/auth/google/callback")
+GOOGLE_DEVICE_ID     = _get("GOOGLE_DEVICE_ID")
+GOOGLE_DEVICE_NAME   = _get("GOOGLE_DEVICE_NAME")
 
 JWT_SECRET  = _get("JWT_SECRET", "change_me")
 JWT_ISSUER  = _get("JWT_ISSUER", "cinap.api")
@@ -77,7 +79,7 @@ LLM_TOP_P     = _get_float("LLM_TOP_P", 0.95)
 REDIS_URL = _get("REDIS_URL", "redis://localhost:6379/0")
 
 # Webhook Configuration
-WEBHOOK_PUBLIC_URL = _get("WEBHOOK_PUBLIC_URL", "https://459db2f8a763.ngrok-free.app/")
+WEBHOOK_PUBLIC_URL = _get("WEBHOOK_PUBLIC_URL", "https://7abec71a6303.ngrok-free.app/")
 
 TELEGRAM_BOT_TOKEN = _get("BOT_TOKEN")  
 TELEGRAM_BOT_USERNAME = _get("TELEGRAM_BOT_USERNAME")
@@ -85,3 +87,5 @@ ASR_BASE_URL   = _get("ASR_BASE_URL", "http://localhost:8001")
 ASR_MODEL_NAME = _get("ASR_MODEL_NAME", "clu-ling/whisper-large-v2-spanish")
 ASR_API_KEY    = _get("ASR_API_KEY", "EMPTY")
 ASR_LANG       = _get("ASR_LANG", "es")
+
+EVAL_LOG_PATH = _get("EVAL_LOG_PATH")

@@ -31,12 +31,23 @@ type ActionState = {
   type: "cancel" | "confirm" | null;
 };
 
+function sortReservationsByDate(items: Reservation[], kind: ReservationTab): Reservation[] {
+  const sorted = [...items];
+  sorted.sort((a, b) => {
+    const aTime = Date.parse(a.dateISO);
+    const bTime = Date.parse(b.dateISO);
+    if (Number.isNaN(aTime) || Number.isNaN(bTime)) return 0;
+    return kind === "past" ? bTime - aTime : aTime - bTime;
+  });
+  return sorted;
+}
+
 function sanitizeFilters(filters: ReservationsFilters): ReservationListFilters {
   const result: ReservationListFilters = {};
   if (filters.category) result.category = filters.category;
   if (filters.service) result.service = filters.service;
   if (filters.status) result.status = filters.status;
-  if (filters.dateFrom) result.dateFrom = filters.dateFrom;
+  if (filters.dateFrom) {result.dateFrom = filters.dateFrom;}
   return result;
 }
 
@@ -77,14 +88,21 @@ export function useReservations() {
           filters: sanitizedFilters,
         };
         const result = await getPage.exec(params);
-        setItems(result.items);
-        setTotal(result.total);
-        setPages(result.pages);
-        setCapabilities(result.capabilities);
+        const safeItems = Array.isArray(result.items) ? result.items : [];
+        const sortedItems = sortReservationsByDate(safeItems, kind);
+        setItems(sortedItems);
+        setTotal(typeof result.total === "number" ? result.total : safeItems.length);
+        setPages(typeof result.pages === "number" && result.pages > 0 ? result.pages : 1);
+        setCapabilities(
+          result.capabilities ?? {
+            canCancel: false,
+            canConfirm: false,
+          },
+        );
 
         const upcomingTotalPromise =
           kind === "upcoming"
-            ? Promise.resolve(result.total)
+            ? Promise.resolve(typeof result.total === "number" ? result.total : safeItems.length)
             : getPage
                 .exec({ tab: "upcoming", page: 1, limit: 1, filters: sanitizedFilters })
                 .then((r) => r.total)
@@ -92,7 +110,7 @@ export function useReservations() {
 
         const pastTotalPromise =
           kind === "past"
-            ? Promise.resolve(result.total)
+            ? Promise.resolve(typeof result.total === "number" ? result.total : safeItems.length)
             : getPage
                 .exec({ tab: "past", page: 1, limit: 1, filters: sanitizedFilters })
                 .then((r) => r.total)

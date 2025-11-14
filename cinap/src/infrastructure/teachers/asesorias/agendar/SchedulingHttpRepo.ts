@@ -1,15 +1,19 @@
 import { SchedulingRepo } from "@/application/teacher/asesorias/agendar/ports/SchedulingRepo";
-import { FindSlotsInput, FoundSlot, ReserveAsesoriaInput, CreateAsesoriaOut } from "@/domain/teacher/scheduling";
+import { FindSlotsInput, FoundSlot, ReserveAsesoriaInput, CreateAsesoriaOut, CheckConflictsInput, CheckConflictsOutput } from "@/domain/teacher/scheduling";
 
 export class SchedulingHttpRepo implements SchedulingRepo {
+  private readonly baseAsesoriasUrl = "/api/asesorias";
+  private readonly baseSlotsUrl = "/api/slots";
+  private readonly baseCalendarUrl = "/api/calendar";
+
   async findSlots(input: FindSlotsInput): Promise<FoundSlot[]> {
     const isServer = typeof window === "undefined";
-    let url = "/api/advisor/slots/find";
+    let url = `${this.baseSlotsUrl}/find`;
     const init: RequestInit = {
       method: "POST",
       headers: { "content-type": "application/json" },
       credentials: "include",
-      body: JSON.stringify(input ?? {}),
+      body: JSON.stringify({ ...(input ?? {}), tz: "America/Santiago" }),
       cache: "no-store",
     };
 
@@ -29,7 +33,7 @@ export class SchedulingHttpRepo implements SchedulingRepo {
 
   async reserve(input: ReserveAsesoriaInput): Promise<CreateAsesoriaOut> {
     const isServer = typeof window === "undefined";
-    let url = "/api/teacher/advice";
+    let url = this.baseAsesoriasUrl;
     const init: RequestInit = {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -61,7 +65,7 @@ export class SchedulingHttpRepo implements SchedulingRepo {
     times: string[];
   }> {
     const isServer = typeof window === "undefined";
-    let url = "/api/teacher/advice/create-data";
+    let url = `${this.baseAsesoriasUrl}/create-data`;
     const init: RequestInit = {
       method: "GET",
       credentials: "include",
@@ -83,5 +87,31 @@ export class SchedulingHttpRepo implements SchedulingRepo {
       throw new Error((await res.text().catch(() => "")) || "No se pudo cargar create-data");
     }
     return res.json();
+  }
+
+  async checkConflicts(input: CheckConflictsInput): Promise<CheckConflictsOutput> {
+    const isServer = typeof window === "undefined";
+    let url = `${this.baseCalendarUrl}/check-conflicts`;
+    const init: RequestInit = {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(input),
+    };
+
+    if (isServer) {
+      const mod = await import("next/headers");
+      const h = await (mod as any).headers();
+      const proto = h.get("x-forwarded-proto") || "http";
+      const host = h.get("x-forwarded-host") || h.get("host");
+      url = `${proto}://${host}${url}`;
+      init.headers = { ...(init.headers as any), cookie: h.get("cookie") || "" };
+    }
+
+    const res = await fetch(url, init);
+    if (!res.ok) {
+      return { conflicts: [] };
+    }
+    return (await res.json()) as CheckConflictsOutput;
   }
 }

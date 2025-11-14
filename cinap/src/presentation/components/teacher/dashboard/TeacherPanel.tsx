@@ -1,46 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
-import type { PendingTeacherConfirmation } from "@/domain/teacher/confirmations";
 import { useTeacherPendingConfirmations } from "./hooks/useTeacherPendingConfirmations";
-
-function fmtFecha(d?: Date) {
-  return d ? d.toLocaleDateString("es-CL", { dateStyle: "medium" }) : "";
-}
-function fmtHora(d?: Date) {
-  return d ? d.toLocaleTimeString("es-CL", { timeStyle: "short" }) : "";
-}
-function tituloDia(d?: Date) {
-  return d
-    ? d.toLocaleDateString("es-CL", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      })
-    : "Sin fecha";
-}
 
 export default function TeacherPanel() {
   const { data, loading, error } = useTeacherPendingConfirmations();
   const items = data ?? [];
 
   // Orden + agrupado por día
-  const grouped = useMemo(() => {
-    const sorted = [...items].sort((a, b) => {
-      const ta = a.inicioISO ? new Date(a.inicioISO).getTime() : Number.MAX_SAFE_INTEGER;
-      const tb = b.inicioISO ? new Date(b.inicioISO).getTime() : Number.MAX_SAFE_INTEGER;
-      return ta - tb;
-    });
-    return sorted.reduce<Record<string, PendingTeacherConfirmation[]>>((acc, p) => {
-      const d = p.inicioISO ? new Date(p.inicioISO) : undefined;
-      const key = tituloDia(d);
-      (acc[key] ??= []).push(p);
-      return acc;
-    }, {});
-  }, [items]);
-
-
   return (
     <div className="space-y-6">
       <div className="overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-blue-100">
@@ -164,7 +130,7 @@ export default function TeacherPanel() {
                     {/* Footer notice */}
                     <div className="mt-4 rounded-lg bg-orange-50 px-3 py-2.5 border border-orange-200">
                       <p className="text-xs font-medium text-orange-800">
-                        Pendiente de confirmación por correo electrónico. Por favor revisa tu bandeja de entrada.
+                        Pendiente de confirmación. Puedes confirmar tu solicitud desde el correo electrónico o directamente en el apartado “Ver tus asesorías” dentro de la plataforma.
                       </p>
                     </div>
                   </li>

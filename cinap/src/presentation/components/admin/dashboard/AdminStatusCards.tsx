@@ -4,11 +4,8 @@ export default function AdminStatusCards(props: {
   advisorsCount: number;
   teachersCount: number;
   monthCount: number;
-  pendingCount: number;
-  activeCategories: number;
-  activeServices: number;
 }) {
-  const { advisorsCount, teachersCount, monthCount, pendingCount, activeCategories, activeServices } = props;
+  const { advisorsCount, teachersCount, monthCount } = props;
 
   const Card = ({
     title,
@@ -79,13 +76,10 @@ export default function AdminStatusCards(props: {
   };
 
   return (
-    <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
+    <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <Card title="Asesores" value={advisorsCount} iconType="advisors" />
       <Card title="Docentes" value={teachersCount} iconType="teachers" />
       <Card title="Asesorías del mes" value={monthCount} iconType="appointments" />
-      <Card title="Por confirmar" value={pendingCount} iconType="pending" />
-      <Card title="Categorías activas" value={activeCategories} iconType="categories" />
-      <Card title="Servicios activos" value={activeServices} iconType="services" />
     </section>
   );
 }

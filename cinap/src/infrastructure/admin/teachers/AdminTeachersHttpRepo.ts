@@ -36,6 +36,19 @@ export class HttpTeachersRepo implements TeachersRepo {
 
   async delete(id: string): Promise<void> {
     const res = await fetch(`${this.base}/${id}`, { method: "DELETE", credentials: "include" });
-    if (!res.ok) throw new Error(await res.text() || "No se pudo eliminar el docente");
+    if (!res.ok) {
+      const fallback = "No se pudo eliminar el docente";
+      let message = fallback;
+      const payload = await res.text();
+      if (payload) {
+        try {
+          const data = JSON.parse(payload);
+          message = data?.detail ?? data?.message ?? fallback;
+        } catch {
+          message = payload;
+        }
+      }
+      throw new Error(message || fallback);
+    }
   }
 }

@@ -8,12 +8,12 @@ import type {
   AdvisorBasicInfo, 
   AdvisorServiceRef, 
   CategoryId, 
-  Advisor,
   RegisterAdvisorRequest 
 } from "@/domain/admin/advisors";
 import { RegisterAdvisor } from "@/application/admin/advisors/usecases/RegisterAdvisor";
 import { AdminAdvisorsHttpRepo } from "@/infrastructure/admin/advisors/AdminAdvisorsHttpRepo";
 import { AdminCatalogHttpRepo } from "@/infrastructure/admin/catalog/AdminCatalogHttpRepo";
+import { notify } from "@/presentation/components/shared/Toast";
 
 type Step = 1 | 2 | 3 | 4;
 const createRepos = () => {
@@ -49,7 +49,8 @@ export default function RegisterAdvisorForm() {
         const data = await catalogRepo.listCategories();
         setCategories(data);
       } catch (error) {
-        console.error("Error loading categories:", error);
+        console.error(error);
+        notify("No se pudieron cargar las categorías. Intenta nuevamente.", "error");
       } finally {
         setLoading(false);
       }
@@ -123,7 +124,28 @@ export default function RegisterAdvisorForm() {
       await ucRegister.exec(request);
       setSuccessOpen(true);
     } catch (error) {
-      console.error("Error registering advisor:", error);
+      let message = "No se pudo registrar el asesor. Intenta de nuevo.";
+      
+      if (error instanceof Error) {
+        const errorText = error.message?.toLowerCase() || '';
+        
+        // Detectar error de email duplicado
+        if (errorText.includes('duplicate') && errorText.includes('email')) {
+          message = `El correo electrónico ${basic.email} ya está registrado en el sistema. Por favor, usa otro correo.`;
+        }
+        // Detectar error de clave única
+        else if (errorText.includes('uniqueviolationerror') || errorText.includes('unique constraint')) {
+          message = `El correo electrónico ${basic.email} ya está en uso. Verifica que no esté registrado previamente.`;
+        }
+        // Otros errores con mensaje
+        else if (error.message?.trim()) {
+          message = error.message.trim();
+        }
+      } else if (typeof error === "string" && error.trim()) {
+        message = error.trim();
+      }
+      
+      notify(message, "error");
     }
   };
 
@@ -345,27 +367,36 @@ export default function RegisterAdvisorForm() {
 
       {/* Modal éxito */}
       {successOpen && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-2xl ring-1 ring-blue-200">
-            <div className="mb-4 flex justify-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-blue-100 to-blue-200 border-2 border-blue-300">
-                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
+        <div 
+          className="fixed inset-0 z-50 grid place-items-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) resetAll();
+          }}
+        >
+          <div className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden transform animate-in zoom-in-95 duration-200">
+            {/* Header con gradiente */}
+            <div className="border-b border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100 py-4 sm:py-5">
+              <h3 className="text-center text-lg font-semibold text-blue-900 sm:text-xl">Asesor registrado</h3>
             </div>
-            <h3 className="mb-1 text-xl font-bold text-blue-900">¡Asesor registrado exitosamente!</h3>
-            <p className="mb-6 text-sm text-blue-700">Se registró en el sistema correctamente.</p>
-            <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
-              <button
-                onClick={resetAll}
-                className="rounded-full border-2 border-blue-200 px-5 py-2 font-semibold text-blue-700 transition hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50"
-              >
-                Registrar otro
-              </button>
-              <Link href="/dashboard?role=admin" className="rounded-full bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 px-5 py-2 font-semibold text-white transition shadow-md">
-                Ir al dashboard
-              </Link>
+
+            {/* Contenido */}
+            <div className="px-6 py-6 relative text-center">
+              <p className="text-gray-600 mb-6">Se registró en el sistema correctamente.</p>
+
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={resetAll}
+                  className="rounded-full bg-gray-100 px-6 py-3 font-semibold text-gray-700 transition-all duration-200 hover:bg-gray-200"
+                >
+                  Registrar otro
+                </button>
+                <Link 
+                  href="/dashboard?role=admin" 
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-blue-100/80 backdrop-blur-sm border border-blue-200/50 px-6 py-3 font-semibold text-blue-700 shadow-md transition-all duration-200 hover:bg-blue-200/80 hover:shadow-lg hover:-translate-y-0.5"
+                >
+                  Ir al dashboard
+                </Link>
+              </div>
             </div>
           </div>
         </div>

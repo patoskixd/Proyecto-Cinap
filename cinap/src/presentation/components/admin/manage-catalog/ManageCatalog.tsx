@@ -4,21 +4,19 @@
 import React, { useMemo, useState } from "react";
 
 import { useCatalogState } from "./hooks/useCatalogState";
-import { parseError } from "./utils/parseError";
+import { parseError } from "@/presentation/components/shared/Toast/parseError";
 
 import CatalogStats from "./components/CatalogStats";
 import SectionCard from "./components/SectionCard";
 import AdminCategoryCard from "./components/AdminCategoryCard";
-import Modal from "./components/BaseModal";
-import CategoryForm from "./components/CategoryForm";
-import ServiceForm from "./components/ServiceForm";
+import CategoryModal from "./components/CategoryModal";
+import ServiceModal from "./components/ServiceModal";
 import ServicesModal from "./components/ServicesModal";
 import ConfirmModal from "./components/ConfirmModal";
 import ToastProvider, { notify } from "../../shared/Toast/ToastProvider";
 export default function ManageCatalog() {
   const {
     // listas y stats
-    categories,
     activeCategories,
     otherCategories,
     stats,
@@ -83,7 +81,7 @@ export default function ManageCatalog() {
             </div>
             <button
               onClick={() => setCreateOpen(true)}
-              className="inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl hover:scale-105"
+              className="inline-flex items-center gap-3 rounded-full bg-blue-600 px-6 py-3 font-semibold text-white shadow-md transition-all hover:-translate-y-0.5 hover:shadow-lg hover:bg-blue-700"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -219,38 +217,36 @@ export default function ManageCatalog() {
 
       {/* Crear categoría */}
       {createOpen && (
-        <Modal onClose={() => setCreateOpen(false)} title="Crear Nueva Categoría">
-          <CategoryForm
-            onCancel={() => setCreateOpen(false)}
-            onSubmit={async (payload) => {
-              try {
-                await createCategory(payload);
-                setCreateOpen(false);
-                notify("Categoría creada", "success");
-              } catch (e: any) {
-                notify(parseError(e), "error");
-              }
-            }}
-          />
-        </Modal>
+        <CategoryModal
+          title="Crear Nueva Categoría"
+          onClose={() => setCreateOpen(false)}
+          onSubmit={async (payload) => {
+            try {
+              await createCategory(payload);
+              setCreateOpen(false);
+              notify("Categoría creada", "success");
+            } catch (e: any) {
+              notify(parseError(e), "error");
+            }
+          }}
+        />
       )}
 
       {/* Editar categoría (abre confirm al guardar) */}
       {editOpen.open && editOpen.category && (
-        <Modal onClose={() => setEditOpen({ open: false, category: null })} title="Editar Categoría">
-          <CategoryForm
-            defaultValues={{ name: editOpen.category.name, description: editOpen.category.description }}
-            onCancel={() => setEditOpen({ open: false, category: null })}
-            onSubmit={(payload) => {
-              setPendingCatEdit({
-                id: editOpen.category!.id,
-                name: payload.name,
-                description: payload.description,
-                original: { name: editOpen.category!.name, description: editOpen.category!.description },
-              });
-            }}
-          />
-        </Modal>
+        <CategoryModal
+          title="Editar Categoría"
+          defaultValues={{ name: editOpen.category.name, description: editOpen.category.description }}
+          onClose={() => setEditOpen({ open: false, category: null })}
+          onSubmit={(payload) => {
+            setPendingCatEdit({
+              id: editOpen.category!.id,
+              name: payload.name,
+              description: payload.description,
+              original: { name: editOpen.category!.name, description: editOpen.category!.description },
+            });
+          }}
+        />
       )}
 
       {/* Modal de servicios (sin botón de agregar dentro) */}
@@ -282,39 +278,37 @@ export default function ManageCatalog() {
 
       {/* Crear servicio */}
       {createServiceFor && (
-        <Modal onClose={() => setCreateServiceFor(null)} title={`Crear servicio — ${createServiceFor.name}`}>
-          <ServiceForm
-            defaultValues={{ durationMinutes: 30 }}
-            onCancel={() => setCreateServiceFor(null)}
-            onSubmit={async (payload) => {
-              try {
-                await createService(createServiceFor.id, { ...payload, active: true });
-                setCreateServiceFor(null);
-                notify("Servicio creado", "success");
-              } catch (e:any) {
-                notify(parseError(e), "error");
-              }
-            }}
-          />
-        </Modal>
+        <ServiceModal
+          title={`Crear servicio — ${createServiceFor.name}`}
+          defaultValues={{ durationMinutes: 30 }}
+          onClose={() => setCreateServiceFor(null)}
+          onSubmit={async (payload) => {
+            try {
+              await createService(createServiceFor.id, { ...payload, active: true });
+              setCreateServiceFor(null);
+              notify("Servicio creado", "success");
+            } catch (e:any) {
+              notify(parseError(e), "error");
+            }
+          }}
+        />
       )}
 
       {/* Editar servicio (abre confirm al guardar) */}
       {serviceEditing && (
-        <Modal onClose={() => setServiceEditing(null)} title="Editar servicio">
-          <ServiceForm
-            defaultValues={{ name: serviceEditing.name, durationMinutes: serviceEditing.durationMinutes }}
-            onCancel={() => setServiceEditing(null)}
-            onSubmit={(payload) => {
-              setPendingSvcEdit({
-                id: serviceEditing.id,
-                name: payload.name,
-                durationMinutes: payload.durationMinutes,
-                original: { name: serviceEditing.name, durationMinutes: serviceEditing.durationMinutes },
-              });
-            }}
-          />
-        </Modal>
+        <ServiceModal
+          title="Editar servicio"
+          defaultValues={{ name: serviceEditing.name, durationMinutes: serviceEditing.durationMinutes }}
+          onClose={() => setServiceEditing(null)}
+          onSubmit={(payload) => {
+            setPendingSvcEdit({
+              id: serviceEditing.id,
+              name: payload.name,
+              durationMinutes: payload.durationMinutes,
+              original: { name: serviceEditing.name, durationMinutes: serviceEditing.durationMinutes },
+            });
+          }}
+        />
       )}
 
       {/* Confirmar eliminar categoría */}

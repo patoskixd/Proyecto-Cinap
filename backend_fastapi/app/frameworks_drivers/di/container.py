@@ -46,6 +46,8 @@ class Container:
         google_client_id: str,
         google_client_secret: str,
         google_redirect_uri: str,
+        google_device_id: str | None = None,
+        google_device_name: str | None = None,
         jwt_secret: str,
         jwt_issuer: str,
         jwt_minutes: int,
@@ -67,11 +69,15 @@ class Container:
         self._webhook_public_url = webhook_public_url
         self._google_client_id = google_client_id
         self._google_client_secret = google_client_secret
+        self._google_device_id = (google_device_id or "").strip() or None
+        self._google_device_name = (google_device_name or "").strip() or None
 
         self.oauth = GoogleOAuthClient(
             client_id=google_client_id,
             client_secret=google_client_secret,
-            scope="openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events",
+            scope="openid email profile https://www.googleapis.com/auth/calendar.events",
+            device_id=self._google_device_id,
+            device_name=self._google_device_name,
         )
         self.jwt = PyJWTService(secret=jwt_secret, issuer=jwt_issuer, minutes=int(jwt_minutes))
         
@@ -128,6 +134,8 @@ class Container:
             model_name=self._llm_model_name,
             db_path=self._langgraph_db_path,
             main_loop=self.main_loop,
+            public_clients={"db"},
+            deny_tools={"calendar_event_upsert"}
         )
         self.graph_agent.configure_openai(
             base_url=VLLM_BASE_URL,
@@ -162,11 +170,12 @@ class Container:
 
     def make_auto_configure_webhook(self, session: AsyncSession) -> AutoConfigureWebhook:
         """Crea una instancia de AutoConfigureWebhook con todas las dependencias"""
+        token_repo = SqlAlchemyUserRepo(session, default_role_id=None)
         cal_client = GoogleCalendarClient(
             client_id=self._google_client_id,
             client_secret=self._google_client_secret,
-            get_refresh_token_by_usuario_id=lambda usuario_id: 
-                SqlAlchemyUserRepo(session, default_role_id=None).get_refresh_token_by_usuario_id(usuario_id)
+            get_refresh_token_by_usuario_id=token_repo.get_refresh_token_by_usuario_id,
+            invalidate_refresh_token_by_usuario_id=token_repo.invalidate_refresh_token,
         )
         
         calendar_events_repo = SqlAlchemyCalendarEventsRepo(session, cache=self.cache)

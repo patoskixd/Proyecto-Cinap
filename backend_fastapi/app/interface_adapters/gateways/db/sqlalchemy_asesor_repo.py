@@ -3,6 +3,7 @@ from typing import Optional, List
 import uuid
 import sqlalchemy as sa
 from sqlalchemy import select, delete, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -16,7 +17,13 @@ from app.interface_adapters.orm.models_asesor import (
     ServicioModel,
 )
 from app.interface_adapters.orm.models_auth import UsuarioModel, RolModel
-from app.interface_adapters.orm.models_scheduling import CupoModel
+from app.interface_adapters.orm.models_docente import DocentePerfilModel
+from app.interface_adapters.orm.models_scheduling import (
+    CupoModel,
+    EstadoCupo,
+    AsesoriaModel,
+    EstadoAsesoria,
+)
 
 class SqlAlchemyAsesorRepo(AsesorPerfilRepo):
     def __init__(self, session: AsyncSession, user_repo: UserRepo, asesor_role_id: uuid.UUID):
@@ -245,13 +252,33 @@ class SqlAlchemyAsesorRepo(AsesorPerfilRepo):
         # 2. Actualizar el rol del usuario a "Asesor" si no es ya
         await self.ensure_user_is_asesor(user.id)
         
-        # 3. Crear perfil de asesor
+        # 3. Eliminar el perfil de docente si existía para evitar duplicados
+        try:
+            usuario_uuid = uuid.UUID(user.id)
+        except ValueError:
+            usuario_uuid = None
+
+        if usuario_uuid:
+            docente_stmt = select(DocentePerfilModel.id).where(DocentePerfilModel.usuario_id == usuario_uuid)
+            docente_result = await self.session.execute(docente_stmt)
+            docente_id = docente_result.scalar_one_or_none()
+            if docente_id:
+                asesorias_count_stmt = select(func.count(AsesoriaModel.id)).where(AsesoriaModel.docente_id == docente_id)
+                asesorias_count = (await self.session.execute(asesorias_count_stmt)).scalar_one()
+                if asesorias_count:
+                    raise ValueError(
+                        "El usuario tiene asesorías registradas como docente y no puede convertirse en asesor."
+                    )
+                await self.session.execute(delete(DocentePerfilModel).where(DocentePerfilModel.id == docente_id))
+                await self.session.flush()
+
+        # 4. Crear perfil de asesor
         asesor_perfil = await self.create_perfil(user.id)
         
-        # 4. Asignar servicios
+        # 5. Asignar servicios
         await self._assign_services_to_advisor(str(asesor_perfil.id), request.service_ids)
         
-        # 5. Recargar con información completa y retornar
+        # 6. Recargar con información completa y retornar
         return await self.get_advisor_by_id(str(asesor_perfil.id))
 
     async def get_advisor_by_id(self, advisor_id: str) -> Optional[AdvisorInfo]:
@@ -418,27 +445,81 @@ class SqlAlchemyAsesorRepo(AsesorPerfilRepo):
         try:
             aid = uuid.UUID(advisor_id)
         except ValueError:
-            raise ValueError("Invalid advisor ID format")
-        
-        # Primero obtener el usuario_id del asesor antes de eliminarlo
-        query = select(AsesorPerfilModel.usuario_id).where(AsesorPerfilModel.id == aid)
-        result = await self.session.execute(query)
-        usuario_id = result.scalar_one_or_none()
-        
-        if not usuario_id:
-            raise ValueError("Asesor no encontrado")
-        
-        # 1. Eliminar perfil de asesor 
-        await self.session.execute(
-            delete(AsesorPerfilModel).where(AsesorPerfilModel.id == aid)
+            raise ValueError("Identificador de asesor invalido")
+
+        asesor_query = (
+            select(AsesorPerfilModel)
+            .where(AsesorPerfilModel.id == aid)
+            .options(selectinload(AsesorPerfilModel.usuario))
         )
-        
-        # 2. Eliminar también el usuario asociado
-        await self.session.execute(
-            delete(UsuarioModel).where(UsuarioModel.id == usuario_id)
+        asesor_result = await self.session.execute(asesor_query)
+        asesor_model = asesor_result.scalar_one_or_none()
+
+        if not asesor_model:
+            raise LookupError("Asesor no encontrado")
+
+        usuario_id = asesor_model.usuario_id
+
+        # Verificar si existen cupos ocupados (reservados o realizados)
+        occupied_cupos_stmt = (
+            select(func.count(CupoModel.id))
+            .where(
+                CupoModel.asesor_id == aid,
+                CupoModel.estado.in_([EstadoCupo.RESERVADO, EstadoCupo.REALIZADO]),
+            )
         )
-        
-        await self.session.flush()
+        occupied_cupos = (await self.session.execute(occupied_cupos_stmt)).scalar_one()
+        if occupied_cupos:
+            raise ValueError("No se puede eliminar el asesor porque tiene cupos ocupados")
+
+        # Eliminar cupos abiertos o expirados que no tengan asesorías asociadas
+        await self.session.execute(
+            delete(CupoModel).where(
+                CupoModel.asesor_id == aid,
+                CupoModel.estado.in_([EstadoCupo.ABIERTO, EstadoCupo.EXPIRADO]),
+                sa.not_(sa.exists().where(AsesoriaModel.cupo_id == CupoModel.id)),
+            )
+        )
+
+        docente_stmt = select(DocentePerfilModel.id).where(DocentePerfilModel.usuario_id == usuario_id)
+        docente_result = await self.session.execute(docente_stmt)
+        docente_id = docente_result.scalar_one_or_none()
+
+        has_any_asesorias = False
+        if docente_id:
+            pending_asesorias_stmt = (
+                select(func.count(AsesoriaModel.id))
+                .where(
+                    AsesoriaModel.docente_id == docente_id,
+                    AsesoriaModel.estado.in_([EstadoAsesoria.PENDIENTE, EstadoAsesoria.CONFIRMADA]),
+                )
+            )
+            pending_asesorias = (await self.session.execute(pending_asesorias_stmt)).scalar_one()
+            if pending_asesorias:
+                raise ValueError(
+                    "No se puede eliminar el asesor porque tiene asesorias pendientes o confirmadas"
+                )
+
+            total_asesorias_stmt = select(func.count(AsesoriaModel.id)).where(
+                AsesoriaModel.docente_id == docente_id
+            )
+            has_any_asesorias = (await self.session.execute(total_asesorias_stmt)).scalar_one() > 0
+
+        if has_any_asesorias:
+            raise ValueError("No se puede eliminar el asesor porque tiene historial de asesorias")
+
+        try:
+            await self.session.execute(delete(AsesorPerfilModel).where(AsesorPerfilModel.id == aid))
+
+            if docente_id and not has_any_asesorias:
+                await self.session.execute(delete(DocentePerfilModel).where(DocentePerfilModel.id == docente_id))
+
+            if not has_any_asesorias:
+                await self.session.execute(delete(UsuarioModel).where(UsuarioModel.id == usuario_id))
+
+            await self.session.flush()
+        except IntegrityError as err:
+            raise ValueError("No se puede eliminar el asesor porque tiene historial de asesorias") from err
 
     async def ensure_user_is_asesor(self, user_id: str) -> None:
         """Asegura que el usuario tenga rol de Asesor"""

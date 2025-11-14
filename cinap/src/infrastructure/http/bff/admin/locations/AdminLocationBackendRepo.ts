@@ -33,7 +33,8 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
   private readonly cookie: string;
 
   constructor(cookie: string) {
-    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.baseUrl = process.env.BACKEND_URL ??
+      "";
     this.cookie = cookie;
   }
 
@@ -77,7 +78,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
   //  CAMPUS 
   
   async listCampus(): Promise<Campus[]> {
-    const url = new URL(`${this.baseUrl}/admin/locations/campus`);
+    const url = new URL(`${this.baseUrl}/api/admin/locations/campus`);
     url.searchParams.set("page", "1");
     url.searchParams.set("limit", "10000");
 
@@ -93,7 +94,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
   }
 
   async createCampus(payload: { name: string; address: string; code?: string }): Promise<Campus> {
-    const res = await fetch(`${this.baseUrl}/admin/locations/campus`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/locations/campus`, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
       credentials: "include",
@@ -109,7 +110,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
     patch: { name?: string; address?: string; code?: string; active?: boolean }
   ): Promise<Campus> {
     const method = patch.active !== undefined ? "PATCH" : "PUT";
-    const res = await fetch(`${this.baseUrl}/admin/locations/campus/${encodeURIComponent(id)}`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/locations/campus/${encodeURIComponent(id)}`, {
       method,
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
       credentials: "include",
@@ -121,7 +122,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
   }
 
   async deleteCampus(id: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/admin/locations/campus/${encodeURIComponent(id)}`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/locations/campus/${encodeURIComponent(id)}`, {
       method: "DELETE",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
@@ -132,7 +133,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
   }
 
   async reactivateCampus(id: string): Promise<Campus> {
-    const res = await fetch(`${this.baseUrl}/admin/locations/campus/${encodeURIComponent(id)}/reactivate`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/locations/campus/${encodeURIComponent(id)}/reactivate`, {
       method: "POST",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
@@ -145,7 +146,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
 
   //  BUILDINGS  
   async listBuildings(params?: { campusId?: string }): Promise<Building[]> {
-    const url = new URL(`${this.baseUrl}/admin/locations/buildings`);
+    const url = new URL(`${this.baseUrl}/api/admin/locations/buildings`);
     url.searchParams.set("page", "1");
     url.searchParams.set("limit", "10000");
     if (params?.campusId) url.searchParams.set("campusId", params.campusId);
@@ -162,7 +163,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
   }
 
   async createBuilding(payload: { name: string; campusId: string; code?: string }): Promise<Building> {
-    const res = await fetch(`${this.baseUrl}/admin/locations/buildings`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/locations/buildings`, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
       credentials: "include",
@@ -178,7 +179,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
     patch: { name?: string; campusId?: string; code?: string; active?: boolean }
   ): Promise<Building> {
     const method = patch.active !== undefined ? "PATCH" : "PUT";
-    const res = await fetch(`${this.baseUrl}/admin/locations/buildings/${encodeURIComponent(id)}`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/locations/buildings/${encodeURIComponent(id)}`, {
       method,
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
       credentials: "include",
@@ -190,7 +191,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
   }
 
   async deleteBuilding(id: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/admin/locations/buildings/${encodeURIComponent(id)}`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/locations/buildings/${encodeURIComponent(id)}`, {
       method: "DELETE",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
@@ -201,7 +202,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
   }
 
   async reactivateBuilding(id: string): Promise<Building> {
-    const res = await fetch(`${this.baseUrl}/admin/locations/buildings/${encodeURIComponent(id)}/reactivate`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/locations/buildings/${encodeURIComponent(id)}/reactivate`, {
       method: "POST",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
@@ -214,7 +215,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
 
   //  ROOMS 
   async listRooms(params?: { buildingId?: string }): Promise<Room[]> {
-    const url = new URL(`${this.baseUrl}/admin/locations/rooms`);
+    const url = new URL(`${this.baseUrl}/api/admin/locations/rooms`);
     url.searchParams.set("page", "1");
     url.searchParams.set("limit", "10000");
     if (params?.buildingId) url.searchParams.set("buildingId", params.buildingId);
@@ -233,7 +234,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
   async createRoom(payload: {
     name: string; buildingId: string; number: string; type: string; capacity: number;
   }): Promise<Room> {
-    const res = await fetch(`${this.baseUrl}/admin/locations/rooms`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/locations/rooms`, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
       credentials: "include",
@@ -249,7 +250,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
     patch: { name?: string; buildingId?: string; number?: string; type?: string; capacity?: number; active?: boolean; }
   ): Promise<Room> {
     const method = patch.active !== undefined ? "PATCH" : "PUT";
-    const res = await fetch(`${this.baseUrl}/admin/locations/rooms/${encodeURIComponent(id)}`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/locations/rooms/${encodeURIComponent(id)}`, {
       method,
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
       credentials: "include",
@@ -261,7 +262,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
   }
 
   async deleteRoom(id: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/admin/locations/rooms/${encodeURIComponent(id)}`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/locations/rooms/${encodeURIComponent(id)}`, {
       method: "DELETE",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
@@ -272,7 +273,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
   }
 
   async reactivateRoom(id: string): Promise<Room> {
-    const res = await fetch(`${this.baseUrl}/admin/locations/rooms/${encodeURIComponent(id)}/reactivate`, {
+    const res = await fetch(`${this.baseUrl}/api/admin/locations/rooms/${encodeURIComponent(id)}/reactivate`, {
       method: "POST",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
@@ -288,7 +289,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
   async listCampusPage(params?: {
     page?: number; limit?: number; q?: string; active?: boolean;
   }): Promise<Page<Campus, CampusStats>> {
-    const url = new URL(`${this.baseUrl}/admin/locations/campus`);
+    const url = new URL(`${this.baseUrl}/api/admin/locations/campus`);
     if (params?.page)  url.searchParams.set("page", String(params.page));
     if (params?.limit) url.searchParams.set("limit", String(params.limit));
     if (params?.q)     url.searchParams.set("q", params.q);
@@ -307,7 +308,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
   async listBuildingsPage(params?: {
     campusId?: string; page?: number; limit?: number; q?: string; active?: boolean;
   }): Promise<Page<Building, BuildingStats>> {
-    const url = new URL(`${this.baseUrl}/admin/locations/buildings`);
+    const url = new URL(`${this.baseUrl}/api/admin/locations/buildings`);
     if (params?.campusId) url.searchParams.set("campusId", params.campusId);
     if (params?.page)     url.searchParams.set("page", String(params.page));
     if (params?.limit)    url.searchParams.set("limit", String(params.limit));
@@ -327,7 +328,7 @@ export class AdminLocationBackendRepo implements AdminLocationRepo {
   async listRoomsPage(params?: {
     buildingId?: string; page?: number; limit?: number; q?: string; active?: boolean;
   }): Promise<Page<Room, RoomStats>> {
-    const url = new URL(`${this.baseUrl}/admin/locations/rooms`);
+    const url = new URL(`${this.baseUrl}/api/admin/locations/rooms`);
     if (params?.buildingId) url.searchParams.set("buildingId", params.buildingId);
     if (params?.page)       url.searchParams.set("page", String(params.page));
     if (params?.limit)      url.searchParams.set("limit", String(params.limit));

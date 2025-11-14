@@ -1,12 +1,6 @@
-export type ConfirmationCategory =
-  | "matematicas"
-  | "fisica"
-  | "quimica"
-  | "programacion";
 
 export type PendingConfirmation = {
-  id: number;
-  category: ConfirmationCategory;
+  id: string;
   categoryLabel: string;     // “Matemáticas”, “Física”, etc.
   serviceTitle: string;      // “Cálculo Diferencial - Sesión Individual”
   teacher: string;           // “Dr. Carlos Mendoza”
@@ -16,5 +10,5 @@ export type PendingConfirmation = {
   location: string;          // “Edificio A, Piso 2”
   room: string;              // “Sala 201-A”
   createdAtISO: string;      // para “hace 2 horas”
-  status: "pending";
+  status: "pending"| "PENDIENTE";
 };

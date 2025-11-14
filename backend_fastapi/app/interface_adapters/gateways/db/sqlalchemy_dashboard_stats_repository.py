@@ -46,8 +46,7 @@ class SqlAlchemyDashboardStatsRepository(DashboardStatsRepository):
             FROM public.asesoria a
             JOIN public.cupo c ON c.id = a.cupo_id
             WHERE c.inicio < :next_month
-              AND c.inicio >= now()
-              AND a.estado = 'CONFIRMADA'
+              AND a.estado IN ('PENDIENTE','CONFIRMADA')
               AND c.estado = 'RESERVADO'
         """)
         appointments_month = (await self.session.execute(
@@ -79,9 +78,9 @@ class SqlAlchemyDashboardStatsRepository(DashboardStatsRepository):
 
         # Filtro por rol
         if role == "Asesor":
-            owner_filter = "c.asesor_id = :pid"
+            owner_filter = "c.asesor_id = CAST(:pid AS uuid)"
         elif role == "Profesor":
-            owner_filter = "a.docente_id = :pid"
+            owner_filter = "a.docente_id = CAST(:pid AS uuid)"
         else:
             return {"monthCount": 0, "pendingCount": 0}
 
@@ -91,9 +90,8 @@ class SqlAlchemyDashboardStatsRepository(DashboardStatsRepository):
                 SELECT count(*) AS total
                 FROM public.asesoria a
                 JOIN public.cupo c ON c.id = a.cupo_id
-                WHERE a.estado = 'CONFIRMADA'
+                WHERE a.estado IN ('PENDIENTE','CONFIRMADA')
                   AND date_trunc('month', c.inicio) = date_trunc('month', now())
-                  AND c.inicio >= now()
                   AND c.estado = 'RESERVADO'
                   AND {owner_filter}
             ),
@@ -110,7 +108,51 @@ class SqlAlchemyDashboardStatsRepository(DashboardStatsRepository):
             """
         )
         row = (await self.session.execute(q, {"pid": str(profile_id)})).mappings().first()
-        return {"monthCount": row["month_count"], "pendingCount": row["pending_count"]}
+        if not row:
+            row = {"month_count": 0, "pending_count": 0}
+
+        calendar_connected = False
+        try:
+            profile_to_user_sql = (
+                "SELECT usuario_id FROM public.asesor_perfil WHERE id = CAST(:pid AS uuid)"
+                if role == "Asesor"
+                else "SELECT usuario_id FROM public.docente_perfil WHERE id = CAST(:pid AS uuid)"
+            )
+            usuario_id = (
+                await self.session.execute(
+                    text(profile_to_user_sql),
+                    {"pid": str(profile_id)},
+                )
+            ).scalar()
+
+            if usuario_id:
+                conn_sql = text(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM public.user_identity
+                        WHERE usuario_id = CAST(:uid AS uuid)
+                          AND provider = 'google'
+                          AND conectado = true
+                          AND refresh_token_hash IS NOT NULL
+                    )
+                    """
+                )
+                calendar_connected = bool(
+                    (
+                        await self.session.execute(
+                            conn_sql, {"uid": str(usuario_id)}
+                        )
+                    ).scalar()
+                )
+        except Exception:
+            calendar_connected = False
+
+        return {
+            "monthCount": row.get("month_count", 0),
+            "pendingCount": row.get("pending_count", 0),
+            "calendarConnected": calendar_connected,
+        }
 
     async def execute(self, role: str, profile_id: Optional[UUID]) -> Dict[str, Any]:
         role = (role or "").strip()

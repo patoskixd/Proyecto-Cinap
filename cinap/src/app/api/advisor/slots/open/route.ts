@@ -13,6 +13,10 @@ export async function POST(req: NextRequest) {
     const result = await new CreateSlots(repo).exec(body);
     return NextResponse.json(result, { status: 200 });
   } catch (e: any) {
-    return NextResponse.json({ detail: e.message }, { status: 400 });
+    const status = typeof e?.status === "number" ? e.status : 400;
+    const detail =
+      e?.detail ??
+      (typeof e?.message === "string" ? e.message : "No se pudieron crear los cupos");
+    return NextResponse.json({ detail }, { status });
   }
 }

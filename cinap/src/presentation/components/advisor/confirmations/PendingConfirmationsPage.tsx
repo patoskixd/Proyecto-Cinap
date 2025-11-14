@@ -17,10 +17,14 @@ export default function PendingConfirmationsPage(props: { items: PendingConfirma
   const handleChange = (patch: Partial<FiltersT>) => setFilters((f) => ({ ...f, ...patch }));
 
 
-  const nowStart = startOfDay(new Date());
-  const weekEnd = new Date(nowStart); weekEnd.setDate(weekEnd.getDate() + 6);
-  const monthStart = new Date(nowStart.getFullYear(), nowStart.getMonth(), 1);
-  const monthEnd   = new Date(nowStart.getFullYear(), nowStart.getMonth() + 1, 0);
+  const nowStart = useMemo(() => startOfDay(new Date()), []);
+  const weekEnd = useMemo(() => {
+    const d = new Date(nowStart);
+    d.setDate(d.getDate() + 6);
+    return d;
+  }, [nowStart]);
+  const monthStart = useMemo(() => new Date(nowStart.getFullYear(), nowStart.getMonth(), 1), [nowStart]);
+  const monthEnd = useMemo(() => new Date(nowStart.getFullYear(), nowStart.getMonth() + 1, 0), [nowStart]);
 
   const filtered = useMemo(() => {
     const tISO = todayISO();

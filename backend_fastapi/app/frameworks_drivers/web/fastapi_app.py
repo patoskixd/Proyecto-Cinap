@@ -10,10 +10,22 @@ import asyncio
 import logging
 
 from app.frameworks_drivers.config.settings import (
-    API_DEBUG, CORS_ORIGINS,
-    GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI,
-    JWT_SECRET, JWT_ISSUER, JWT_MINUTES, FRONTEND_ORIGIN, TEACHER_ROLE_ID,
-    MCP_COMMAND, MCP_ARGS, MCP_CWD, WEBHOOK_PUBLIC_URL,
+    API_DEBUG,
+    CORS_ORIGINS,
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    GOOGLE_REDIRECT_URI,
+    GOOGLE_DEVICE_ID,
+    GOOGLE_DEVICE_NAME,
+    JWT_SECRET,
+    JWT_ISSUER,
+    JWT_MINUTES,
+    FRONTEND_ORIGIN,
+    TEACHER_ROLE_ID,
+    MCP_COMMAND,
+    MCP_ARGS,
+    MCP_CWD,
+    WEBHOOK_PUBLIC_URL,
 )
 from sqlalchemy import delete
 from app.interface_adapters.orm.models_scheduling import CupoModel, EstadoCupo
@@ -25,18 +37,20 @@ from app.interface_adapters.controllers.slots_router import make_slots_router
 from app.interface_adapters.controllers.advisor_catalog_router import (make_advisor_catalog_router)
 from app.interface_adapters.controllers.advisor_confirmations_router import make_confirmations_router
 from app.interface_adapters.controllers.asesorias_router import make_asesorias_router
-from app.interface_adapters.controllers.telegram_webhook import make_telegram_router
+from app.interface_adapters.controllers.telegram_webhook import make_telegram_router, setup_telegram_webhook
 from app.interface_adapters.controllers.telegram_link_router import make_telegram_link_router
 from app.interface_adapters.controllers.admin_catalog_router import make_admin_catalog_router  
 from app.interface_adapters.controllers.admin_location_router import make_admin_location_router
 from app.interface_adapters.controllers.admin_advisors_router import make_admin_advisors_router
 from app.interface_adapters.controllers.admin_teachers_router import make_admin_teachers_router
-from app.frameworks_drivers.web.semantic import router as semantic_router
+from app.frameworks_drivers.web.semantic import admin_docs_router, semantic_router
 from app.interface_adapters.controllers.dashboard_controller import router as dashboard_router
 from app.interface_adapters.controllers.google_calendar_webhook import make_google_calendar_webhook_router
 from app.interface_adapters.controllers.calendar_router import make_calendar_router
 from app.interface_adapters.gateways.db.sqlalchemy_user_repo import SqlAlchemyUserRepo
+from app.interface_adapters.gateways.db.sqlalchemy_calendar_events_repo import SqlAlchemyCalendarEventsRepo
 from app.interface_adapters.gateways.calendar.google_calendar_client import GoogleCalendarClient
+from app.use_cases.calendar.auto_configure_webhook import AutoConfigureWebhook
 from app.interface_adapters.controllers.teacher_confirmations_router import make_teacher_confirmations_router
 from app.interface_adapters.controllers.profile_router import make_profile_router
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -64,27 +78,137 @@ def require_auth(request: Request):
 
 logger = logging.getLogger(__name__)
 
-@asynccontextmanager
-async def lifespan(app):
-    await container.startup()
-    if getattr(container, "graph_agent", None) and hasattr(container.graph_agent, "set_confirm_store"):
-            container.graph_agent.set_confirm_store(confirm_store)
+async def _reset_google_webhook_cache(redis: Redis | None, *, webhook_url: str) -> None:
+    """
+    Si la URL pública del webhook cambió, elimina los registros cacheados de
+    canales anteriores para forzar una nueva configuración.
+    """
+    if not redis or not webhook_url:
+        return
 
-    scheduler.start()
+    key = "gc:webhook:last_url"
+
     try:
-        yield
-    except asyncio.CancelledError:
-        pass
-    finally:
+        last = await redis.get(key)
+        if isinstance(last, bytes):
+            last = last.decode()
+
+        if last == webhook_url:
+            return
+
+        if last:
+            logger.info("Webhook URL actualizada (%s -> %s); limpiando cache de canales Google.", last, webhook_url)
+        else:
+            logger.info("No se encontró URL previa; limpiando cache de canales Google.")
+
+        async def _purge(pattern: str) -> None:
+            batch: list[bytes] = []
+            async for cache_key in redis.scan_iter(match=pattern):
+                batch.append(cache_key)
+                if len(batch) >= 256:
+                    await redis.delete(*batch)
+                    batch.clear()
+            if batch:
+                await redis.delete(*batch)
+
+        await _purge("gc:channel:*")
+        await _purge("gc:user_channels:*")
+        await redis.set(key, webhook_url.encode())
+
+    except Exception as exc:
+        logger.warning("No se pudo reiniciar el cache de webhooks de Google: %s", exc)
+
+
+def _build_calendar_client(session: AsyncSession) -> GoogleCalendarClient:
+    repo = SqlAlchemyUserRepo(session, default_role_id=None)
+    return GoogleCalendarClient(
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        get_refresh_token_by_usuario_id=repo.get_refresh_token_by_usuario_id,
+        invalidate_refresh_token_by_usuario_id=repo.invalidate_refresh_token,
+    )
+
+def make_lifespan(*, start_scheduler: bool, auto_configure_google: bool, configure_telegram: bool):
+    @asynccontextmanager
+    async def lifespan(app):
+        await container.startup()
+        if getattr(container, "graph_agent", None) and hasattr(container.graph_agent, "set_confirm_store"):
+            container.graph_agent.set_confirm_store(confirm_store)
+        """
+        await _reset_google_webhook_cache(container.redis, webhook_url=WEBHOOK_PUBLIC_URL)
+
+        if configure_telegram:
+            try:
+                await setup_telegram_webhook(WEBHOOK_PUBLIC_URL)
+            except Exception as e:
+                logger.exception("No se pudo configurar webhook de Telegram: %r", e)
+
+        if auto_configure_google:
+            try:
+                if not WEBHOOK_PUBLIC_URL:
+                    logger.warning("WEBHOOK_PUBLIC_URL no definido; se omite auto-configuración de Google Calendar")
+                else:
+                    async with AsyncSessionLocal() as session:
+                        calendar_repo = SqlAlchemyCalendarEventsRepo(session, cache=container.cache)
+                        cal_client = _build_calendar_client(session)
+                        auto_cfg = AutoConfigureWebhook(
+                            cal=cal_client,
+                            repo=calendar_repo,
+                            webhook_public_url=WEBHOOK_PUBLIC_URL,
+                        )
+
+                        advisors_result = await auto_cfg.configure_for_all_advisors()
+                        teachers_result = await auto_cfg.configure_for_all_teachers()
+
+                        logger.warning(
+                            "Auto-config webhooks Google (asesores): nuevos=%s, existentes=%s, omitidos=%s, errores=%s",
+                            advisors_result.get("configured"),
+                            advisors_result.get("already_configured"),
+                            advisors_result.get("skipped"),
+                            advisors_result.get("errors"),
+                        )
+                        logger.warning(
+                            "Auto-config webhooks Google (docentes): nuevos=%s, existentes=%s, omitidos=%s, errores=%s",
+                            teachers_result.get("configured"),
+                            teachers_result.get("already_configured"),
+                            teachers_result.get("skipped"),
+                            teachers_result.get("errors"),
+                        )
+            except Exception as e:
+                logger.exception("No se pudo configurar los webhooks de Google Calendar: %r", e)
+        """
+        if start_scheduler:
+            scheduler.start()
         try:
-            scheduler.shutdown(wait=False)
-            await asyncio.shield(container.shutdown())
+            yield
         except asyncio.CancelledError:
             pass
-        except Exception as e:
-            logger.exception("Error durante shutdown: %r", e)
+        finally:
+            if start_scheduler:
+                try:
+                    scheduler.shutdown(wait=False)
+                except asyncio.CancelledError:
+                    pass
+                except Exception as e:
+                    logger.exception("Error durante shutdown del scheduler: %r", e)
+            try:
+                await asyncio.shield(container.shutdown())
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.exception("Error durante shutdown del container: %r", e)
 
-app = FastAPI(title="MCP Assistant", debug=API_DEBUG, lifespan=lifespan)
+    return lifespan
+
+app = FastAPI(
+    title="MCP Assistant",
+    debug=API_DEBUG,
+    lifespan=make_lifespan(
+        start_scheduler=True,
+        auto_configure_google=True,
+        configure_telegram=True,
+    ),
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -100,6 +224,8 @@ container = Container(
     google_client_id=GOOGLE_CLIENT_ID,
     google_client_secret=GOOGLE_CLIENT_SECRET,
     google_redirect_uri=GOOGLE_REDIRECT_URI,
+    google_device_id=GOOGLE_DEVICE_ID,
+    google_device_name=GOOGLE_DEVICE_NAME,
     jwt_secret=JWT_SECRET,
     jwt_issuer=JWT_ISSUER,
     jwt_minutes=JWT_MINUTES,
@@ -141,7 +267,7 @@ async def purge_only_unreferenced_expired_slots():
         return
     try:
         async with AsyncSessionLocal() as session:
-            # Borra SOLO los EXPIRADO que no están referenciados por 'asesoria'
+            # Borra SOLO los EXPIRADO que no estén referenciados por 'asesoria'
             sql = sa.text("""
                 DELETE FROM cupo c
                 WHERE c.estado = CAST(:estado AS estado_cupo)
@@ -191,11 +317,11 @@ async def _invoke_agent(agent, message: str, thread_id: str):
 async def _present_reply(reply: str, thread_id: str):
     return {"reply": reply, "thread_id": thread_id}
 
-@app.get("/health")
+@app.get("/api/health")
 async def health():
     return {"ok": True}
 
-@app.get("/observability/telegram/analyze")
+@app.get("/api/observability/telegram/analyze")
 async def analyze_telegram_performance(hours: int = 24):
     """Analiza el rendimiento de Telegram de las últimas N horas"""
     try:
@@ -205,9 +331,9 @@ async def analyze_telegram_performance(hours: int = 24):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-@app.get("/observability/telegram/summary")
+@app.get("/api/observability/telegram/summary")
 async def telegram_performance_summary():
-    """Obtiene un resumen de performance de Telegram (última hora + 24h)"""
+    """Obtiene un resumen de performance de Telegram (+�ltima hora + 24h)"""
     try:
         from app.observability.telegram_analyzer import log_performance_summary
         summary = log_performance_summary()
@@ -216,7 +342,7 @@ async def telegram_performance_summary():
         return {"success": False, "error": str(e)}
 
 
-@app.get("/health/db")
+@app.get("/api/health/db")
 async def health_db(session = Depends(get_session)):
     """Health check que verifica la conexión a la base de datos"""
     try:
@@ -226,13 +352,13 @@ async def health_db(session = Depends(get_session)):
     except Exception as e:
         return {"db": "error", "status": "unhealthy", "error": str(e)}
 
-graph_router = APIRouter(prefix="/assistant", tags=["assistant"])
+graph_router = APIRouter(prefix="/api/assistant", tags=["assistant"])
 
 class GraphChatRequest(BaseModel):
     message: str
     thread_id: str = "default-thread"
 
-limiter = make_simple_limiter(container.cache, limit=10, window_sec=60)
+limiter = make_simple_limiter(container.cache, limit=100, window_sec=60)
 
 @graph_router.post("/chat", dependencies=[Depends(limiter)])
 async def graph_chat(req: GraphChatRequest, request: Request):
@@ -278,12 +404,16 @@ asesorias_router = make_asesorias_router(
 )
 app.include_router(asesorias_router)
 
+def _make_telegram_router():
+    return make_telegram_router(
+        cache=container.cache,
+        agent_getter=lambda: container.graph_agent,
+        mcp_client_getter=lambda: container.db_mcp,
+        confirm_store_getter=lambda: confirm_store,
+    )
 
-telegram_router = make_telegram_router(
-    cache=container.cache,
-    agent_getter=lambda: container.graph_agent,
-    mcp_client_getter=lambda: container.db_mcp
-)
+
+telegram_router = _make_telegram_router()
 app.telegram_router = telegram_router
 app.include_router(telegram_router)
 
@@ -323,6 +453,8 @@ app.include_router(profile_router, dependencies=[Depends(require_auth)])
 
 app.include_router(dashboard_router, dependencies=[Depends(require_auth)])
 
+app.include_router(admin_docs_router, tags=["admin_docs"])
+
 app.include_router(semantic_router, tags=["semantic"])
 
 calendar_router = make_calendar_router(
@@ -334,18 +466,38 @@ calendar_router = make_calendar_router(
 app.include_router(calendar_router)
 
 
-google_webhook_router = make_google_calendar_webhook_router(
-    get_session_dep=get_session,
-    cache=container.cache,
-    cal_client_factory=lambda session: GoogleCalendarClient(
-        client_id=GOOGLE_CLIENT_ID,
-        client_secret=GOOGLE_CLIENT_SECRET,
-        get_refresh_token_by_usuario_id=lambda usuario_id: 
-            SqlAlchemyUserRepo(session, default_role_id=None).get_refresh_token_by_usuario_id(usuario_id)
+def _make_google_calendar_webhook_router():
+    return make_google_calendar_webhook_router(
+        get_session_dep=get_session,
+        cache=container.cache,
+        cal_client_factory=_build_calendar_client,
     )
-)
+
+
+google_webhook_router = _make_google_calendar_webhook_router()
 
 app.include_router(google_webhook_router)
+
+webhook_app = FastAPI(
+    title="CINAP Webhooks",
+    debug=API_DEBUG,
+    lifespan=make_lifespan(
+        start_scheduler=False,
+        auto_configure_google=False,
+        configure_telegram=True,
+    ),
+)
+
+webhook_app.add_middleware(JSONTimingMiddleware)
+
+webhook_telegram_router = _make_telegram_router()
+webhook_app.telegram_router = webhook_telegram_router
+webhook_app.include_router(webhook_telegram_router)
+webhook_app.include_router(_make_google_calendar_webhook_router())
+
+@webhook_app.get("/api/health")
+async def webhook_health():
+    return {"ok": True}
 
 teacher_confirmations_router = make_teacher_confirmations_router(
     get_session_dep=get_session,
@@ -353,7 +505,7 @@ teacher_confirmations_router = make_teacher_confirmations_router(
 )
 app.include_router(teacher_confirmations_router)
 
-@scheduler.scheduled_job("cron", hour=16, minute=32)
+@scheduler.scheduled_job("cron", hour=22, minute=00)
 async def cron_sweep_due_slots_and_close_asesorias_daily():
     async with AsyncSessionLocal() as session:
         repo = SqlAlchemySlotsRepo(session)

@@ -8,9 +8,9 @@ export const revalidate = 0;
 
 const getCookieString = (req: NextRequest) => req.headers.get("cookie") ?? "";
 
-export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
+export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = ctx.params;
+    const { id } = await ctx.params;
     const repo = new AdminCatalogBackendRepo(getCookieString(req));
     const data = await new ReactivateService(repo).exec(id);
     const resp = NextResponse.json(data, { status: 200 });

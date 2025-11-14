@@ -18,7 +18,11 @@ const DASHBOARD_PATH = "/dashboard";
 const PUBLIC_EXACT_PATHS = new Set<string>([
   ROOT_PATH,
   LOGIN_PATH,
-  "/auth/google/callback",
+  "/terminos",
+  "/privacidad",
+  "/ayuda",
+  "/api/auth/google/callback",
+  "/api/auth/google/login",
   "/api/auth/login",
   "/api/auth/me",
 ]);
@@ -59,8 +63,8 @@ const ROLE_POLICIES: Array<{ pattern: RegExp; allow: Role[] }> = [
 ];
 
 const DEFAULT_HOME_BY_ROLE: Record<Role, string> = {
-  admin: "/admin",
-  advisor: "/asesor",
+  admin: DASHBOARD_PATH,
+  advisor: DASHBOARD_PATH,
   teacher: DASHBOARD_PATH,
 };
 
@@ -82,7 +86,9 @@ export async function middleware(req: NextRequest) {
   const isApiRoute = pathname.startsWith("/api/");
   const token = req.cookies.get("app_session")?.value ?? null;
 
+  // Permitir acceso a rutas públicas sin importar si está autenticado o no
   if (isPublicRoute(pathname)) {
+    // Solo redirigir usuarios autenticados desde ROOT_PATH o rutas de auth
     if (token && (pathname === ROOT_PATH || isAuthRoute(pathname))) {
       const session = await verifyJwt(token);
       if (session) {
@@ -95,6 +101,7 @@ export async function middleware(req: NextRequest) {
         return NextResponse.redirect(redirectUrl);
       }
     }
+    // Permitir acceso a todas las demás rutas públicas (terminos, privacidad, ayuda)
     return NextResponse.next();
   }
 

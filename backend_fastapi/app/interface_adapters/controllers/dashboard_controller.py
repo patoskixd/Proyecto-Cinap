@@ -11,7 +11,7 @@ from app.interface_adapters.gateways.db.sqlalchemy_dashboard_upcoming_appointmen
 from app.use_cases.dashboard.get_dashboard_stats import GetDashboardDataUseCase
 from app.use_cases.dashboard.get_upcoming_appointments import GetUpcomingAppointmentsUseCase
 
-router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
 @router.get("")  # combinado (compatibilidad)

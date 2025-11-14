@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Optional
 import uuid
+import logging
 from datetime import datetime, timezone
 import sqlalchemy as sa
 from sqlalchemy import select
@@ -15,11 +16,21 @@ from app.interface_adapters.orm.models_auth import (
     UserIdentityModel,
     RolModel,
 )
+from app.interface_adapters.services.token_cipher import TokenCipher, get_token_cipher
+
+log = logging.getLogger(__name__)
 
 class SqlAlchemyUserRepo(UserRepo):
-    def __init__(self, session: AsyncSession, *, default_role_id: uuid.UUID):
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        default_role_id: uuid.UUID | None,
+        token_cipher: TokenCipher | None = None,
+    ):
         self.session = session
         self.default_role_id = default_role_id
+        self._token_cipher = token_cipher or get_token_cipher()
 
     @staticmethod
     def _to_domain(user_m: UsuarioModel) -> User:
@@ -86,7 +97,11 @@ class SqlAlchemyUserRepo(UserRepo):
             .where(UserIdentityModel.provider == provider)
             .limit(1)
         )
-        return (await self.session.execute(q)).scalar_one_or_none()
+        stored = (await self.session.execute(q)).scalar_one_or_none()
+        decrypted = self._token_cipher.decrypt(stored)
+        if decrypted and decrypted != stored:
+            log.debug("Decrypted refresh token for user %s (len=%s)", usuario_id, len(decrypted))
+        return decrypted
 
     async def upsert_user_with_identity(
         self,
@@ -110,7 +125,8 @@ class SqlAlchemyUserRepo(UserRepo):
             ident_m.ultimo_sync = datetime.now(timezone.utc)
             #  Solo persiste si viene uno NUEVO 
             if refresh_token:
-                ident_m.refresh_token_hash = refresh_token
+                ident_m.refresh_token_hash = self._token_cipher.encrypt(refresh_token)
+                log.debug("Actualizado refresh token (identity existente) usuario=%s len=%s", user_m.id, len(refresh_token))
             await self.session.flush()
             return self._to_domain(user_m)
 
@@ -146,7 +162,8 @@ class SqlAlchemyUserRepo(UserRepo):
             existing_google_ident.conectado = True
             existing_google_ident.ultimo_sync = datetime.now(timezone.utc)
             if refresh_token:
-                existing_google_ident.refresh_token_hash = refresh_token
+                existing_google_ident.refresh_token_hash = self._token_cipher.encrypt(refresh_token)
+                log.debug("Actualizado refresh token (usuario existente) usuario=%s len=%s", user_m.id, len(refresh_token))
 
             await self.session.flush()
         else:
@@ -157,10 +174,12 @@ class SqlAlchemyUserRepo(UserRepo):
                 provider="google",
                 provider_user_id=sub,
                 email=email,
-                refresh_token_hash=refresh_token,  
+                refresh_token_hash=self._token_cipher.encrypt(refresh_token) if refresh_token else None,
                 conectado=True,
                 ultimo_sync=datetime.now(timezone.utc),
             )
+            if refresh_token:
+                log.debug("Guardado refresh token nuevo usuario=%s len=%s", user_m.id, len(refresh_token))
             self.session.add(ident_new)
             await self.session.flush()
 
@@ -177,6 +196,23 @@ class SqlAlchemyUserRepo(UserRepo):
             sa.update(UserIdentityModel)
               .where(UserIdentityModel.usuario_id == uid)
               .values(
+                  conectado=False,
+                  ultimo_sync=datetime.now(timezone.utc),
+              )
+        )
+        await self.session.flush()
+
+    async def invalidate_refresh_token(self, usuario_id: str, provider: str = "google") -> None:
+        try:
+            uid = uuid.UUID(usuario_id)
+        except Exception:
+            return
+        await self.session.execute(
+            sa.update(UserIdentityModel)
+              .where(UserIdentityModel.usuario_id == uid)
+              .where(UserIdentityModel.provider == provider)
+              .values(
+                  refresh_token_hash=None,
                   conectado=False,
                   ultimo_sync=datetime.now(timezone.utc),
               )

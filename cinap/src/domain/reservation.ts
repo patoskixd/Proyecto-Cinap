@@ -15,6 +15,7 @@ export interface Reservation {
   advisor: { initials: string; name: string; email: string; id?: string };
   status: ReservationStatus;
   location?: string;
+  canRetryConfirm?: boolean;
   docente?: { nombre: string; email: string };
 }
 

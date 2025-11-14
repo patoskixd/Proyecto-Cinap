@@ -1,6 +1,6 @@
-﻿"use client";
+"use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import type { Role } from "@/domain/auth";
 import type { Reservation } from "@/domain/reservation";
@@ -44,6 +44,11 @@ export default function ReservationsView({ role, state }: Props) {
     categories: [],
     services: [],
   });
+
+  const categoryFieldId = useId();
+  const serviceFieldId = useId();
+  const dateFromFieldId = useId();
+  const statusFieldId = useId();
 
   useEffect(() => {
     setSelectOptions((prev) => {
@@ -107,11 +112,13 @@ export default function ReservationsView({ role, state }: Props) {
 
   const showPagination = !loading && pages > 1;
 
+  const skeletonCards = Array.from({ length: 6 });
+
   return (
-    <div>
-      <div className="mb-6 rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-yellow-50/20 p-6 shadow-lg backdrop-blur-sm">
+    <div className="space-y-6">
+      <div className="mb-6 rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-blue-50/20 p-6 shadow-lg backdrop-blur-sm">
         <div className="mb-4">
-          <h3 className="mb-1 text-lg font-semibold text-blue-900">Filtros de busqueda</h3>
+          <h2 className="mb-1 text-lg font-semibold text-blue-900">Filtros de busqueda</h2>
           <p className="text-sm text-blue-700">
             Ajusta los filtros para encontrar asesorias especificas por categoria, servicio o estado.
           </p>
@@ -119,8 +126,11 @@ export default function ReservationsView({ role, state }: Props) {
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <label className="mb-2 block text-sm font-semibold text-blue-900">Categoria</label>
+            <label className="mb-2 block text-sm font-semibold text-blue-900" htmlFor={categoryFieldId}>
+              Categoria
+            </label>
             <select
+              id={categoryFieldId}
               value={filters.category}
               onChange={(e) => updateFilter((prev) => ({ ...prev, category: e.target.value }))}
               className="w-full rounded-lg border-2 border-blue-200 bg-white/80 p-2.5 text-sm text-blue-900 transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
@@ -135,8 +145,11 @@ export default function ReservationsView({ role, state }: Props) {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-semibold text-blue-900">Servicio</label>
+            <label className="mb-2 block text-sm font-semibold text-blue-900" htmlFor={serviceFieldId}>
+              Servicio
+            </label>
             <select
+              id={serviceFieldId}
               value={filters.service}
               onChange={(e) => updateFilter((prev) => ({ ...prev, service: e.target.value }))}
               className="w-full rounded-lg border-2 border-blue-200 bg-white/80 p-2.5 text-sm text-blue-900 transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
@@ -151,18 +164,27 @@ export default function ReservationsView({ role, state }: Props) {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-semibold text-blue-900">Fecha desde</label>
+            <label className="mb-2 block text-sm font-semibold text-blue-900" htmlFor={dateFromFieldId}>
+              Fecha desde
+            </label>
             <input
+              id={dateFromFieldId}
               type="date"
               value={filters.dateFrom}
-              onChange={(e) => updateFilter((prev) => ({ ...prev, dateFrom: e.target.value }))}
+              onChange={(e) => {
+                updateFilter((prev) => ({ ...prev, dateFrom: e.target.value }));
+              }}
               className="w-full rounded-lg border-2 border-blue-200 bg-white/80 p-2.5 text-sm text-blue-900 transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
+              placeholder="Selecciona una fecha"
             />
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-semibold text-blue-900">Estado</label>
+            <label className="mb-2 block text-sm font-semibold text-blue-900" htmlFor={statusFieldId}>
+              Estado
+            </label>
             <select
+              id={statusFieldId}
               value={filters.status}
               onChange={(e) => updateFilter((prev) => ({ ...prev, status: e.target.value }))}
               className="w-full rounded-lg border-2 border-blue-200 bg-white/80 p-2.5 text-sm text-blue-900 transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
@@ -184,15 +206,31 @@ export default function ReservationsView({ role, state }: Props) {
       ) : null}
 
       {loading ? (
-        <div className="rounded-2xl bg-white p-8 text-center border border-gray-200">
-          <div className="flex items-center justify-center gap-3">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
-            <span className="text-blue-700 font-medium">Cargando asesorias...</span>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+            <span className="text-sm font-semibold text-blue-700">Cargando asesorias...</span>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {skeletonCards.map((_, idx) => (
+              <div
+                key={`reservation-skeleton-${idx}`}
+                className="flex animate-pulse flex-col gap-4 rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50/60 to-white p-4 shadow-sm"
+              >
+                <div className="h-14 rounded-lg bg-blue-100/80" />
+                <div className="space-y-2">
+                  <div className="h-4 w-3/4 rounded bg-blue-100" />
+                  <div className="h-3 w-2/3 rounded bg-blue-100/80" />
+                  <div className="h-3 w-1/2 rounded bg-blue-100/60" />
+                </div>
+                <div className="mt-auto h-6 w-24 rounded-full bg-blue-100/80 self-start" />
+              </div>
+            ))}
           </div>
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
-          <h3 className="mb-1 text-lg font-semibold text-neutral-900">No hay asesorias para mostrar</h3>
+          <h2 className="mb-1 text-lg font-semibold text-neutral-900">No hay asesorias para mostrar</h2>
           <p className="text-neutral-600">Ajusta los filtros o cambia de pestana para explorar otras fechas.</p>
         </div>
       ) : (
@@ -231,7 +269,7 @@ export default function ReservationsView({ role, state }: Props) {
                   disabled={!hasNext}
                   className="px-4 py-2 text-sm font-semibold text-black hover:bg-slate-50 disabled:opacity-50 disabled:text-black/40"
                 >
-                  Siguiente 
+                  Siguiente
                 </button>
               </div>
             </div>

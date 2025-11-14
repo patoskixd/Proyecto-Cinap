@@ -8,7 +8,8 @@ export class MySlotsBackendRepo implements MySlotsRepo {
   getSetCookies(): string[] { return this.lastSetCookies; }
 
   constructor(cookie: string) {
-    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.baseUrl = process.env.BACKEND_URL ??
+      "";
     this.cookie = cookie;
   }
 
@@ -36,7 +37,7 @@ async getMySlotsPage(params: {
     if (service) qs.set("service", service);
     if (campus) qs.set("campus", campus);
 
-    const res = await fetch(`${this.baseUrl}/slots/my?${qs.toString()}`, {
+    const res = await fetch(`${this.baseUrl}/api/slots/my?${qs.toString()}`, {
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
       cache: "no-store",
@@ -56,7 +57,7 @@ async getMySlotsPage(params: {
   }
 
   async updateMySlot(id: string, patch: Partial<MySlot>): Promise<MySlot> {
-    const res = await fetch(`${this.baseUrl}/slots/${id}`, {
+    const res = await fetch(`${this.baseUrl}/api/slots/${id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json", accept: "application/json", cookie: this.cookie },
       credentials: "include",
@@ -68,7 +69,7 @@ async getMySlotsPage(params: {
   }
 
   async deleteMySlot(id: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/slots/${id}`, {
+    const res = await fetch(`${this.baseUrl}/api/slots/${id}`, {
       method: "DELETE",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",
@@ -85,7 +86,7 @@ async getMySlotsPage(params: {
   }
 
   async reactivateMySlot(id: string): Promise<MySlot> {
-    const res = await fetch(`${this.baseUrl}/slots/${id}/reactivate`, {
+    const res = await fetch(`${this.baseUrl}/api/slots/${id}/reactivate`, {
       method: "POST",
       headers: { cookie: this.cookie, accept: "application/json" },
       credentials: "include",

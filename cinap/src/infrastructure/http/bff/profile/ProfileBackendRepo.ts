@@ -1,3 +1,6 @@
+import type { ProfileRepo, ProfileSummary } from "@/application/profile/ports/ProfileRepo";
+import { mapProfileSummary, type ProfileSummaryPayload } from "@/infrastructure/http/profile/ProfileRepoHttp";
+
 type ProfileBackendStats = {
   completed: number;
   canceled: number;
@@ -12,16 +15,13 @@ type ProfileBackendResponse = {
   };
 };
 
-export class ProfileBackendRepo {
+export class ProfileBackendRepo implements ProfileRepo {
   private readonly baseUrl: string;
   private readonly cookie: string;
   private setCookies: string[] = [];
 
   constructor(cookie: string) {
-    this.baseUrl =
-      process.env.NEXT_PUBLIC_BACKEND_URL ??
-      process.env.BACKEND_URL ??
-      "http://localhost:8000";
+    this.baseUrl = process.env.BACKEND_URL ?? "";
     this.cookie = cookie ?? "";
   }
 
@@ -50,7 +50,7 @@ export class ProfileBackendRepo {
   }
 
   async getSummary(): Promise<ProfileBackendResponse["data"]> {
-    const res = await fetch(`${this.baseUrl}/profile/summary`, {
+    const res = await fetch(`${this.baseUrl}/api/profile/summary`, {
       method: "GET",
       headers: {
         cookie: this.cookie,
@@ -69,8 +69,13 @@ export class ProfileBackendRepo {
 
     const payload = await this.parse<ProfileBackendResponse>(res);
     if (!payload.success) {
-      throw new Error("Respuesta inválida del backend");
+      throw new Error("Respuesta invalida del backend");
     }
     return payload.data;
+  }
+
+  async getMyProfile(): Promise<ProfileSummary> {
+    const data = await this.getSummary();
+    return mapProfileSummary(data as ProfileSummaryPayload);
   }
 }

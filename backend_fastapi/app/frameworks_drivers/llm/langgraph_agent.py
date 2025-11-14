@@ -4,8 +4,9 @@ from collections import deque
 import copy
 from datetime import datetime
 import time
+import uuid
 from zoneinfo import ZoneInfo
-import json, sqlite3, asyncio, re
+import json, sqlite3, asyncio, re, logging
 from typing import Any, Dict, List
 from contextvars import ContextVar
 from langgraph.prebuilt import create_react_agent
@@ -14,17 +15,20 @@ from langchain.tools import StructuredTool
 from pydantic import BaseModel, create_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
-from langchain_core.messages.utils import trim_messages
+from langchain_core.messages.utils import trim_messages, get_buffer_string
+from langchain_core.messages import RemoveMessage
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
+from langchain_core.callbacks import BaseCallbackHandler
 from app.frameworks_drivers.mcp.stdio_client import MCPStdioClient
 from app.observability.confirm_store import is_confirmation
-from app.observability.metrics import set_meta, stage, astage, measure_stage
+from app.observability.metrics import set_meta, stage, astage
 from app.observability.metrics_llm import MetricsCallbackHandler
 try:
     from langchain_ollama import ChatOllama
 except Exception:
     ChatOllama = None
 from app.frameworks_drivers.config.settings import (
-    USE_OLLAMA,
+    USE_OLLAMA, EVAL_LOG_PATH,
     OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TEMP, OLLAMA_TOP_P,
 )
 
@@ -39,6 +43,96 @@ _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 CURRENT_THREAD_ID: ContextVar[str | None] = ContextVar("CURRENT_THREAD_ID", default=None)
 
 CONFIRM_TOOLS = {"schedule_asesoria", "cancel_asesoria", "confirm_asesoria"}
+
+_CINAP_LIST_RE = re.compile(r"<!--CINAP_LIST:.*?-->", re.DOTALL)
+_CINAP_CONFIRM_RE = re.compile(r"<!--CINAP_CONFIRM:.*?-->", re.DOTALL)
+_CINAP_SOURCE_RE = re.compile(r"<!--CINAP_SOURCE:.*?-->", re.DOTALL)
+_MAX_MSG_CHARS = 8000
+
+def _sanitize_for_state(text: str) -> str:
+    if not isinstance(text, str) or not text:
+        return text or ""
+    s = _THINK_RE.sub("", text)
+    s = _CINAP_LIST_RE.sub(" [UI list omitted] ", s)
+    s = _CINAP_CONFIRM_RE.sub(" [confirm marker omitted] ", s)
+    s = _CINAP_SOURCE_RE.sub(" [source omitted] ", s)
+    if len(s) > _MAX_MSG_CHARS:
+        s = s[:_MAX_MSG_CHARS] + " …[truncated]"
+    return s
+
+def _compact_content(content: Any) -> str:
+    if isinstance(content, str):
+        s = _THINK_RE.sub("", content)
+        return _sanitize_for_state(s)
+
+    if isinstance(content, list):
+        parts = []
+        for blk in content:
+            if isinstance(blk, dict):
+                t = (blk.get("type") or "").lower()
+                if t in ("text", "input_text"):
+                    parts.append(str(blk.get("text") or blk.get("content") or ""))
+                elif t in ("tool_use", "function_call"):
+                    name = blk.get("name") or blk.get("tool_name") or ""
+                    parts.append(f"[tool:{name}]")
+                else:
+                    parts.append("[non-text]")
+            else:
+                parts.append(str(blk))
+        return _sanitize_for_state("\n".join(parts)).strip()
+
+    if isinstance(content, dict):
+        if "tool_calls" in content or "function_call" in content:
+            try:
+                name = ""
+                if "function_call" in content:
+                    name = (content["function_call"] or {}).get("name") or ""
+                elif "tool_calls" in content:
+                    tc = content["tool_calls"] or []
+                    if tc and isinstance(tc, list):
+                        name = (tc[0].get("function") or {}).get("name") or tc[0].get("type") or ""
+                return f"[tool:{name}]"
+            except Exception:
+                return "[tool]"
+        return "[json]"
+
+    return _sanitize_for_state(str(content or ""))
+
+def make_pre_model_hook(system_text: str, token_counter):
+    def _hook(state: dict) -> dict:
+        trimmed = trim_messages(
+            state["messages"],
+            strategy="last",
+            token_counter=token_counter,
+            max_tokens=10000,
+            start_on="human",
+            end_on=("human","tool"),
+        )
+        cleaned = []
+        for m in trimmed:
+            try:
+                m.content = _compact_content(getattr(m, "content", ""))
+                akw = getattr(m, "additional_kwargs", None)
+                if isinstance(akw, dict):
+                    for k in ("tool_calls","function_call","refusal","audio","parsed"):
+                        akw.pop(k, None)
+            except Exception:
+                pass
+            cleaned.append(m)
+
+        non_system = [m for m in cleaned if not isinstance(m, SystemMessage)]
+        single_system = SystemMessage(content=_compact_content(system_text))
+        return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES), single_system, *non_system]}
+    return _hook
+
+def _eval_log(event: dict):
+    try:
+        event = dict(event or {})
+        event["ts"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        with open(EVAL_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 def _normalize_event_update_args(kwargs: dict) -> dict:
     if not isinstance(kwargs, dict):
@@ -118,7 +212,6 @@ def _attach_items_payload(text: str, items: list[dict], kind: str) -> str:
         return None
 
     def _compose_start(d: dict):
-        # 1) Directos comunes
         v = _first(
             d,
             "start", "start_time", "inicio",
@@ -127,16 +220,13 @@ def _attach_items_payload(text: str, items: list[dict], kind: str) -> str:
         )
         if v:
             return v
-        # 2) Composición fecha + hora (muy común en tu backend)
         fecha = _first(d, "fecha", "date", "dia", "day")
         hora  = _first(d, "hora", "time", "hora_inicio", "horaInicio", "slot")
         if fecha and hora:
             try:
-                # Deja que el webhook lo parsee; basta concatenar
                 return f"{fecha} {hora}"
             except Exception:
                 pass
-        # 3) Solo fecha (el webhook igual la muestra)
         if fecha:
             return fecha
         return None
@@ -172,34 +262,39 @@ def _attach_confirm_marker(text: str, *, idem: str | None, expires_in_sec: int =
     base = (text or "").strip()
     return (f"{base}\n\n{marker}" if base else marker)
 
+def _attach_source_marker(text: str, source: dict) -> str:
+    title = (source or {}).get("title")
+    page = (source or {}).get("page") or (source or {}).get("page_no")
+    payload = {
+        "kind": "source",
+        "title": title,
+        "page": page,
+    }
+    blob = base64.b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
+    base = (text or "").strip()
+    marker = f"<!--CINAP_SOURCE:{blob}-->"
+    return (f"{base}\n\n{marker}" if base else marker)
+
 def _strip_think(text: str | None) -> str:
     if not isinstance(text, str):
         return ""
     return _THINK_RE.sub("", text).strip()
-
-def _strip_code_fences(s: str) -> str:
-    s = s.strip()
-    if s.startswith("```"):
-        s = re.sub(r"^```(?:json)?\s*", "", s)
-        s = re.sub(r"\s*```$", "", s)
-    return s.strip()
 
 def _fmt_list_item(it: dict) -> str:
     title = str(it.get("title") or "(sin título)").strip()
     sub = str(it.get("subtitle") or it.get("email") or "").strip()
     return f"{title}\n{sub}" if sub else title
 
-def _render_numbered(items: list[dict], limit: int = 10) -> str:
-    shown = items[:limit]
-    lines = [f"{idx+1}) {_fmt_list_item(ev)}" for idx, ev in enumerate(shown)]
-
-    if len(items) > limit:
-        lines.append(f"... y {len(items) - limit} más")
-
-    return "\n".join(lines)
-
 def _format_mcp_result(res: dict, tool_name: str) -> str:
     if isinstance(res, dict) and res.get("ok"):
+        if tool_name == "semantic_search":
+            say = (res.get("say") or "").strip()
+            source = res.get("source") or {}
+            if source:
+                say = _attach_source_marker(say, source)
+            if say:
+                return say
+        
         data = res.get("data") or {}
         items = data.get("items") or data.get("events")
         if isinstance(items, list) and items:
@@ -232,9 +327,6 @@ def _format_mcp_result(res: dict, tool_name: str) -> str:
         return f"[{tool_name}] resultado no estándar: " + json.dumps(res, ensure_ascii=False)[:1200]
     except Exception:
         return f"[{tool_name}] resultado no estándar (no JSON serializable)."
-
-def _looks_like_tool_json(s: str) -> bool:
-    return bool(_TOOL_JSON_RE.match(s or ""))
 
 def _pydantic_model_from_json_schema(name: str, schema: Dict[str, Any]) -> type[BaseModel]:
     props = schema.get("properties", {}) if isinstance(schema, dict) else {}
@@ -279,18 +371,6 @@ def _pydantic_model_from_json_schema(name: str, schema: Dict[str, Any]) -> type[
 
     return create_model(name, **fields)
 
-def _parse_tool_json(s: str) -> tuple[str, dict] | None:
-    try:
-        raw = _strip_code_fences(s)
-        obj = json.loads(raw)
-        name = obj.get("name") or obj.get("function")
-        args = obj.get("arguments") or obj.get("parameters") or {}
-        if isinstance(name, str) and isinstance(args, dict):
-            return name, args
-    except Exception:
-        pass
-    return None
-
 try:
     import tiktoken
 except Exception:
@@ -312,59 +392,54 @@ def _make_token_counter(model_name: str):
 
     return counter
 
-class TokenTrimCheckpointer:
-    def __init__(
-        self,
-        base,
-        *,
-        model_name: str,
-        max_tokens: int = 3000,
-        strategy: str = "recency",
-        include_system: bool = True,
-        allow_partial: bool = True,
-    ):
-        self._base = base
-        self._max_tokens = int(max_tokens)
-        self._strategy = strategy
-        self._include_system = include_system
-        self._allow_partial = allow_partial
-        self._token_counter = _make_token_counter(model_name)
+def make_messages_token_counter(model_name: str):
+    string_counter = _make_token_counter(model_name)
+    def _messages_token_counter(messages):
+        try:
+            s = get_buffer_string(messages)
+        except Exception:
+            parts = []
+            for m in (messages or []):
+                c = getattr(m, "content", "")
+                if not isinstance(c, str):
+                    try: c = json.dumps(c, ensure_ascii=False)
+                    except Exception: c = str(c)
+                parts.append(c)
+            s = "\n".join(parts)
+        return string_counter(s or "")
+    return _messages_token_counter
 
-    def __getattr__(self, name):
-        return getattr(self._base, name)
+class MetricsCallbackHandler(BaseCallbackHandler):
+    def __init__(self, stage_name="llm.http"):
+        self.stage_name = stage_name
 
-    def _trim_cp(self, cp: dict) -> dict:
-        if not isinstance(cp, dict):
-            return cp
-        cp2 = copy.deepcopy(cp)
-        vals = cp2.get("values")
-        if isinstance(vals, dict) and isinstance(vals.get("messages"), list):
-            messages = vals["messages"]
+    def on_llm_end(self, response, **kwargs):
+        usage = None
+        try:
+            usage = (getattr(response, "llm_output", {}) or {}).get("token_usage")
+        except Exception:
+            pass
 
-            trimmed = trim_messages(
-                messages=messages,
-                token_counter=self._token_counter,
-                max_tokens=self._max_tokens,
-                strategy=self._strategy,
-                include_system=self._include_system,
-                allow_partial=self._allow_partial,
+        if not usage:
+            try:
+                gi = response.generations[0][0].generation_info or {}
+                usage = gi.get("token_usage") or gi.get("usage")
+            except Exception:
+                usage = None
+
+        if not usage:
+            try:
+                usage = getattr(response, "response_metadata", {}).get("token_usage")
+            except Exception:
+                pass
+
+        if usage:
+            set_meta(
+                stage=self.stage_name,
+                prompt_tokens=usage.get("prompt_tokens"),
+                completion_tokens=usage.get("completion_tokens"),
+                total_tokens=usage.get("total_tokens"),
             )
-            vals["messages"] = trimmed
-        return cp2
-
-    def put(self, *args, **kwargs):
-        args = list(args)
-        if len(args) >= 2 and isinstance(args[1], dict):
-            args[1] = self._trim_cp(args[1])
-        return self._base.put(*tuple(args), **kwargs)
-
-    async def aput(self, *args, **kwargs):
-        args = list(args)
-        if len(args) >= 2 and isinstance(args[1], dict):
-            args[1] = self._trim_cp(args[1])
-        if hasattr(self._base, "aput"):
-            return await self._base.aput(*tuple(args), **kwargs)
-        return self._base.put(*tuple(args), **kwargs)
 
 class LangGraphRunner:
     def __init__(self, app, system_text: str | None = None):
@@ -375,8 +450,6 @@ class LangGraphRunner:
         def _run():
             with stage("agent.llm.prompt_build"):
                 msgs = []
-                if self._system_text:
-                    msgs.append(SystemMessage(content=self._system_text))
                 msgs.append(HumanMessage(content=message))
 
             with stage("agent.langgraph.invoke"):
@@ -385,15 +458,40 @@ class LangGraphRunner:
                     config={"configurable": {"thread_id": thread_id}},
                 )
                 out = res.get("messages", [])
+                try:
+                    last = out[-1].content if out else ""
+                    _eval_log({
+                        "kind": "turn",
+                        "thread_id": thread_id,
+                        "turn_id": str(uuid.uuid4()),
+                        "user": message,
+                        "assistant": last,
+                    })
+                except Exception:
+                    pass
 
             with stage("agent.present.extract"):
-                return _strip_think(out[-1].content if out else "")
+                last_msg = out[-1] if out else None
+                if last_msg:
+                    # Verificar si hay tool_calls sin procesar
+                    if hasattr(last_msg, 'tool_calls') and last_msg.tool_calls:
+                        import logging
+                        log = logging.getLogger("langgraph")
+                        log.warning(f"AIMessage con tool_calls no procesados: {last_msg.tool_calls}")
+                        # Intentar obtener el contenido de todos los mensajes
+                        all_contents = [m.content for m in out if hasattr(m, 'content') and m.content]
+                        return "\n".join(all_contents) if all_contents else "No pude procesar la respuesta"
+                    return _strip_think(last_msg.content if hasattr(last_msg, 'content') else str(last_msg))
+                return ""
 
         async with astage("agent.total"):
             return await asyncio.to_thread(_run)
 
 class LangGraphAgent:
-    def __init__(self, mcps: dict[str, MCPStdioClient], *, model_name: str, db_path: str, main_loop):
+    def __init__(self, mcps: dict[str, MCPStdioClient], *, model_name: str, db_path: str, main_loop,
+                 public_clients: set[str] | None = None,
+                 allow_tools: set[str] | None = None,
+                 deny_tools: set[str] | None = None):
         self._mcps = mcps
         self._tool_to_client: dict[str, str] = {}
         self._model_name = model_name
@@ -401,6 +499,9 @@ class LangGraphAgent:
         self._runner: LangGraphRunner | None = None
         self._main_loop = main_loop
         self._confirm_store = None
+        self._public_clients = set(public_clients or set(mcps.keys()))
+        self._allow_tools = set(allow_tools or [])
+        self._deny_tools = set(deny_tools or [])
 
     def set_confirm_store(self, store) -> None:
         self._confirm_store = store
@@ -443,36 +544,66 @@ class LangGraphAgent:
                     if getattr(self, "_confirm_store", None) and thread_id and name in CONFIRM_TOOLS:
                         pending_exists = await self._confirm_store.peek(thread_id)
 
-                        if args.get("confirm") is True and not pending_exists:
-                            args["confirm"] = False
+                        inp = args.get("input") if isinstance(args.get("input"), dict) else {}
+                        pending_exists = await self._confirm_store.peek(thread_id)
+
+                        if inp.get("confirm") is True and not pending_exists:
+                            inp = {**inp, "confirm": False}
+                            args["input"] = inp
                             set_meta(enforced_preview=True)
 
-                        if not bool(args.get("confirm")):
+                        if not bool(inp.get("confirm")):
                             async with astage("confirm.store.put", extra={"tool": name}):
                                 idem = await self._confirm_store.put(thread_id, name, args)
 
+                            preview_payload = copy.deepcopy(args)
+                            prev_inp = preview_payload.get("input") if isinstance(preview_payload.get("input"), dict) else {}
+                            preview_payload["input"] = {**prev_inp, "confirm": False}
+
                             async with astage("mcp.rpc", extra={"tool": name, "phase": "preview"}):
-                                preview_res = await client.call_tool(name, {**args, "confirm": False})
+                                preview_res = await client.call_tool(name, preview_payload)
 
                             try:
                                 if isinstance(preview_res, dict):
-                                    next_hint = None
                                     data = preview_res.get("data") or {}
-                                    if isinstance(data, dict):
-                                        next_hint = data.get("next_hint")
-                                    if not next_hint:
-                                        next_hint = preview_res.get("next_hint")
+                                    next_hint = (data.get("next_hint") or preview_res.get("next_hint")) if isinstance(data, dict) else None
 
-                                    if next_hint:
-                                        post = [{
-                                            "tool": next_hint.get("next_tool"),
-                                            "args": next_hint.get("suggested_args")
-                                        }]
-                                        await self._confirm_store.patch(thread_id, {"post_confirm": post})
+                                    if isinstance(next_hint, dict) and next_hint.get("run_immediately") and \
+                                    (next_hint.get("next_tool") == "event_find_overlap"):
+
+                                        args2 = dict(next_hint.get("suggested_args") or {})
+
+                                        c2 = self._client_for_tool("event_find_overlap")
+                                        async with astage("mcp.rpc", extra={"tool": "event_find_overlap", "phase": "preview.immediate"}):
+                                            res2 = await c2.call_tool("event_find_overlap", args2)
+
+                                        attach_key = next_hint.get("attach_result_as") or "calendar_conflicts"
+                                        conflicts = []
+                                        if isinstance(res2, dict):
+                                            conflicts = (res2.get("conflicts")
+                                                        or ((res2.get("data") or {}).get("conflicts"))
+                                                        or [])
+                                            if not isinstance(conflicts, list):
+                                                conflicts = []
+                                        preview_res.setdefault("data", {})[attach_key] = conflicts
+
+                                        if conflicts:
+                                            prev_say = (preview_res.get("say") or "").rstrip()
+                                            warn = "⚠️ Ya existe un evento en ese horario."
+                                            preview_res["say"] = f"{prev_say}\n\n{warn}" if prev_say else warn
+
+                                    else:
+                                        if next_hint:
+                                            post = [{
+                                                "tool": next_hint.get("next_tool"),
+                                                "args": next_hint.get("suggested_args")
+                                            }]
+                                            await self._confirm_store.patch(thread_id, {"post_confirm": post})
                             except Exception:
                                 pass
 
                             preview_text = _format_mcp_result(preview_res, name)
+
                             if isinstance(preview_res, dict) and preview_res.get("ok") is False:
                                 await self._confirm_store.pop(thread_id)
                                 return preview_text
@@ -483,7 +614,19 @@ class LangGraphAgent:
                         return "Necesito tu confirmación primero. Responde con “sí” para continuar."
 
                     async with astage("mcp.rpc", extra={"tool": name, "phase": "direct"}):
+                        start_ts = time.time()
                         res = await client.call_tool(name, args)
+                        elapsed_ms = int((time.time() - start_ts) * 1000)
+
+                        _eval_log({
+                            "kind": "tool_call",
+                            "thread_id": CURRENT_THREAD_ID.get(),
+                            "turn_id": str(uuid.uuid4()),
+                            "tool": name,
+                            "args": args,
+                            "result": res,
+                            "elapsed_ms": elapsed_ms,
+                        })
                     return _format_mcp_result(res, name)
 
             except Exception as e:
@@ -511,13 +654,19 @@ class LangGraphAgent:
                 name = str(fn.get("name") or "")
                 if not name:
                     continue
-                public_name = name
 
-                self._tool_to_client[public_name] = label
+                self._tool_to_client[name] = label
+
+                if label not in self._public_clients:
+                    continue
+                if self._allow_tools and name not in self._allow_tools:
+                    continue
+                if name in self._deny_tools:
+                    continue
 
                 schema = fn.get("parameters") or {"type": "object", "properties": {}}
-                ModelIn = _pydantic_model_from_json_schema(f"{public_name}_Input", schema)
-                tools.append(self._make_tool(public_name, fn.get("description") or "", ModelIn))
+                ModelIn = _pydantic_model_from_json_schema(f"{name}_Input", schema)
+                tools.append(self._make_tool(name, fn.get("description") or "", ModelIn))
         return tools
     
     def _client_for_tool(self, tool_name: str) -> MCPStdioClient:
@@ -557,18 +706,7 @@ class LangGraphAgent:
 
         tools = await self._build_tools_from_mcp()
         conn = sqlite3.connect(self._db_path, check_same_thread=False)
-        base_cp = SqliteSaver(conn)
-        token_budget = 10000
-        checkpointer = TokenTrimCheckpointer(
-            base_cp,
-            model_name=self._model_name,
-            max_tokens=token_budget,
-            strategy="recency",
-            include_system=True,
-            allow_partial=True,
-        )
-        app_or_graph = create_react_agent(llm, tools, checkpointer=checkpointer)
-        app = app_or_graph.compile(checkpointer=checkpointer) if hasattr(app_or_graph, "compile") else app_or_graph
+        checkpointer = SqliteSaver(conn)
 
         SYSTEM_STATIC_EN = """
         You are a tool-using assistant. 
@@ -592,13 +730,50 @@ class LangGraphAgent:
         - If the question is informative about CINAP (what is it, services, politics, how it works, etc.), use the tool "semantic_search" with { "q": "<user question>" } to gain context before responding.
         - If there's no results, say it clearly.
         """
+        FEW_SHOTS_ES = """
+        EJEMPLOS RÁPIDOS (Few-shot). Siempre responde en español y usa herramientas cuando apliquen:
+
+        Usuario: "Muéstrame mis asesorías de esta semana"
+        Asistente:
+        {"name":"list_asesorias","arguments":{"input":{"start":"2025-10-20T00:00:00-03:00","end":"2025-10-27T00:00:00-03:00"}}}
+
+        Usuario: "¿Hay cupos para Comunidades de Aprendizaje mañana entre 9 y 12?"
+        Asistente:
+        {"name":"check_availability","arguments":{"input":{"service":"Comunidades de Aprendizaje","start":"2025-10-24T09:00:00-03:00","end":"2025-10-24T12:00:00-03:00"}}}
+
+        Usuario: "Reserva con Ana Pérez para Comunidades de Aprendizaje el 3 de noviembre a las 10:00"
+        Asistente:
+        {"name":"schedule_asesoria","arguments":{"input":{"advisor":"Ana Pérez","service":"Comunidades de Aprendizaje","start":"2025-11-03T10:00:00-03:00","confirm":false}}}
+        # Nota: NO envíes user_id. El backend lo inyecta. Primero siempre preview (confirm=false).
+
+        Usuario: "Cancela la asesoría del 3 de noviembre 10:00 con Ana Pérez"
+        Asistente:
+        {"name":"cancel_asesoria","arguments":{"input":{"advisor":"Ana Pérez","start":"2025-11-03T10:00:00-03:00","confirm":false}}}
+        # Si no se indica 'end', la tool asume 30m/60m.
+
+        Usuario: "Confirma mi asistencia del 3 de noviembre 10:00 con Ana Pérez"
+        Asistente:
+        {"name":"confirm_asesoria","arguments":{"input":{"advisor":"Ana Pérez","start":"2025-11-03T10:00:00-03:00","confirm":false}}}
+
+        Usuario: "¿Qué es el programa CINAP?"
+        Asistente:
+        {"name":"semantic_search","arguments":{"q":"Qué es el programa CINAP","kinds":["general.page","doc.chunk"]}}
+        """
         now_cl = datetime.now(ZoneInfo("America/Santiago"))
         offset = now_cl.utcoffset()
         offset_h = int(offset.total_seconds() // 3600)
         offset_sign = "+" if offset_h >= 0 else "-"
         offset_txt = f"UTC{offset_sign}{abs(offset_h):02d}:00"
-        system_msg = SYSTEM_STATIC_EN + f"\nContext: TZ=America/Santiago ({offset_txt}), today={now_cl:%d-%m-%Y}\n /no_think"
-        self._runner = LangGraphRunner(app, system_text=system_msg)
+        system_msg = SYSTEM_STATIC_EN + "\n" + FEW_SHOTS_ES + f"\nContext: TZ=America/Santiago ({offset_txt}), today={now_cl:%d-%m-%Y}\n /no_think"
+        token_counter = make_messages_token_counter(self._model_name)
+        pre_hook = make_pre_model_hook(system_msg, token_counter)
+        app_or_graph = create_react_agent(
+            llm, tools,
+            checkpointer=checkpointer,
+            pre_model_hook=pre_hook,
+        )
+        app = app_or_graph.compile(checkpointer=checkpointer) if hasattr(app_or_graph, "compile") else app_or_graph
+        self._runner = LangGraphRunner(app, system_text=None)
 
     async def invoke(self, message: str, *, thread_id: str) -> str:
         if not self._runner:
@@ -673,32 +848,26 @@ class LangGraphAgent:
                         post_ops = []
 
                     try:
-                        confirm_hint = None
+                        def _to_ops(nh):
+                            ops = []
+                            if isinstance(nh, dict):
+                                if nh.get("next_tool") and nh.get("suggested_args"):
+                                    ops.append({"tool": nh["next_tool"], "args": dict(nh["suggested_args"] or {})})
+                            elif isinstance(nh, list):
+                                for it in nh:
+                                    if isinstance(it, dict) and it.get("next_tool") and it.get("suggested_args"):
+                                        ops.append({"tool": it["next_tool"], "args": dict(it["suggested_args"] or {})})
+                            return ops
+
+                        confirm_ops = []
                         if isinstance(res, dict):
                             data = res.get("data") or {}
                             nh = data.get("next_hint") or res.get("next_hint")
-                            if isinstance(nh, dict) and nh.get("next_tool") and nh.get("suggested_args"):
-                                confirm_hint = {"tool": nh["next_tool"], "args": dict(nh["suggested_args"] or {})}
+                            confirm_ops = _to_ops(nh)
 
-                        def _deep_merge(dst: dict, src: dict) -> dict:
-                            out = dict(dst or {})
-                            for k, v in (src or {}).items():
-                                if isinstance(v, dict) and isinstance(out.get(k), dict):
-                                    out[k] = _deep_merge(out[k], v)
-                                else:
-                                    out[k] = v
-                            return out
+                        if confirm_ops:
+                            post_ops.extend(confirm_ops)
 
-                        if confirm_hint:
-                            if post_ops:
-                                for op in post_ops:
-                                    if op.get("tool") == confirm_hint["tool"]:
-                                        op["args"] = _deep_merge(op.get("args") or {}, confirm_hint["args"])
-                                        break
-                                else:
-                                    post_ops.append(confirm_hint)
-                            else:
-                                post_ops = [confirm_hint]
                     except Exception:
                         pass
 
@@ -742,11 +911,9 @@ class LangGraphAgent:
                             if isinstance(r2, dict):
                                 data2 = r2.get("data") or {}
                                 nh2 = data2.get("next_hint") or r2.get("next_hint")
-                                if isinstance(nh2, dict) and nh2.get("next_tool") and nh2.get("suggested_args"):
-                                    queue.append({
-                                        "tool": nh2["next_tool"],
-                                        "args": dict(nh2["suggested_args"] or {}),
-                                    })
+
+                                for extra_op in _to_ops(nh2):
+                                    queue.append(extra_op)
                         except Exception:
                             pass
 

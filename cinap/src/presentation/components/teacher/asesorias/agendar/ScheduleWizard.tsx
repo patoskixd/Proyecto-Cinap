@@ -10,6 +10,7 @@ import { Step2Calendar } from "./steps/Step2Calendar";
 import { Step3Confirm } from "./steps/Step3Confirm";
 import { useScheduleWizard } from "./hooks/useScheduleWizard";
 import Header from "./components/Header";
+import { ConflictWarningModal } from "./components/ConflictWarningModal";
 
 
 export default function ScheduleWizard(props: {
@@ -23,8 +24,8 @@ export default function ScheduleWizard(props: {
   const { categories, servicesByCategory, advisorsByService, defaultTimezone } = props;
 
   const { step, state, services, advisors, currentMonth, setCurrentMonth, selectedDate, setSelectedDate, openSlots,
-          loadingSlots, slotsError, selectCategory, selectService, selectAdvisor, selectSlot, canGoNext, goNext,
-          goPrev, submitting, error, showSuccess, setShowSuccess, onConfirmar,} = useScheduleWizard({ categories, servicesByCategory, advisorsByService, defaultTimezone });
+          daysWithAvailability, loadingSlots, loadingMonth, slotsError, selectCategory, selectService, selectAdvisor, selectSlot, canGoNext, goNext,
+          goPrev, submitting, error, showSuccess, onConfirmar, setError, conflicts, showConflictModal, setShowConflictModal, executeReservation, checkingConflicts } = useScheduleWizard({ servicesByCategory, advisorsByService, defaultTimezone });
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-6">
@@ -52,7 +53,9 @@ export default function ScheduleWizard(props: {
             setSelectedDate={setSelectedDate}
             state={state}
             openSlots={openSlots}
+            daysWithAvailability={daysWithAvailability}
             loading={loadingSlots}
+            loadingMonth={loadingMonth}
             error={slotsError}
             onSelectSlot={selectSlot}
           />
@@ -71,15 +74,23 @@ export default function ScheduleWizard(props: {
 
         <FooterNav
           step={step}
-          submitting={submitting}
+          submitting={submitting || checkingConflicts}
           canGoNext={canGoNext}
           onPrev={goPrev}
           onNext={goNext}
           onConfirm={onConfirmar}
         />
 
-        <ErrorModal message={error} />
-        <SuccessModal open={showSuccess} onClose={() => setShowSuccess(false)} />
+        <ErrorModal message={error} onClose={() => setError(null)} />
+        <SuccessModal open={showSuccess} />
+        
+        <ConflictWarningModal
+          open={showConflictModal}
+          conflicts={conflicts}
+          onCancel={() => setShowConflictModal(false)}
+          onConfirm={executeReservation}
+          loading={submitting}
+        />
       </section>
     </div>
   );

@@ -24,18 +24,19 @@ export function StatsCards(props: {
   return (
     <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {stats.map((stat) => (
-        <div
+        <button
           key={stat.key}
-          role="button"
+          type="button"
           className={`${base} ${active === stat.key ? activeCls : ""}`}
           title={stat.tooltip}
+          aria-pressed={active === stat.key}
           onClick={() => onPick(stat.key as StatKey)}
         >
           <div className="text-center">
             <div className="text-2xl font-bold text-blue-600 mb-1">{stat.value}</div>
             <div className="text-sm font-medium text-neutral-600">{stat.label}</div>
           </div>
-        </div>
+        </button>
       ))}
     </div>
   );

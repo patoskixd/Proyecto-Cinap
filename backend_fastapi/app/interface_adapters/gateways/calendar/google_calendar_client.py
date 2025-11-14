@@ -1,7 +1,7 @@
 from __future__ import annotations
 import httpx, uuid, asyncio, logging, inspect
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from app.use_cases.ports.calendar_port import CalendarPort, CalendarEventInput, CalendarEventOut
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -14,14 +14,24 @@ log = logging.getLogger(__name__)
 
 
 class GoogleCalendarClient(CalendarPort):
-    def __init__(self, *, client_id: str, client_secret: str, timeout: int = 20, get_refresh_token_by_usuario_id):
+    def __init__(
+        self,
+        *,
+        client_id: str,
+        client_secret: str,
+        timeout: int = 20,
+        get_refresh_token_by_usuario_id=None,
+        invalidate_refresh_token_by_usuario_id=None,
+    ):
         """
         get_refresh_token_by_usuario_id: async fn(usuario_id: str) -> str | None
+        invalidate_refresh_token_by_usuario_id: async fn(usuario_id: str) -> None
         """
         self.client_id = client_id
         self.client_secret = client_secret
         self.timeout = timeout
         self._get_rt = get_refresh_token_by_usuario_id
+        self._invalidate_rt = invalidate_refresh_token_by_usuario_id
 
     async def _get_refresh_token(self, usuario_id: str) -> Optional[str]:
         """Acepta factories async o sync para recuperar refresh token."""
@@ -40,18 +50,47 @@ class GoogleCalendarClient(CalendarPort):
         refresh_token = await self._get_refresh_token(usuario_id)
         if not refresh_token:
             raise RuntimeError(f"Cuenta Google sin refresh_token (usuario_id={usuario_id})")
-        access = await self._exchange_refresh(refresh_token)
+        access = await self._exchange_refresh(refresh_token, usuario_id=usuario_id)
         return {"Authorization": f"Bearer {access}"}
 
-    async def _exchange_refresh(self, refresh_token: str) -> str:
+    async def _exchange_refresh(self, refresh_token: str, *, usuario_id: str | None = None) -> str:
+        log.debug("Attempting to refresh Google token (len=%s)", len(refresh_token) if refresh_token else None)
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            r = await client.post(GOOGLE_TOKEN_URL, data={
-                "client_id": self.client_id,
-                "client_secret": self.client_secret,
-                "grant_type": "refresh_token",
-                "refresh_token": refresh_token,
-            })
-            r.raise_for_status()
+            r = await client.post(
+                GOOGLE_TOKEN_URL,
+                data={
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh_token,
+                },
+            )
+            try:
+                r.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                body_json = None
+                try:
+                    body_json = r.json()
+                except Exception:
+                    body_json = None
+                body_repr = body_json if body_json is not None else r.text[:500] if hasattr(r, "text") else "<unavailable>"
+                log.warning(
+                    "Google refresh_token exchange failed (status=%s, body=%s)",
+                    r.status_code,
+                    body_repr,
+                )
+                error_code = None
+                if isinstance(body_json, dict):
+                    error_code = body_json.get("error")
+                    if error_code == "invalid_grant" and usuario_id and self._invalidate_rt:
+                        try:
+                            maybe = self._invalidate_rt(usuario_id)
+                            if inspect.isawaitable(maybe):
+                                await maybe
+                            log.info("Marcado refresh_token inválido para usuario %s", usuario_id)
+                        except Exception as cb_exc:
+                            log.warning("No se pudo marcar refresh token inválido para %s: %s", usuario_id, cb_exc)
+                raise
             data = r.json()
             return data["access_token"]
 
@@ -63,7 +102,7 @@ class GoogleCalendarClient(CalendarPort):
         if not rt:
             raise RuntimeError("El asesor no tiene Google conectado (refresh_token ausente)")
 
-        access = await self._exchange_refresh(rt)
+        access = await self._exchange_refresh(rt, usuario_id=data.organizer_usuario_id)
 
         ev = {
             "summary": data.title,
@@ -115,7 +154,7 @@ class GoogleCalendarClient(CalendarPort):
         rt = await self._get_refresh_token(organizer_usuario_id)
         if not rt:
             raise RuntimeError("El asesor no tiene Google conectado (refresh_token ausente)")
-        access = await self._exchange_refresh(rt)
+        access = await self._exchange_refresh(rt, usuario_id=organizer_usuario_id)
         headers = {"Authorization": f"Bearer {access}"}
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             r = await client.get(f"{CAL_EVENTS_URL}/{event_id}", headers=headers)
@@ -128,7 +167,7 @@ class GoogleCalendarClient(CalendarPort):
         rt = await self._get_refresh_token(organizer_usuario_id)
         if not rt:
             raise RuntimeError("El asesor no tiene Google conectado (refresh_token ausente)")
-        access = await self._exchange_refresh(rt)
+        access = await self._exchange_refresh(rt, usuario_id=organizer_usuario_id)
         headers = {"Authorization": f"Bearer {access}"}
         body = {
             "id": channel_id,           # UUID que generas
@@ -148,6 +187,22 @@ class GoogleCalendarClient(CalendarPort):
 
             r.raise_for_status()
             return r.json()
+
+    async def stop_channel(
+        self,
+        *,
+        organizer_usuario_id: str,
+        channel_id: str,
+        resource_id: str,
+    ) -> None:
+        headers = await self._auth_headers_for_user(organizer_usuario_id)
+        body = {"id": channel_id, "resourceId": resource_id}
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            r = await client.post("https://www.googleapis.com/calendar/v3/channels/stop", headers=headers, json=body)
+            if r.status_code not in (200, 204):
+                log.debug("channels.stop (%s) devolvió %s: %s", channel_id, r.status_code, r.text[:200])
+                r.raise_for_status()
+        log.info("Canal Google detenido: channel_id=%s resource_id=%s", channel_id, resource_id)
 
     async def delete_event(
         self,
@@ -247,3 +302,83 @@ class GoogleCalendarClient(CalendarPort):
             log.warning(f"PATCH RSVP falló: {r_patch.status_code} {txt}")
             r_patch.raise_for_status()
             return True
+
+    async def find_overlapping_events(
+        self,
+        *,
+        usuario_id: str,
+        start: datetime,
+        end: datetime,
+        calendar_id: str = "primary",
+    ) -> list[dict]:
+        """
+        Busca eventos en el calendario del usuario que se solapen con el rango [start, end).
+        Retorna una lista de eventos conflictivos con información básica.
+        """
+        try:
+            headers = await self._auth_headers_for_user(usuario_id)
+        except Exception as e:
+            log.warning(f"No se pudieron obtener headers para usuario {usuario_id}: {e}")
+            return []
+
+        params = {
+            "timeMin": start.isoformat(),
+            "timeMax": end.isoformat(),
+            "singleEvents": "true",
+            "orderBy": "startTime",
+        }
+        
+        url = f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events"
+        
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                r = await client.get(url, headers=headers, params=params)
+                r.raise_for_status()
+                data = r.json()
+                
+                events = data.get("items", [])
+                conflicts = []
+                
+                for event in events:
+                    event_start = event.get("start", {})
+                    event_end = event.get("end", {})
+                    
+                    start_str = event_start.get("dateTime") or event_start.get("date")
+                    end_str = event_end.get("dateTime") or event_end.get("date")
+                    
+                    if not start_str or not end_str:
+                        continue
+                    
+                    try:
+                        event_start_dt = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+                        event_end_dt = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
+                        
+                        if event_start_dt.tzinfo is None:
+                            event_start_dt = event_start_dt.replace(tzinfo=timezone.utc)
+                        if event_end_dt.tzinfo is None:
+                            event_end_dt = event_end_dt.replace(tzinfo=timezone.utc)
+                        
+                        compare_start = start if start.tzinfo else start.replace(tzinfo=timezone.utc)
+                        compare_end = end if end.tzinfo else end.replace(tzinfo=timezone.utc)
+                            
+                    except Exception:
+                        continue
+                    
+                    # Lógica de solapamiento: event_start < range_end AND range_start < event_end
+                    overlaps = event_start_dt < compare_end and compare_start < event_end_dt
+                    
+                    if overlaps:
+                        conflict = {
+                            "id": event.get("id"),
+                            "title": event.get("summary", "Sin título"),
+                            "start": start_str,
+                            "end": end_str,
+                            "html_link": event.get("htmlLink"),
+                        }
+                        conflicts.append(conflict)
+                
+                return conflicts
+                
+        except Exception as e:
+            log.warning(f"Error buscando eventos solapados para usuario {usuario_id}: {e}")
+            return []

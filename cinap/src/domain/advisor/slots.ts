@@ -4,8 +4,8 @@ export type SlotRule = {
   day: WeekdayId;
   startTime: string; 
   endTime: string;  
+  isoDate?: string | null;
 };
-
 
 export type Resource = {
   id: string;
@@ -24,7 +24,7 @@ export type CategoryId = string;
 export type Service = {
   id: string;
   name: string;
-
+  duration: string;
 };
 
 export type CreateSlotsData = {
@@ -43,7 +43,23 @@ export type CreateSlotsInput = {
   room: string;
   roomNotes?: string;
   schedules: SlotRule[];
+  skipConflicts?: boolean;  // Nueva opción para saltar slots conflictivos
 };
 
-export type CreateSlotsResult = { createdSlots: number };
+export type CalendarConflict = {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  html_link?: string;
+};
 
+export type CheckConflictsInput = {
+  schedules: SlotRule[];
+  tz?: string;
+};
+
+export type CheckConflictsOutput = {
+  conflicts: CalendarConflict[];
+  error?: string;
+};

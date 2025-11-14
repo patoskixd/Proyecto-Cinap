@@ -1,13 +1,74 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { ChatHttpAgent } from "@/infrastructure/chat/chatHttpAgent";
 import { makeSendChatMessage } from "@/application/chat/usecases/SendChatMessage";
 import { useAuth } from "@/presentation/components/auth/hooks/useAuth";
+import ReactMarkdown from "react-markdown";
 
 type Role = "user" | "assistant";
 type ChatMessage = { id: string; role: Role; content: string; createdAt: string };
 type ChatSession = { id: string; messages: ChatMessage[] };
+type QuickAction = {
+  id: string;
+  label: string;
+  template: string;
+  description?: string;
+};
+
+const QUICK_ACTIONS: QuickAction[] = [
+  {
+    id: "reserve",
+    label: "Agendar asesoría",
+    template:
+      "Reserva una asesoria con [agregar nombre] para [agregar servicio] el [agregar fecha] desde las [agregar hora]",
+    description: "Llega invitación al correo del docente",
+  },
+  {
+    id: "confirm",
+    label: "Confirmar asesoría",
+    template:
+      "confirma mi asistencia a mi asesoria con [agregar nombre] del [agregar fecha] desde las [agregar hora]",
+    description: "Llega confirmación al correo del asesor",
+  },
+  {
+    id: "cancel",
+    label: "Cancelar asesoría",
+    template:
+      "cancela mi asesoria con [agregar nombre] del [agregar fecha] desde las [agregar hora]",
+    description: "Llega cancelación al correo del docente",
+  },
+  {
+    id: "list-availability",
+    label: "Ver cupos disponibles",
+    template: "Muestra cupos disponibles para [agregar servicio] el [agregar fecha]",
+    description: "Consulta de cupos cercanos",
+  },
+  {
+    id: "list-sessions",
+    label: "Listar asesorías",
+    template: "Lista mis asesorias de [agregar periodo]",
+    description: "Pendientes, confirmadas y canceladas",
+  },
+  {
+    id: "list-advisors",
+    label: "Listar asesores",
+    template: "Lista los asesores disponibles para [agregar servicio]",
+    description: "Ver quién puede atender",
+  },
+  {
+    id: "list-services",
+    label: "Listar servicios",
+    template: "Lista los servicios de asesoría disponibles",
+    description: "Descubrir opciones",
+  },
+  {
+    id: "rag-info",
+    label: "Mostrar información",
+    template: "¿Qué dice la documentación sobre [agregar tema]?",
+    description: "Consulta la base documental",
+  },
+];
 
 const genId = () =>
   (typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -41,6 +102,7 @@ export default function ChatWidget() {
   const [unread, setUnread] = useState(0);
   const [seenAt, setSeenAt] = useState<number>(() => Date.now());
   const [input, setInput] = useState("");
+  const [showActions, setShowActions] = useState(false);
 
   const [session, setSession] = useState<ChatSession>(() => ({
     id: genId(),
@@ -57,6 +119,9 @@ export default function ChatWidget() {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const actionMenuRef = useRef<HTMLDivElement | null>(null);
+  const actionButtonRef = useRef<HTMLButtonElement | null>(null);
+  const actionScrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     try {
@@ -135,6 +200,12 @@ export default function ChatWidget() {
       setIsLoading(false);
     }
   };
+  const handleQuickAction = (text: string) => {
+    if (!text) return;
+    setShowActions(false);
+    setInput(text);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -169,6 +240,26 @@ export default function ChatWidget() {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
+  useEffect(() => {
+    if (!showActions) return;
+    const onClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (actionMenuRef.current?.contains(target) || actionButtonRef.current?.contains(target)) {
+        return;
+      }
+      setShowActions(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [showActions]);
+
+  useEffect(() => {
+    if (showActions) {
+      actionScrollRef.current?.scrollTo({ top: 0 });
+    }
+  }, [showActions]);
+
+
   const handleSend = async () => {
     const text = input.trim();
     if (!text || isLoading) return;
@@ -199,12 +290,14 @@ export default function ChatWidget() {
       <button
         type="button"
         aria-label={isOpen ? "Cerrar chat" : "Abrir chat"}
+        aria-controls="cinap-chat-panel"
+        aria-expanded={isOpen}
         onClick={toggleChat}
         className={classNames(
           "relative flex h-16 w-16 items-center justify-center rounded-full text-white shadow-xl transition-all duration-300 transform",
-          "bg-gradient-to-br from-blue-600 via-blue-700 to-yellow-500 hover:scale-[1.08] hover:shadow-2xl",
-          "focus:outline-none focus:ring-4 focus:ring-blue-300 focus:ring-offset-2",
-          "hover:rotate-3 active:scale-95",
+          "bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 hover:scale-110 hover:shadow-2xl",
+          "focus:outline-none focus:ring-4 focus:ring-blue-400/50 focus:ring-offset-2",
+          "active:scale-95",
           "pointer-events-auto"
         )}
       >
@@ -233,42 +326,41 @@ export default function ChatWidget() {
       </button>
 
       {/* Backdrop y Panel */}
-      <div
-        aria-hidden={!isOpen}
-        className={classNames("fixed inset-0 z-40 md:static md:z-auto", isOpen ? "pointer-events-auto" : "pointer-events-none")}
-      >
-        {/* Backdrop */}
-        <div
-          onClick={(e) => { e.stopPropagation(); closeChat(); }}
-          className={classNames("md:hidden fixed inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity", isOpen ? "opacity-100" : "opacity-0")}
-        />
+      {isOpen && (
+        <div className="fixed inset-0 z-40 pointer-events-auto md:static md:z-auto">
+          {/* Backdrop */}
+          <div
+            onClick={(e) => { e.stopPropagation(); closeChat(); }}
+            className="fixed inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity md:hidden"
+          />
 
-        {/* Panel */}
-        <div
-          ref={panelRef}
-          role="dialog"
-          aria-label="Chat CINAP"
-          className={classNames(
-            "fixed right-5 bottom-24 w-[380px] max-w-[92vw] h-[560px] rounded-3xl bg-white shadow-2xl ring-2 ring-blue-100 backdrop-blur-sm",
-            "md:translate-y-0 md:scale-100 transition-all duration-300 ease-out",
-            isOpen ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-4 scale-[0.95]",
-            "md:bottom-24 md:right-5",
-            "sm:max-md:bottom-0 sm:max-md:right-0 sm:max-md:left-0 sm:max-md:top-0 sm:max-md:h-screen sm:max-md:w-screen sm:max-md:rounded-none",
-            "pointer-events-auto overflow-hidden"
-          )}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex h-full flex-col overflow-hidden rounded-3xl sm:max-md:rounded-none">
+          {/* Panel */}
+          <div
+            ref={panelRef}
+            id="cinap-chat-panel"
+            role="dialog"
+            aria-label="Chat CINAP"
+            aria-modal="true"
+            className={classNames(
+              "fixed inset-x-4 bottom-4 top-auto h-[560px] max-h-[80vh] rounded-2xl bg-white shadow-2xl ring-2 ring-blue-100 backdrop-blur-sm",
+              "sm:inset-x-6 sm:bottom-6 sm:max-h-[82vh]",
+              "md:inset-x-auto md:left-auto md:right-5 md:bottom-24 md:h-[560px] md:max-h-[85vh] md:w-[380px] md:max-w-[min(380px,_90vw)] md:rounded-3xl",
+              "transition-all duration-300 ease-out opacity-100 translate-y-0 scale-100 md:translate-y-0",
+              "pointer-events-auto overflow-hidden"
+            )}
+            onClick={(e) => e.stopPropagation()}
+          >
+          <div className="flex h-full flex-col overflow-hidden md:rounded-3xl">
             {/* Header */}
-            <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 px-6 py-5 text-white shadow-lg">
+            <div className="flex items-center justify-between border-b border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100 px-6 py-5 text-blue-900">
               <div className="flex items-center gap-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm font-bold text-lg shadow-sm">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 font-bold text-lg text-white shadow-md">
                   C
                 </div>
                 <div className="flex flex-col">
                   <h3 className="text-lg font-semibold">Chat CINAP</h3>
-                  <div className="mt-0.5 flex items-center gap-2 text-sm opacity-90">
-                    <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-400 shadow-sm" />
+                  <div className="mt-0.5 flex items-center gap-2 text-sm text-blue-700">
+                    <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500 shadow-sm" />
                     <span>Asistente en línea</span>
                   </div>
                 </div>
@@ -276,7 +368,7 @@ export default function ChatWidget() {
 
               <button
                 onClick={(e) => { e.stopPropagation(); closeChat(); }}
-                className="rounded-xl p-2.5 transition-all duration-200 hover:bg-white/20 hover:rotate-90 focus:outline-none focus:ring-2 focus:ring-white/50 backdrop-blur-sm"
+                className="rounded-xl p-2.5 text-blue-700 transition-all duration-200 hover:bg-blue-200/50 hover:rotate-90 focus:outline-none focus:ring-2 focus:ring-blue-400/50"
                 aria-label="Cerrar chat"
               >
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2.5}>
@@ -287,9 +379,14 @@ export default function ChatWidget() {
             </div>
 
             {/* Mensajes */}
-            <div ref={listRef} className="flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-blue-50/30 to-white p-6">
-              {messages.map((m) => (
-                <MessageBubble key={m.id} message={m} onQuickSend={sendQuick} />
+            <div ref={listRef} className="flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-blue-50/50 via-white to-blue-50/30 p-6">
+              {messages.map((m, i) => (
+                <MessageBubble
+                  key={m.id}
+                  message={m}
+                  onQuickSend={sendQuick}
+                  hasUserReplyAfter={messages.slice(i + 1).some(mm => mm.role === "user")}
+                />
               ))}
               {isLoading && (
                 <div className="flex items-start gap-3">
@@ -304,8 +401,77 @@ export default function ChatWidget() {
             </div>
 
             {/* Input */}
-            <div className="border-t border-blue-200 bg-gradient-to-r from-blue-50/50 to-white p-5">
-              <div className={classNames("flex items-end gap-3 rounded-2xl border-2 bg-white p-3 shadow-sm transition-all", "focus-within:border-blue-500 focus-within:shadow-lg focus-within:ring-2 focus-within:ring-blue-100")}>
+            <div className="border-t border-blue-200/50 bg-gradient-to-r from-blue-50/50 to-white p-5">
+              <div
+                className={classNames(
+                  "relative flex items-end gap-3 rounded-2xl border-2 border-blue-200/50 bg-white p-3 shadow-md backdrop-blur-sm transition-all",
+                  "focus-within:border-blue-400 focus-within:shadow-lg focus-within:ring-2 focus-within:ring-blue-200/50"
+                )}
+              >
+                <button
+                  ref={actionButtonRef}
+                  type="button"
+                  aria-expanded={showActions}
+                  aria-controls="chat-quick-actions"
+                  onClick={() => setShowActions((prev) => !prev)}
+                  disabled={isLoading}
+                  className={classNames(
+                    "flex h-11 w-11 items-center justify-center rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100 text-blue-700 shadow-sm transition-all",
+                    "hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-200",
+                    "disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm"
+                  )}
+                >
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+                {showActions && (
+                  <div
+                    id="chat-quick-actions"
+                    ref={(node) => {
+                      actionMenuRef.current = node;
+                    }}
+                    className={classNames(
+                      "absolute left-1/2 z-10 w-full max-w-[260px] -translate-x-1/2",
+                      "sm:max-w-[280px] md:max-w-[300px]",
+                      "rounded-3xl border border-blue-100/80 bg-gradient-to-b from-white/95 to-blue-50/80 p-4 text-left shadow-2xl ring-1 ring-blue-200/70",
+                      "backdrop-blur-xl max-h-[360px] md:max-h-[420px] flex flex-col gap-3"
+                    )}
+                    style={{ bottom: "calc(100% + 16px)" }}
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-700">
+                      Acciones rápidas
+                    </p>
+                    <div
+                      ref={actionScrollRef}
+                      className="max-h-[280px] md:max-h-[320px] overflow-y-auto pr-2"
+                    >
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {QUICK_ACTIONS.map((action) => (
+                          <button
+                            key={action.id}
+                            type="button"
+                            onClick={() => handleQuickAction(action.template)}
+                            className={classNames(
+                              "rounded-2xl border border-blue-100/70 bg-white/90 px-3 py-3 text-left text-sm text-blue-900 shadow-sm transition-all",
+                              "hover:-translate-y-0.5 hover:border-blue-200 hover:bg-white hover:shadow-lg",
+                              "focus:outline-none focus:ring-2 focus:ring-blue-200"
+                            )}
+                          >
+                            <span className="block font-semibold">{action.label}</span>
+                            {action.description ? (
+                              <span className="block text-xs text-blue-600">{action.description}</span>
+                            ) : null}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-blue-500 bg-white/85 backdrop-blur-sm rounded-2xl px-3 py-2">
+                      Completa los campos marcados con [agregar ...] antes de enviar.
+                    </p>
+                  </div>
+                )}
                 <textarea
                   ref={textareaRef}
                   rows={1}
@@ -319,7 +485,7 @@ export default function ChatWidget() {
                 <button
                   onClick={handleSend}
                   disabled={isLoading || !input.trim()}
-                  className={classNames("flex h-11 w-11 items-center justify-center rounded-xl text-white transition-all shadow-lg", "bg-gradient-to-br from-blue-600 via-blue-700 to-yellow-500 hover:scale-[1.08] hover:shadow-xl disabled:opacity-50 disabled:scale-100")}
+                  className={classNames("flex h-11 w-11 items-center justify-center rounded-xl text-white transition-all shadow-md", "bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 hover:scale-105 hover:shadow-lg disabled:opacity-50 disabled:scale-100")}
                   aria-label="Enviar mensaje"
                 >
                   {isLoading ? (
@@ -341,8 +507,9 @@ export default function ChatWidget() {
               </p>
             </div>
           </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -351,8 +518,8 @@ function Avatar({ role }: { role: Role }) {
   return (
     <div
       className={classNames(
-        "mt-0.5 flex h-9 w-9 items-center justify-center rounded-full text-white text-sm font-bold shadow-lg ring-2 ring-white",
-        role === "assistant" ? "bg-gradient-to-br from-blue-600 via-blue-700 to-yellow-500" : "bg-gradient-to-br from-emerald-500 to-emerald-600"
+        "mt-0.5 flex h-9 w-9 items-center justify-center rounded-full text-white text-sm font-bold shadow-md ring-2 ring-white",
+        role === "assistant" ? "bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800" : "bg-gradient-to-br from-emerald-500 to-emerald-600"
       )}
       aria-hidden
     >
@@ -475,15 +642,65 @@ function parseCinapConfirmMarker(content: string): { clean: string; confirm: nul
   return { clean, confirm: last };
 }
 
-function MessageBubble({ message, onQuickSend }: { message: ChatMessage; onQuickSend?: (text: string) => void }) {
+function parseCinapSourceMarker(content: string): {
+  clean: string;
+  source: null | { title?: string | null; page?: number | null };
+} {
+  const re = /<!--CINAP_SOURCE:([A-Za-z0-9+/=]+)-->/g;
+  let match: RegExpExecArray | null;
+  let last: any = null;
+  let clean = content;
+
+  while ((match = re.exec(content)) !== null) {
+    try {
+      const b64 = match[1];
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const jsonStr = new TextDecoder("utf-8").decode(bytes);
+      last = JSON.parse(jsonStr);
+    } catch {
+      /* ignore */
+    }
+    clean = clean.replace(match[0], "").trim();
+  }
+
+  if (!last) return { clean, source: null };
+
+  return {
+    clean,
+    source: {
+      title: last.title ?? last.doc_title ?? null,
+      page: last.page ?? last.page_no ?? null,
+    },
+  };
+}
+
+function MessageBubble({
+  message,
+  onQuickSend,
+  hasUserReplyAfter,
+}: {
+  message: ChatMessage;
+  onQuickSend?: (text: string) => void;
+  hasUserReplyAfter?: boolean;
+}) {
   const time = useMemo(
     () => new Date(message.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
     [message.createdAt]
   );
   const isUser = message.role === "user";
 
-  const { clean: afterList, list } = useMemo(() => parseCinapListMarker(message.content), [message.content]);
-  const { clean, confirm } = useMemo(() => parseCinapConfirmMarker(afterList), [afterList]);
+  const { clean: afterList, list } = useMemo(() => parseCinapListMarker(message.content),[message.content]);
+  const { clean: afterConfirm, confirm } = useMemo(() => parseCinapConfirmMarker(afterList),[afterList]);
+  const { clean, source } = useMemo(() => parseCinapSourceMarker(afterConfirm),[afterConfirm]);
+
+  const [decided, setDecided] = useState(false);
+  const handleChoice = useCallback((ans: "sí" | "no") => {
+    if (decided || hasUserReplyAfter) return;
+    setDecided(true);
+    onQuickSend?.(ans);
+  }, [decided, hasUserReplyAfter, onQuickSend]);
+
+  const disabled = decided || !!hasUserReplyAfter;
 
   return (
     <div className={classNames("flex items-start gap-3", isUser && "flex-row-reverse")}>
@@ -498,26 +715,50 @@ function MessageBubble({ message, onQuickSend }: { message: ChatMessage; onQuick
           )}
           style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
         >
-          {clean}
+          <ReactMarkdown
+            components={{
+              strong: ({children}) => <strong className="font-semibold">{children}</strong>,
+              em: ({children}) => <em className="italic">{children}</em>,
+              li: ({children}) => <li className="list-disc ml-5">{children}</li>,
+              a: (props) => <a {...props} target="_blank" rel="noreferrer" className="text-blue-600 underline" />,
+            }}
+          >
+            {clean}
+          </ReactMarkdown>
           {(!isUser && list?.items?.length) ? <PaginatedList items={list.items} /> : null}
 
-          {/* Botones de confirmación */}
           {!isUser && confirm ? (
             <div className="mt-3 flex items-center gap-2 justify-center">
               <button
-                onClick={() => onQuickSend?.("sí")}
-                className="rounded-xl px-3 py-1.5 text-sm text-white bg-blue-600 hover:bg-blue-700 shadow-sm"
+                onClick={() => handleChoice("sí")}
+                disabled={disabled}
+                aria-disabled={disabled}
+                className={classNames(
+                  "rounded-xl px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 shadow-md transition-all hover:-translate-y-0.5",
+                  disabled && "opacity-50 pointer-events-none hover:bg-blue-600 hover:translate-y-0"
+                )}
               >
                 Sí
               </button>
               <button
-                onClick={() => onQuickSend?.("no")}
-                className="rounded-xl px-3 py-1.5 text-sm text-blue-700 border border-blue-200 bg-white hover:bg-blue-50 shadow-sm"
+                onClick={() => handleChoice("no")}
+                disabled={disabled}
+                aria-disabled={disabled}
+                className={classNames(
+                  "rounded-xl px-4 py-2 text-sm font-medium text-blue-700 border border-blue-200 bg-white hover:bg-blue-50 shadow-md transition-all hover:-translate-y-0.5",
+                  disabled && "opacity-50 pointer-events-none hover:bg-white hover:translate-y-0"
+                )}
               >
                 No
               </button>
             </div>
           ) : null}
+          {!isUser && source && (source.title || source.page) && (
+            <div className="mt-2 pt-2 border-t border-blue-100 text-[11px] text-blue-500">
+              Fuente: {source.title || "Documento institucional"}
+              {source.page ? `, página ${source.page}` : null}
+            </div>
+          )}
         </div>
         <div className={classNames("px-1 text-xs", isUser ? "text-emerald-600" : "text-blue-500")}>{time}</div>
       </div>

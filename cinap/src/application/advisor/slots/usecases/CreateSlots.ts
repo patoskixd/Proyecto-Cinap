@@ -1,5 +1,5 @@
-import type { CreateSlotsInput, CreateSlotsResult } from "@/domain/advisor/slots";
-import type { SlotsRepo } from "@/application/advisor/slots/ports/SlotsRepo";
+import type { CreateSlotsInput } from "@/domain/advisor/slots";
+import type { SlotsRepo, CreateSlotsResult } from "@/application/advisor/slots/ports/SlotsRepo";
 import { normalizeSchedules, type UIRule } from "./NormalizeSchedules";
 
 export class CreateSlots {

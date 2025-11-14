@@ -88,7 +88,7 @@ export default function MySlotsManager() {
           </div>
           <Link
             href="/asesor/crear-cupos"
-            className="inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl hover:scale-105"
+            className="inline-flex items-center gap-3 rounded-full bg-blue-600 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl hover:bg-blue-700"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -127,7 +127,10 @@ export default function MySlotsManager() {
         <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
           <h3 className="mb-1 text-lg font-semibold text-neutral-900">No hay cupos</h3>
           <p className="mb-4 text-neutral-600">Crea tu primer cupo para comenzar</p>
-          <Link href="/asesor/crear-cupos" className="rounded-full bg-blue-600 px-5 py-2.5 font-semibold text-white hover:bg-blue-700">
+          <Link href="/asesor/crear-cupos" className="inline-flex items-center gap-3 rounded-full bg-blue-600 px-6 py-3 font-semibold text-white shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl hover:bg-blue-700">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
             Crear cupo
           </Link>
         </div>
@@ -184,24 +187,51 @@ export default function MySlotsManager() {
         <ConfirmModal patch={confirmPatch} onCancel={() => setConfirmPatch(null)} onConfirm={confirmSaveYes} />
       )}
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-xl">
-            <div className="border-b border-slate-200 px-5 py-4">
-              <h3 className="text-lg font-semibold text-neutral-900">Eliminar cupo</h3>
+        <div 
+          className="fixed inset-0 z-50 grid place-items-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setConfirmDelete(null);
+          }}
+        >
+          <div className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden transform animate-in zoom-in-95 duration-200">
+            {/* Header con gradiente */}
+            <div className="border-b border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100 py-4 sm:py-5">
+              <h3 className="text-center text-lg font-semibold text-blue-900 sm:text-xl">Eliminar cupo</h3>
             </div>
-            <div className="space-y-2 px-5 py-4 text-sm text-neutral-800">
-              <p className="text-neutral-700">¿Seguro que deseas eliminar este cupo?</p>
-              <div><span className="font-semibold">Servicio:</span> {confirmDelete.service}</div>
-              <div><span className="font-semibold">Fecha:</span> {confirmDelete.date}</div>
-              <div><span className="font-semibold">Hora:</span> {confirmDelete.time}</div>
-            </div>
-            <div className="flex gap-2 border-t border-slate-200 px-5 py-4">
-              <button onClick={() => setConfirmDelete(null)} className="flex-1 rounded-full border-2 border-slate-200 px-5 py-2 font-semibold text-neutral-700 hover:border-blue-600 hover:text-blue-600">
-                Cancelar
-              </button>
-              <button onClick={confirmDeleteYes} className="flex-1 rounded-full bg-rose-600 px-5 py-2 font-semibold text-white hover:bg-rose-700">
-                Sí, eliminar
-              </button>
+
+            {/* Contenido */}
+            <div className="px-6 py-6 relative">
+              <p className="text-center text-gray-600 mb-4">¿Seguro que deseas eliminar este cupo?</p>
+
+              <div className="space-y-2 bg-gradient-to-br from-gray-50 to-red-50/30 rounded-xl p-4 border border-red-200/50">
+                <div className="flex items-start gap-2">
+                  <span className="font-semibold text-gray-700">Servicio:</span>
+                  <span className="text-gray-900">{confirmDelete.service}</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="font-semibold text-gray-700">Fecha:</span>
+                  <span className="text-gray-900">{confirmDelete.date}</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="font-semibold text-gray-700">Hora:</span>
+                  <span className="text-gray-900">{confirmDelete.time}</span>
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button 
+                  onClick={() => setConfirmDelete(null)} 
+                  className="flex-1 rounded-full bg-gray-100 px-6 py-3 font-semibold text-gray-700 transition-all duration-200 hover:bg-gray-200"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={confirmDeleteYes} 
+                  className="flex-1 rounded-full bg-red-100/80 backdrop-blur-sm border border-red-200/50 px-6 py-3 font-semibold text-red-700 transition-all duration-200 hover:bg-red-200/80 hover:shadow-lg hover:-translate-y-0.5"
+                >
+                  Sí, eliminar
+                </button>
+              </div>
             </div>
           </div>
         </div>

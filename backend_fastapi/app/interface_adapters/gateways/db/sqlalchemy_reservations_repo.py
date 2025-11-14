@@ -166,6 +166,11 @@ class SqlAlchemyReservationsRepo(ReservationsRepo):
                 ca.nombre                   AS campus_nombre,
                 e.nombre                    AS edificio_nombre,
                 r.sala_numero               AS sala_numero,
+                EXISTS (
+                    SELECT 1
+                    FROM calendar_event ce
+                    WHERE ce.asesoria_id = a.id
+                )                           AS has_calendar_event,
                 COUNT(*) OVER()             AS total_count
             FROM asesoria a
                 JOIN cupo c               ON c.id = a.cupo_id
@@ -223,6 +228,7 @@ class SqlAlchemyReservationsRepo(ReservationsRepo):
                     docente_nombre=row.get("docente_nombre") or "",
                     docente_email=row.get("docente_email") or "",
                     location_text=location_text,
+                    has_calendar_event=bool(row.get("has_calendar_event")),
                 )
             )
 

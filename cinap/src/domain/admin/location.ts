@@ -15,7 +15,13 @@ export type Building = {
   active: boolean;
 };
 
-export type RoomType = "aula" | "laboratorio" | "auditorio" | "sala_reuniones" | "oficina"| "sala_virtual";
+export type RoomType =
+  | "aula"
+  | "laboratorio"
+  | "auditorio"
+  | "sala_reuniones"
+  | "oficina"
+  | "sala_virtual";
 
 export type Room = {
   id: string;

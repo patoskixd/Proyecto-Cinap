@@ -58,6 +58,7 @@ def make_asesorias_router(*, get_session_dep: Callable[[], AsyncSession], jwt_po
             client_id=GOOGLE_CLIENT_ID,
             client_secret=GOOGLE_CLIENT_SECRET,
             get_refresh_token_by_usuario_id=user_repo.get_refresh_token_by_usuario_id,
+            invalidate_refresh_token_by_usuario_id=user_repo.invalidate_refresh_token,
         )
 
     @r.post("", status_code=201)
@@ -209,6 +210,11 @@ def make_asesorias_router(*, get_session_dep: Callable[[], AsyncSession], jwt_po
 
         items = []
         for item in page_data.items:
+            allow_teacher_reconfirm = (
+                role_norm == "profesor"
+                and (item.estado or "").upper() == "CANCELADA"
+                and item.has_calendar_event
+            )
             items.append(
                 {
                     "id": str(item.id),
@@ -238,6 +244,7 @@ def make_asesorias_router(*, get_session_dep: Callable[[], AsyncSession], jwt_po
                         "email": item.docente_email,
                     },
                     "location": item.location_text,
+                    "canRetryConfirm": allow_teacher_reconfirm,
                 }
             )
 

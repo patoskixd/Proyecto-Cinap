@@ -7,30 +7,16 @@ export default function PendingCard({ r }: { r: PendingConfirmation }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-blue-50/30 to-yellow-50/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:border-blue-300">
       {/* Header con gradiente institucional */}
-      <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-yellow-500 px-6 py-4">
+      <div className="border-b border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100 px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span
-              className={[
-                "rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide bg-white/95 backdrop-blur-sm shadow-sm",
-                (r as any).category === "matematicas" && "text-rose-700",
-                (r as any).category === "fisica" && "text-blue-700", 
-                (r as any).category === "quimica" && "text-emerald-700",
-                (r as any).category === "programacion" && "text-violet-700",
-                // Para "Innovación e Investigación en Docencia" usar colores institucionales
-                ((r as any).category === "innovacion" || (r as any).categoryLabel?.toLowerCase().includes("innovación")) && "text-blue-800 bg-gradient-to-r from-blue-100 to-yellow-100",
-                !(r as any).category && "text-blue-800"
-              ]
-                .filter(Boolean)
-                .join(" ")}
-            >
+            <span className="rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide bg-blue-100/80 text-blue-800 border border-blue-200/50">
               {(r as any).categoryLabel ?? (r as any).categoria_nombre ?? "Categoría"}
             </span>
-            <span className="text-sm text-white/90 font-medium">{timeAgo(r.createdAtISO)}</span>
+            <span className="text-sm text-blue-700 font-medium">{timeAgo(r.createdAtISO)}</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-yellow-300 rounded-full animate-pulse shadow-sm"></div>
-            <span className="rounded-full bg-yellow-400/90 backdrop-blur-sm px-3 py-1.5 text-xs font-bold text-yellow-900 shadow-sm">Pendiente</span>
+            <span className="rounded-full bg-yellow-100/80 px-3 py-1.5 text-xs font-bold text-yellow-800 border border-yellow-200/50">Pendiente</span>
           </div>
         </div>
       </div>

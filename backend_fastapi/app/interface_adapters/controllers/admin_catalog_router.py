@@ -54,7 +54,7 @@ class StatusPatchIn(BaseModel):
     active: bool
 
 def make_admin_catalog_router(*, get_session_dep: Callable[[], AsyncSession], jwt_port: JwtPort) -> APIRouter:
-    r = APIRouter(prefix="/admin/catalog", tags=["admin-catalog"])
+    r = APIRouter(prefix="/api/admin/catalog", tags=["admin-catalog"])
 
     async def require_user(req: Request):
         token = req.cookies.get("app_session")
@@ -227,7 +227,7 @@ def make_admin_catalog_router(*, get_session_dep: Callable[[], AsyncSession], jw
     ):
         await require_user(request)
 
-        c = (session.execute(sa.select(CategoriaModel).where(CategoriaModel.id == UUID(cat_id)))).scalar_one_or_none()
+        c = (await session.execute(sa.select(CategoriaModel).where(CategoriaModel.id == UUID(cat_id)))).scalar_one_or_none()
         if not c:
             raise HTTPException(status_code=404, detail="Categoría no encontrada")
 

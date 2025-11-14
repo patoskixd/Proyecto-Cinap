@@ -2,12 +2,12 @@ from __future__ import annotations
 import uuid
 from typing import Optional, Iterable, Tuple
 from datetime import datetime
+import logging
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from fastapi import Query
-from datetime import datetime
 from zoneinfo import ZoneInfo
 import uuid as uuidlib
 from app.use_cases.ports.slots_port import SlotsRepo
@@ -15,10 +15,12 @@ from app.interface_adapters.orm.models_scheduling import (
     AsesorPerfilModel, ServicioModel, CategoriaModel, AsesorServicioModel,
     CupoModel, RecursoModel, EdificioModel, CampusModel, EstadoCupo
 )
+from app.interface_adapters.gateways.db.sqlalchemy_admin_location_repo import ensure_room_type_constraints
 
 class SqlAlchemySlotsRepo(SlotsRepo):
     def __init__(self, session: AsyncSession):
         self.s = session
+        self._room_types_checked = False
 
     async def resolve_asesor_id(self, usuario_id: str) -> Optional[str]:
         q = select(AsesorPerfilModel.id).where(AsesorPerfilModel.usuario_id == uuid.UUID(usuario_id))
@@ -54,8 +56,8 @@ class SqlAlchemySlotsRepo(SlotsRepo):
             select(CupoModel.id, CupoModel.inicio, CupoModel.fin)
             .where(
                 CupoModel.recurso_id == uuid.UUID(recurso_id),
-                # Solo chocan cupos activos (ABIERTO/RESERVADO); ignoramos CANCELADO/EXPIRADO
-                CupoModel.estado.in_([EstadoCupo.ABIERTO, EstadoCupo.RESERVADO]),
+                # Consideramos cupos activos o cancelados; ignoramos EXPIRADO
+                CupoModel.estado.in_([EstadoCupo.ABIERTO, EstadoCupo.RESERVADO, EstadoCupo.CANCELADO]),
                 sa.or_(*conds),
             )
             .order_by(CupoModel.inicio.asc(), CupoModel.fin.asc())
@@ -80,7 +82,7 @@ class SqlAlchemySlotsRepo(SlotsRepo):
             select(CupoModel.id, CupoModel.inicio, CupoModel.fin)
             .where(
                 CupoModel.asesor_id == uuid.UUID(asesor_id),
-                CupoModel.estado.in_([EstadoCupo.ABIERTO, EstadoCupo.RESERVADO]),
+                CupoModel.estado.in_([EstadoCupo.ABIERTO, EstadoCupo.RESERVADO, EstadoCupo.CANCELADO]),
                 sa.or_(*conds),
             )
             .order_by(CupoModel.inicio.asc(), CupoModel.fin.asc())
@@ -151,6 +153,10 @@ class SqlAlchemySlotsRepo(SlotsRepo):
         rows: Iterable[tuple[str, str, str, datetime, datetime, str | None]]
     ) -> tuple[int, int]:
 
+        if not self._room_types_checked:
+            await ensure_room_type_constraints(self.s)
+            self._room_types_checked = True
+
         created, skipped = 0, 0
 
         for asesor_id, servicio_id, recurso_id, ini, fin, notas in rows:
@@ -168,7 +174,16 @@ class SqlAlchemySlotsRepo(SlotsRepo):
                     ))
                     await self.s.flush()
                     created += 1
-                except IntegrityError:
+                except IntegrityError as err:
+                    logging.warning(
+                        "Cupo omitido para asesor=%s servicio=%s recurso=%s (%s - %s): %s",
+                        asesor_id,
+                        servicio_id,
+                        recurso_id,
+                        ini.isoformat(),
+                        fin.isoformat(),
+                        err.orig if hasattr(err, "orig") else err,
+                    )
                     skipped += 1 
 
         return created, skipped

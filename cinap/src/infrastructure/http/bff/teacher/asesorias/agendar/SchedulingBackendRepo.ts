@@ -4,6 +4,8 @@ import type {
   CreateAsesoriaOut,
   FindSlotsInput,
   FoundSlot,
+  CheckConflictsInput,
+  CheckConflictsOutput,
 } from "@/domain/teacher/scheduling";
 
 const CL_TZ = "America/Santiago";
@@ -71,7 +73,8 @@ export class AsesoriasBackendRepo implements SchedulingRepo {
   private readonly cookie: string;
 
   constructor(cookie: string) {
-    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.baseUrl = process.env.BACKEND_URL ?? 
+    process.env.NEXT_PUBLIC_BACKEND_URL ?? "";
     this.cookie = cookie;
   }
 
@@ -103,7 +106,7 @@ export class AsesoriasBackendRepo implements SchedulingRepo {
   async findSlots(input: FindSlotsInput): Promise<FoundSlot[]> {
     const payload = { ...(input ?? {}), tz: CL_TZ };
 
-    const res = await fetch(`${this.baseUrl}/slots/find`, {
+    const res = await fetch(`${this.baseUrl}/api/slots/find`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -153,6 +156,29 @@ export class AsesoriasBackendRepo implements SchedulingRepo {
     const data = await this.parse<any>(res);
     if (!res.ok)
       throw new Error(data?.detail || data?.message || "No se pudo cargar create-data");
+    return data;
+  }
+
+  async checkConflicts(input: CheckConflictsInput): Promise<CheckConflictsOutput> {
+    const res = await fetch(`${this.baseUrl}/api/calendar/check-conflicts`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        cookie: this.cookie,
+      },
+      credentials: "include",
+      body: JSON.stringify(input),
+      cache: "no-store",
+    });
+
+    this.collectSetCookies(res);
+    
+    if (!res.ok) {
+      return { conflicts: [] };
+    }
+    
+    const data = await this.parse<CheckConflictsOutput>(res);
     return data;
   }
 }

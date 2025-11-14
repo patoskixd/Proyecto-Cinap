@@ -1,5 +1,5 @@
 import type { SchedulingRepo } from "@/application/teacher/asesorias/agendar/ports/SchedulingRepo";
-import type { FindSlotsInput, FoundSlot, ReserveAsesoriaInput, CreateAsesoriaOut } from "@/domain/teacher/scheduling";
+import type { FindSlotsInput, FoundSlot, ReserveAsesoriaInput, CreateAsesoriaOut, CheckConflictsInput, CheckConflictsOutput } from "@/domain/teacher/scheduling";
 import { AsesoriasBackendRepo } from "@infrastructure/http/bff/teacher/asesorias/agendar/SchedulingBackendRepo";
 
 export class SlotsFindBackendRepo implements SchedulingRepo {
@@ -8,7 +8,7 @@ export class SlotsFindBackendRepo implements SchedulingRepo {
   private readonly cookie: string;
 
   constructor(cookie: string) {
-    this.baseUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    this.baseUrl = process.env.BACKEND_URL ?? "";
     this.cookie = cookie;
     this.inner = new AsesoriasBackendRepo(cookie); 
   }
@@ -23,7 +23,12 @@ export class SlotsFindBackendRepo implements SchedulingRepo {
     return this.inner.findSlots(input);
   }
 
-  async reserve(_: ReserveAsesoriaInput): Promise<CreateAsesoriaOut> {
+  async reserve(_input: ReserveAsesoriaInput): Promise<CreateAsesoriaOut> {
+    void _input;
     throw new Error("SlotsFindBackendRepo no soporta reserve(). Usa AsesoriasBackendRepo.");
+  }
+
+  async checkConflicts(input: CheckConflictsInput): Promise<CheckConflictsOutput> {
+    return this.inner.checkConflicts(input);
   }
 }

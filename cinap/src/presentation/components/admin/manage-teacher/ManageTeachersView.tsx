@@ -7,6 +7,8 @@ import { HttpTeachersRepo } from "@/infrastructure/admin/teachers/AdminTeachersH
 import { ListTeachers } from "@/application/admin/teachers/usecases/ListTeachers";
 import { UpdateTeacher } from "@/application/admin/teachers/usecases/UpdateTeacher";
 import { DeleteTeacher } from "@/application/admin/teachers/usecases/DeleteTeacher";
+import { notify } from "@/presentation/components/shared/Toast";
+import { parseError } from "@/presentation/components/shared/Toast/parseError";
 
 import TeacherCard from "./TeacherCard";
 import EditTeacherModal from "./EditTeacherModal";
@@ -17,6 +19,7 @@ const ucList = new ListTeachers(repo);
 const ucUpdate = new UpdateTeacher(repo);
 const ucDelete = new DeleteTeacher(repo);
 const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 350;
 
 export default function ManageTeachersView() {
   const [loading, setLoading] = useState(true);
@@ -29,7 +32,8 @@ export default function ManageTeachersView() {
     | null
   >(null);
 
-  const [query, setQuery] = useState("");
+  const [searchValue, setSearchValue] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -58,8 +62,15 @@ export default function ManageTeachersView() {
   );
 
   useEffect(() => {
-    loadPage(page, query);
-  }, [page, query, reloadToken, loadPage]);
+    const handle = window.setTimeout(() => {
+      setDebouncedQuery(searchValue);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(handle);
+  }, [searchValue]);
+
+  useEffect(() => {
+    loadPage(page, debouncedQuery);
+  }, [page, debouncedQuery, reloadToken, loadPage]);
 
 
   const requestEdit = (draft: Teacher) => {
@@ -82,12 +93,23 @@ export default function ManageTeachersView() {
 
   const confirmDelete = async () => {
     if (confirm?.kind !== "delete") return;
-    await ucDelete.exec(confirm.id);
-    const targetPage = teachers.length === 1 && page > 1 ? page - 1 : page;
-    if (targetPage !== page) {
-      setPage(targetPage);
-    } else {
-      setReloadToken((r) => r + 1);
+    const teacherName = confirm.teacher?.name?.trim();
+    try {
+      await ucDelete.exec(confirm.id);
+      const targetPage = teachers.length === 1 && page > 1 ? page - 1 : page;
+      if (targetPage !== page) {
+        setPage(targetPage);
+      } else {
+        setReloadToken((r) => r + 1);
+      }
+      notify(
+        teacherName
+          ? `Se eliminó al docente ${teacherName} correctamente.`
+          : "Se eliminó al docente correctamente.",
+        "success",
+      );
+    } catch (error) {
+      notify(parseError(error), "error");
     }
     setConfirm(null);
   };
@@ -125,10 +147,10 @@ export default function ManageTeachersView() {
                 </svg>
               </div>
               <input
-                value={query}
+                value={searchValue}
                 onChange={(e) => {
                   setPage(1);
-                  setQuery(e.target.value);
+                  setSearchValue(e.target.value);
                 }}
                 placeholder="Buscar por nombre o correo..."
                 className="w-full rounded-2xl border border-blue-100/70 bg-white/90 pl-12 pr-4 py-3 text-sm font-medium text-blue-900 placeholder-blue-400 outline-none transition-all duration-300 shadow-sm focus:border-blue-400 focus:ring-4 focus:ring-blue-100/80"
@@ -220,7 +242,7 @@ export default function ManageTeachersView() {
       <ConfirmDialog
         open={!!confirm && confirm.kind === "delete"}
         title="Confirmar eliminación"
-        message={`Esta acción no se puede deshacer. ¿Eliminar a “${(confirm as any)?.teacher?.name}”?`}
+        message={`¿Estás seguro de que deseas eliminar a ${(confirm as any)?.teacher?.name}? Esta acción no se puede deshacer.`}
         confirmLabel="Eliminar"
         onConfirm={confirmDelete}
         onCancel={() => setConfirm(null)}

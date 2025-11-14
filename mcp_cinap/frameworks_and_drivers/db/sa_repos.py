@@ -2,11 +2,11 @@ from typing import Optional, Sequence, Dict, Any
 from uuid import UUID
 from sqlalchemy import String, ForeignKey, Boolean, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, selectinload
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 from application.ports import SlotRepository, AppointmentRepository, TimeRange, Pagination, AdvisorRepository, ServiceRepository
-from frameworks_and_drivers.db.orm_models import Base, CupoORM, AsesoriaORM, EstadoCupo
+from frameworks_and_drivers.db.orm_models import Base, CampusORM, CupoORM, AsesoriaORM, EdificioORM, EstadoCupo, RecursoORM
 
 class UsuarioORM(Base):
     __tablename__ = "usuario"
@@ -249,3 +249,47 @@ class SAApptRepository(AppointmentRepository):
         q = q.order_by(CupoORM.inicio.desc()).offset((page-1)*per_page).limit(per_page)
         rows = (await self.s.execute(q)).all()
         return [dict(r._mapping) for r in rows]
+    
+class LocationRepo:
+    def __init__(self, s: AsyncSession):
+        self.s = s
+
+    async def load_cupo_with_location(self, cupo_id: UUID) -> Optional[CupoORM]:
+        stmt = (
+            select(CupoORM)
+            .options(
+                selectinload(CupoORM.recurso)
+                .selectinload(RecursoORM.edificio)
+                .selectinload(EdificioORM.campus)
+            )
+            .where(CupoORM.id == cupo_id)
+        )
+        return (await self.s.execute(stmt)).scalar_one_or_none()
+
+    @staticmethod
+    def format_location_from_cupo(cupo: Optional[CupoORM]) -> str:
+        if not cupo or not getattr(cupo, "recurso", None):
+            return "Por confirmar"
+
+        r: RecursoORM = cupo.recurso
+        e: Optional[EdificioORM] = getattr(r, "edificio", None)
+        c: Optional[CampusORM] = getattr(e, "campus", None) if e else None
+
+        partes = []
+        if c and c.nombre:
+            partes.append(c.nombre)
+        if e and e.nombre:
+            partes.append(f"Edificio {e.nombre}")
+
+        sala = (r.sala_numero or r.nombre)
+        if sala:
+            low = sala.strip().lower()
+            if not (low.startswith("sala") or low.startswith("lab") or low.startswith("laboratorio")):
+                sala = f"Sala {sala}"
+            partes.append(sala)
+
+        return " / ".join(partes) if partes else "Por confirmar"
+
+    async def get_location_for_cupo(self, cupo_id: UUID) -> str:
+        cupo = await self.load_cupo_with_location(cupo_id)
+        return self.format_location_from_cupo(cupo)

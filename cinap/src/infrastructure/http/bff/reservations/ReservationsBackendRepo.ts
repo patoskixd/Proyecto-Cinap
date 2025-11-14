@@ -25,6 +25,7 @@ type BackendReservation = {
     email: string;
   };
   location?: string | null;
+  canRetryConfirm?: boolean;
 };
 
 type BackendMeta = {
@@ -51,9 +52,8 @@ export class ReservationsBackendRepo {
 
   constructor(cookieHeader: string) {
     this.baseUrl =
-      process.env.NEXT_PUBLIC_BACKEND_URL ??
       process.env.BACKEND_URL ??
-      "http://localhost:8000";
+      "";
     this.cookie = cookieHeader ?? "";
   }
 
@@ -177,6 +177,8 @@ export class ReservationsBackendRepo {
         ? "cancelada"
         : "pendiente";
 
+    const canRetryConfirm = Boolean(item.canRetryConfirm);
+
     return {
       id: item.id,
       dateISO: item.inicio,
@@ -197,6 +199,7 @@ export class ReservationsBackendRepo {
       },
       status,
       location: item.location ?? undefined,
+      canRetryConfirm,
       docente: item.docente,
     };
   }

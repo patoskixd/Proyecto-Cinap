@@ -9,6 +9,7 @@ import CatalogStats from "./components/Stat";
 import SectionCard from "./components/SectionCard";
 
 const MAX_CHIPS = 2;
+const DEFAULT_STATS = { activeCategories: 0, activeServices: 0 };
 
 export default function AdvisorCategories() {
   const { data, loading, error, refresh } = useAdvisorCatalog();
@@ -18,9 +19,9 @@ export default function AdvisorCategories() {
     services: { id: string; name: string; description?: string; duration?: number; selected?: boolean }[];
   } | null>(null);
 
-  const active = data?.active ?? [];
-  const available = data?.available ?? [];
-  const stats = data?.stats ?? { activeCategories: 0, activeServices: 0 };
+  const active = useMemo(() => data?.active ?? [], [data]);
+  const available = useMemo(() => data?.available ?? [], [data]);
+  const stats = useMemo(() => data?.stats ?? DEFAULT_STATS, [data]);
 
   const totals = useMemo(() => {
     const totalCategories = active.length + available.length;

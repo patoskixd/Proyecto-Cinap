@@ -61,7 +61,8 @@ DB_PASSWORD=postgres
 # Google OAuth
 GOOGLE_CLIENT_ID=dummy-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=dummy-secret
-GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback
+GOOGLE_REDIRECT_URI=http://localhost:8000/api/auth/google/callback
+GOOGLE_TOKEN_CIPHER_KEY=base64-fernet-key
 
 # JWT
 JWT_SECRET=supersecreto
@@ -86,6 +87,14 @@ Para iniciar el backend en desarrollo:
 ```bash
 uv run uvicorn app.frameworks_drivers.web.fastapi_app:app --port 8000
 ```
+
+Si necesitas exponer únicamente los webhooks (Telegram / Google Calendar) en otro puerto o detrás de un proxy inverso:
+
+```bash
+uv run uvicorn app.frameworks_drivers.web.fastapi_app:webhook_app --port 8011
+```
+
+Apunta tu proxy o túnel público (por ejemplo `https://asesorias.webhook.inf.uct.cl`) al segundo servicio para que los webhooks de terceros lleguen correctamente.
 
 En producción, se recomienda usar un servidor ASGI como **Uvicorn + Gunicorn** o **Hypercorn**, junto con un **proxy reverso** (Nginx/Caddy).
 
@@ -116,3 +125,4 @@ En producción, se recomienda usar un servidor ASGI como **Uvicorn + Gunicorn** 
 - Este servicio sigue principios de **Arquitectura Limpia**.  
 - Maneja seguridad mediante **JWT** y control de roles.  
 - Se conecta con el frontend vía CORS y expone un webhook para Telegram.  
+- Genera `GOOGLE_TOKEN_CIPHER_KEY` con `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` y reutiliza el mismo valor en todos los servicios que leen tokens desde la base de datos.

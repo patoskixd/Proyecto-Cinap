@@ -2,32 +2,42 @@
 
 import Link from "next/link";
 
-export function SuccessModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function SuccessModal({ open }: { open: boolean }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl ring-1 ring-blue-200">
-        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-blue-100 to-blue-200 border-2 border-blue-300">
-          <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
+    <div 
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) window.location.reload();
+      }}
+    >
+      <div className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden transform animate-in zoom-in-95 duration-200">
+        {/* Header */}
+        <div className="border-b border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100 px-6 py-4">
+          <h3 className="text-xl font-bold text-blue-900">¡Asesoría confirmada!</h3>
         </div>
-        <h3 className="text-lg font-bold text-blue-900">¡Asesoría confirmada!</h3>
-        <p className="mt-1 text-sm text-blue-700">
-          Tu asesoría ha sido programada. Pronto recibirás un correo de confirmación.
-        </p>
-        <Link
-          href="/dashboard"
-          className="mt-4 inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-blue-600 to-blue-700 px-6 py-3 font-semibold text-white shadow-md transition hover:from-blue-700 hover:to-blue-800"
-        >
-          Ir al Dashboard
-        </Link>
-        <button
-          onClick={onClose}
-          className="mt-2 block w-full text-sm font-semibold text-blue-600 hover:text-blue-700"
-        >
-          Cerrar
-        </button>
+
+        {/* Contenido */}
+        <div className="px-6 py-6 text-center">
+          <p className="text-gray-600 mb-6">
+            Tu asesoría ha sido programada. Pronto recibirás un correo de confirmación.
+          </p>
+
+          <div className="flex flex-col gap-3">
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-100/80 backdrop-blur-sm border border-blue-200/50 text-blue-700 font-semibold rounded-xl shadow-md hover:bg-blue-200/80 hover:shadow-lg transition-all duration-200"
+            >
+              Ir al Dashboard
+            </Link>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-all duration-200"
+            >
+              Agendar otra asesoría
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

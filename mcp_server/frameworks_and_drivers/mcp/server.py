@@ -217,6 +217,73 @@ def build_mcp() -> FastMCP:
         except Exception as e:
             return err_msg("GOOGLE_UPDATE_FAILED", f"No se pudo actualizar el evento: {e}")
 
+    @mcp.tool(description="Busca eventos en Google Calendar que se solapen con el rango indicado (start, end).")
+    def event_find_overlap(
+        start: datetime | str,
+        end: datetime | str,
+        calendar_id: Optional[str] = None,
+        refresh_token: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        try:
+            if isinstance(start, str):
+                start = dtparser.isoparse(start)
+            if isinstance(end, str):
+                end = dtparser.isoparse(end)
+            if start >= end:
+                return err_msg("VALIDATION", "start debe ser anterior a end")
+        except Exception as e:
+            return err_msg("VALIDATION", f"Fechas inválidas: {e}")
+
+        if not refresh_token:
+            return err_msg("OAUTH_REQUIRED", "Debe enviarse el refresh_token del asesor.")
+
+        try:
+            access_token = oauth_adapter.exchange_refresh(refresh_token)
+        except Exception as e:
+            return err_msg("OAUTH_EXCHANGE", f"No pude refrescar el token del asesor: {e}")
+
+        cal_id = with_default_calendar_id(calendar_id)
+        sf, st = ensure_range(start, end)
+
+        try:
+            try:
+                req = ListEventsRequest(calendar_id=cal_id, time_min=sf, time_max=st, oauth_access_token=access_token)
+            except TypeError:
+                req = ListEventsRequest(calendar_id=cal_id, time_min=sf, time_max=st)
+            resp = list_uc.execute(req)
+        except Exception as e:
+            return err_msg("GOOGLE_LIST_FAILED", f"No se pudo listar eventos: {e}")
+
+        events = as_items(resp)
+
+        def overlaps(a_start, a_end, b_start, b_end) -> bool:
+            return (a_start < b_end) and (b_start < a_end)
+
+        conflicts = []
+        for ev in events:
+            try:
+                evs = ev.start
+                eve = ev.end
+                if overlaps(evs, eve, start, end):
+                    br = event_brief(ev)
+                    conflicts.append({
+                        "id": br.get("id"),
+                        "title": br.get("title"),
+                        "start": br.get("start"),
+                        "end": br.get("end"),
+                        "html_link": getattr(ev, "html_link", None) or br.get("html_link"),
+                    })
+            except Exception:
+                continue
+
+        if not conflicts:
+            say = "No encontré eventos que se crucen con ese rango."
+            return ok_msg(say, conflicts=[])
+
+        say = f"Encontré {len(conflicts)} evento(s) en conflicto con ese rango."
+        conflicts.sort(key=lambda x: (str(x.get("start") or ""), str(x.get("title") or "")))
+        return ok_msg(say, conflicts=conflicts)
+
     """
     @mcp.tool(description=EVENT_LIST_DESC)
     def event_list(

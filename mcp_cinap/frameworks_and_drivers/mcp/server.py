@@ -13,7 +13,7 @@ from application.ports import Pagination, TimeRange
 from application.use_cases.list_user_asesorias import ListUserAsesorias, ListUserAsesoriasIn
 from application.use_cases.upsert_calendar_event import UpsertCalendarEvent, UpsertCalendarEventIn
 from frameworks_and_drivers.db.sa_calendar_events_repo import SqlAlchemyCalendarEventsRepo
-from frameworks_and_drivers.db.sa_repos import ServicioORM
+from frameworks_and_drivers.db.sa_repos import LocationRepo, ServicioORM
 from interface_adapters.services.text_norm import norm_key
 from sqlalchemy import delete, select, text
 
@@ -24,8 +24,9 @@ from application.use_cases.check_availability import CheckAvailability
 from application.use_cases.detect_overlaps import DetectOverlaps
 from frameworks_and_drivers.db.config import SAUnitOfWork
 from frameworks_and_drivers.db.orm_models import AsesoriaORM, CalendarEventORM, CupoORM, EstadoAsesoria, EstadoCupo
-from frameworks_and_drivers.db.sa_repos import UsuarioORM as UsuarioModel, AsesorPerfilORM as AsesorPerfilModel
+from frameworks_and_drivers.db.sa_repos import UsuarioORM as UsuarioModel, AsesorPerfilORM as AsesorPerfilModel, DocentePerfilORM as DocentePerfilModel
 from frameworks_and_drivers.db.orm_models import UserIdentityORM as UserIdentityModel
+from interface_adapters.services.token_cipher import get_token_cipher
 from interface_adapters.gateways.calendar_gateway import NullCalendarGateway
 
 SEMANTIC_URL = os.getenv("SEMANTIC_URL", "http://localhost:8000/search/semantic")
@@ -134,13 +135,35 @@ async def _google_refresh_token(session, usuario_id: UUID) -> str | None:
         .where(UserIdentityModel.provider == "google")
         .limit(1)
     )
-    return (await session.execute(q)).scalar_one_or_none()
+    stored = (await session.execute(q)).scalar_one_or_none()
+    return get_token_cipher().decrypt(stored)
 
 def _fmt_item(it: Dict[str, Any]) -> Dict[str, Any]:
     title = it.get("title") or it.get("kind") or "Resultado"
     dist = it.get("dist")
     sub = f"sim={1.0 - float(dist):.3f}" if isinstance(dist, (int, float)) else ""
     return {"title": title, "subtitle": sub, "start": None, "end": None}
+
+def _build_event_description(*, servicio: str, docente_email: str | None,
+                             asesor_nombre: str | None, ubicacion: str | None,
+                             origen: str | None, notas: str | None) -> str:
+    docente_linea = f"Docente: {docente_email}" if docente_email else "Docente: (sin email)"
+    asesor_linea  = f"Asesor: {asesor_nombre or 'Asesor'}"
+    ubic_linea    = f"Ubicación: {ubicacion or 'Por confirmar'}"
+    origen_linea  = f"Origen: {origen or 'chat'}"
+    notas_linea   = f"Notas: {notas.strip()}" if notas else "Notas: Sin notas adicionales"
+    return (
+        "ASESORIA CINAP\n\n"
+        f"Servicio: {servicio}\n"
+        f"{docente_linea}\n"
+        f"{asesor_linea}\n"
+        f"{ubic_linea}\n"
+        f"Origen: {origen or 'chat'}\n"
+        f"{notas_linea}\n\n"
+        "IMPORTANTE: Por favor ACEPTA o RECHAZA esta invitación.\n"
+        "Si aceptas: el asesor confirmará la cita.\n"
+        "Si rechazas: se cancelará el cupo."
+    )
 
 TZ_CL = ZoneInfo("America/Santiago")
 
@@ -264,7 +287,6 @@ def build_mcp() -> FastMCP:
             )) or []
 
             if not out:
-                from datetime import timedelta
                 delta = timedelta(days=7)
 
                 near_after = await CheckAvailability(uow).execute(AvailabilityIn(
@@ -436,13 +458,16 @@ def build_mcp() -> FastMCP:
         except Exception as e:
             return {"ok": False, "error": {"code": "VALIDATION", "message": f"Fechas inválidas: {e}"}}
 
-        states = []
+        states = [EstadoAsesoria.PENDIENTE, EstadoAsesoria.CONFIRMADA]
         if input.estado:
-            from frameworks_and_drivers.db.orm_models import EstadoAsesoria
-            try:
-                states = [EstadoAsesoria[input.estado.upper()]]
-            except Exception:
-                return {"ok": False, "error": {"code": "VALIDATION", "message": f"estado inválido: {input.estado}"}}
+            est = input.estado.strip().lower()
+            if est in ("activas", "activa"):
+                states = [EstadoAsesoria.PENDIENTE, EstadoAsesoria.CONFIRMADA]
+            else:
+                try:
+                    states = [EstadoAsesoria[est.upper()]]
+                except Exception:
+                    return {"ok": False, "error": {"code": "VALIDATION", "message": f"estado inválido: {input.estado}"}}
 
         async with SAUnitOfWork() as uow:
             profs = await _profiles_from_user_id(uow.session, UUID(str(input.user_id)))
@@ -459,8 +484,13 @@ def build_mcp() -> FastMCP:
                 per_page=input.per_page,
             ))
 
+            if rows:
+                keep = {"PENDIENTE", "CONFIRMADA"}
+                rows = [r for r in rows
+                        if (getattr(r.get("estado"), "name", str(r.get("estado"))) in keep)]
+
             if not rows:
-                return {"ok": True, "say": "No hay asesorías en el rango indicado."}
+                return {"ok": True, "say": "No hay asesorías activas (pendientes/confirmadas) en el rango indicado."}
 
             servicio_ids = {r["servicio_id"] for r in rows if r.get("servicio_id")}
             asesor_ids   = {r["asesor_id"] for r in rows if r.get("asesor_id")}
@@ -472,12 +502,11 @@ def build_mcp() -> FastMCP:
                 )).all()
                 svc_map = {r.id: r.nombre for r in svc_rows}
 
-            from frameworks_and_drivers.db.sa_repos import AsesorPerfilORM as APerf, UsuarioORM as U, DocentePerfilORM as DPerf
             if asesor_ids:
                 adv_rows = (await uow.session.execute(
-                    select(APerf.id, U.nombre, U.email)
-                    .join(U, U.id == APerf.usuario_id)
-                    .where(APerf.id.in_(list(asesor_ids)))
+                    select(AsesorPerfilModel.id, UsuarioModel.nombre, UsuarioModel.email)
+                    .join(UsuarioModel, UsuarioModel.id == AsesorPerfilModel.usuario_id)
+                    .where(AsesorPerfilModel.id.in_(list(asesor_ids)))
                 )).all()
                 adv_map = {r.id: (r.nombre or r.email or "Asesor") for r in adv_rows}
 
@@ -485,9 +514,9 @@ def build_mcp() -> FastMCP:
             doc_map = {}
             if docente_ids:
                 doc_rows = (await uow.session.execute(
-                    select(DPerf.id, U.nombre, U.email)
-                    .join(U, U.id == DPerf.usuario_id)
-                    .where(DPerf.id.in_(list(docente_ids)))
+                    select(DocentePerfilModel.id, UsuarioModel.nombre, UsuarioModel.email)
+                    .join(UsuarioModel, UsuarioModel.id == DocentePerfilModel.usuario_id)
+                    .where(DocentePerfilModel.id.in_(list(docente_ids)))
                 )).all()
                 doc_map = {r.id: (r.nombre or r.email or "Docente") for r in doc_rows}
 
@@ -564,13 +593,12 @@ def build_mcp() -> FastMCP:
             if not asesor_usuario_id:
                 return {"ok": False, "error": {"code": "MISSING_ADVISOR_USER", "message": "No se encontró el usuario del asesor"}}
 
+            docente_refresh_token = await _google_refresh_token(uow.session, docente_usuario_id)
             asesor_refresh_token = await _google_refresh_token(uow.session, asesor_usuario_id)
             attendees = [docente_email] if docente_email else []
 
             chosen = None
             all_tried_slots = []
-
-            from datetime import timedelta
 
             if end is not None:
                 slots = await CheckAvailability(uow).execute(AvailabilityIn(
@@ -608,7 +636,7 @@ def build_mcp() -> FastMCP:
                 alt = []
                 for s in all_tried_slots:
                     sid = str(s.id)
-                    if sid in seen: 
+                    if sid in seen:
                         continue
                     seen.add(sid)
                     alt.append({
@@ -630,23 +658,38 @@ def build_mcp() -> FastMCP:
                 "origen": input.origen,
                 "notas": input.notas,
             }
+
             if not input.confirm:
                 say = (
                     f"¿Confirmas reservar con {preview['asesor']} ({preview['servicio']}) "
                     f"el {_fmt_local(chosen.inicio)}–{chosen.fin.astimezone(TZ_CL).strftime('%H:%M')}?"
                 )
-                next_hint = {
-                    "next_tool": "event_create",
-                    "suggested_args": {
-                        "title": f"Asesoría — {preview['servicio']} con {preview['asesor']}",
-                        "start": preview["inicio"],
-                        "end": preview["fin"],
-                        "attendees": attendees,
-                        "description": input.notas or "",
-                        "calendar_id": "primary",
+
+                suggested_args = {
+                    "start": preview["inicio"],
+                    "end": preview["fin"],
+                    "calendar_id": "primary",
+                }
+                if docente_refresh_token:
+                    suggested_args["refresh_token"] = docente_refresh_token
+                else:
+                    pass
+
+                next_hint_overlap = {
+                    "next_tool": "event_find_overlap",
+                    "suggested_args": suggested_args,
+                    "run_immediately": True,
+                    "attach_result_as": "calendar_conflicts"
+                }
+
+                return {
+                    "ok": True,
+                    "say": say,
+                    "data": {
+                        "preview": preview,
+                        "next_hint": next_hint_overlap
                     }
                 }
-                return {"ok": True, "say": say, "data": {"preview": preview, "next_hint": next_hint}}
 
             nueva = AsesoriaORM(
                 docente_id=docente_id,
@@ -662,21 +705,41 @@ def build_mcp() -> FastMCP:
                 f"Asesoría reservada: {svc_win.nombre} con {getattr(adv_win,'nombre','Asesor')} "
                 f"el {_fmt_local(chosen.inicio)}–{chosen.fin.astimezone(TZ_CL).strftime('%H:%M')}."
             )
-            next_hint = {
-                "next_tool": "event_create",
-                "suggested_args": {
-                    "title": f"Asesoría — {svc_win.nombre} con {getattr(adv_win,'nombre','Asesor')}",
-                    "start": chosen.inicio.astimezone(TZ_CL).isoformat(),
-                    "end": chosen.fin.astimezone(TZ_CL).isoformat(),
-                    "attendees": attendees,
-                    "description": input.notas or "",
-                    "calendar_id": "primary",
-                    **({"refresh_token": asesor_refresh_token} if asesor_refresh_token else {}),
-                    "asesoria_id": str(nueva.id),
-                    "organizer_usuario_id": str(asesor_usuario_id),
+
+            loc_repo = LocationRepo(uow.session)
+            ubicacion_txt = await loc_repo.get_location_for_cupo(chosen.id)
+
+            asesor_nombre = getattr(adv_win, 'nombre', None) or "Asesor"
+            descripcion_evento = _build_event_description(
+                servicio=svc_win.nombre,
+                docente_email=docente_email,
+                asesor_nombre=asesor_nombre,
+                ubicacion=ubicacion_txt,
+                origen=input.origen,
+                notas=input.notas,
+            )
+
+            next_hint = None
+            if asesor_refresh_token:
+                next_hint = {
+                    "next_tool": "event_create",
+                    "suggested_args": {
+                        "title": f"Asesoría — {svc_win.nombre} con {asesor_nombre}",
+                        "start": chosen.inicio.astimezone(TZ_CL).isoformat(),
+                        "end": chosen.fin.astimezone(TZ_CL).isoformat(),
+                        "attendees": attendees,
+                        "description": descripcion_evento,
+                        "location": ubicacion_txt,
+                        "calendar_id": "primary",
+                        "refresh_token": asesor_refresh_token,
+                        "asesoria_id": str(nueva.id),
+                        "organizer_usuario_id": str(asesor_usuario_id),
+                    }
                 }
-            }
-            return {
+            else:
+                say += " Ocurrió un error (OAUTH_REQUIRED). Falta vincular Google del asesor para enviar la invitación."
+
+            payload = {
                 "ok": True,
                 "say": say,
                 "data": {
@@ -686,9 +749,11 @@ def build_mcp() -> FastMCP:
                     "service_id": str(servicio_id),
                     "start": chosen.inicio.astimezone(TZ_CL).isoformat(),
                     "end": chosen.fin.astimezone(TZ_CL).isoformat(),
-                    "next_hint": next_hint,
                 },
             }
+            if next_hint:
+                payload["data"]["next_hint"] = next_hint
+            return payload
         
     @app.tool(
         name="calendar_event_upsert",
@@ -716,7 +781,8 @@ def build_mcp() -> FastMCP:
             "(end opcional). Si el usuario es ASESOR: basta indicar el inicio exacto; se usará su asesor_id. "
             "Si no se envía end, se asume duración 30m o 60m. "
             "Usa confirm=false para preview y confirm=true para ejecutar. No insertes user_id, lo hace el backend. "
-            "La asesoría debe estar PENDIENTE o CONFIRMADA. Al cancelar, el cupo queda CANCELADO y se sugiere borrar el evento de Google."
+            "La asesoría debe estar PENDIENTE o CONFIRMADA. Al cancelar, el cupo queda CANCELADO. "
+            "Si cancela DOCENTE: solo marcar 'declined'. Si cancela ASESOR: solo eliminar el evento."
         ),
     )
     async def cancel_asesoria(input: CancelAsesoriaInput):
@@ -803,38 +869,24 @@ def build_mcp() -> FastMCP:
                     select(CalendarEventORM).where(CalendarEventORM.asesoria_id == asesoria.id)
                 )).scalars().all()
 
-                next_hints = [
-                    {
-                        "next_tool": "event_delete_by_id",
-                        "suggested_args": {
-                            "calendar_id": "primary",
-                            "event_id": r.calendar_event_id,
-                            **({"refresh_token": asesor_refresh_token} if asesor_refresh_token else {}),
-                        }
-                    }
-                    for r in cal_rows if r.calendar_event_id
-                ]
-
-                preview = {
-                    "asesor_id": str(my_asesor_id),
-                    "asesoria_id": str(asesoria.id),
-                    "cupo_id": str(cupo.id),
-                    "inicio": cupo.inicio.astimezone(TZ_CL).isoformat(),
-                    "fin": cupo.fin.astimezone(TZ_CL).isoformat(),
-                    "calendar_event_matches": [
-                        {
-                            "row_id": str(r.id),
-                            "provider": r.provider,
-                            "calendar_event_id": r.calendar_event_id,
-                            "calendar_html_link": r.calendar_html_link,
-                        } for r in cal_rows
-                    ],
-                }
-
                 if not input.confirm:
                     say = "¿Confirmas cancelar la asesoría y marcar el cupo como cancelado?"
-                    next_hint = (next_hints[0] if len(next_hints) == 1 else next_hints) or None
-                    return {"ok": True, "say": say, "data": {"preview": preview, "next_hint": next_hint}}
+                    preview = {
+                        "asesor_id": str(my_asesor_id),
+                        "asesoria_id": str(asesoria.id),
+                        "cupo_id": str(cupo.id),
+                        "inicio": cupo.inicio.astimezone(TZ_CL).isoformat(),
+                        "fin": cupo.fin.astimezone(TZ_CL).isoformat(),
+                        "calendar_event_matches": [
+                            {
+                                "row_id": str(r.id),
+                                "provider": r.provider,
+                                "calendar_event_id": r.calendar_event_id,
+                                "calendar_html_link": r.calendar_html_link,
+                            } for r in cal_rows
+                        ],
+                    }
+                    return {"ok": True, "say": say, "data": {"preview": preview}}
 
                 asesoria.estado = EstadoAsesoria.CANCELADA
                 cupo.estado = EstadoCupo.CANCELADO
@@ -848,8 +900,25 @@ def build_mcp() -> FastMCP:
                 await uow.session.commit()
 
                 say = "Asesoría cancelada y cupo cancelado."
-                next_hint = (next_hints[0] if len(next_hints) == 1 else next_hints) or None
-                return {
+
+                next_hint = None
+                target = next((r for r in cal_rows if r.calendar_event_id), None)
+                if target and asesor_refresh_token:
+                    next_hint = {
+                        "next_tool": "event_delete_by_id",
+                        "suggested_args": {
+                            "calendar_id": "primary",
+                            "event_id": target.calendar_event_id,
+                            "refresh_token": asesor_refresh_token,
+                        }
+                    }
+                else:
+                    if not target:
+                        say += " No encontré evento de calendario para borrar."
+                    if not asesor_refresh_token:
+                        say += " Falta vincular Google del asesor para eliminar el evento."
+
+                payload = {
                     "ok": True,
                     "say": say,
                     "data": {
@@ -858,9 +927,11 @@ def build_mcp() -> FastMCP:
                         "estado_asesoria": "CANCELADA",
                         "estado_cupo": "CANCELADO",
                         "deleted_calendar_event_rows": len(cal_rows),
-                        "next_hint": next_hint,
                     },
                 }
+                if next_hint:
+                    payload["data"]["next_hint"] = next_hint
+                return payload
 
             # Docente
             if my_docente_id:
@@ -917,6 +988,10 @@ def build_mcp() -> FastMCP:
                 if not asesoria:
                     return {"ok": False, "error": {"code": "APPT_NOT_FOUND", "message": "No hay una asesoría pendiente o confirmada tuya en ese cupo"}}
 
+                docente_usuario_id = UUID(str(input.user_id))
+                docente_email = await _get_usuario_email(uow.session, docente_usuario_id)
+                docente_refresh_token = await _google_refresh_token(uow.session, docente_usuario_id)
+
                 asesor_usuario_id, _ = await _asesor_usuario_y_email(uow.session, cupo.asesor_id)
                 asesor_refresh_token = await _google_refresh_token(uow.session, asesor_usuario_id)
 
@@ -924,38 +999,24 @@ def build_mcp() -> FastMCP:
                     select(CalendarEventORM).where(CalendarEventORM.asesoria_id == asesoria.id)
                 )).scalars().all()
 
-                next_hints = [
-                    {
-                        "next_tool": "event_delete_by_id",
-                        "suggested_args": {
-                            "calendar_id": "primary",
-                            "event_id": r.calendar_event_id,
-                            **({"refresh_token": asesor_refresh_token} if asesor_refresh_token else {})
-                        }
-                    }
-                    for r in cal_rows if r.calendar_event_id
-                ]
-
-                preview = {
-                    "advisor_id": str(asesor_id),
-                    "asesoria_id": str(asesoria.id),
-                    "cupo_id": str(cupo.id),
-                    "inicio": cupo.inicio.astimezone(TZ_CL).isoformat(),
-                    "fin": cupo.fin.astimezone(TZ_CL).isoformat(),
-                    "calendar_event_matches": [
-                        {
-                            "row_id": str(r.id),
-                            "provider": r.provider,
-                            "calendar_event_id": r.calendar_event_id,
-                            "calendar_html_link": r.calendar_html_link,
-                        } for r in cal_rows
-                    ],
-                }
-
                 if not input.confirm:
                     say = "¿Confirmas cancelar tu asesoría y marcar el cupo como cancelado?"
-                    next_hint = (next_hints[0] if len(next_hints) == 1 else next_hints) or None
-                    return {"ok": True, "say": say, "data": {"preview": preview, "next_hint": next_hint}}
+                    preview = {
+                        "advisor_id": str(asesor_id),
+                        "asesoria_id": str(asesoria.id),
+                        "cupo_id": str(cupo.id),
+                        "inicio": cupo.inicio.astimezone(TZ_CL).isoformat(),
+                        "fin": cupo.fin.astimezone(TZ_CL).isoformat(),
+                        "calendar_event_matches": [
+                            {
+                                "row_id": str(r.id),
+                                "provider": r.provider,
+                                "calendar_event_id": r.calendar_event_id,
+                                "calendar_html_link": r.calendar_html_link,
+                            } for r in cal_rows
+                        ],
+                    }
+                    return {"ok": True, "say": say, "data": {"preview": preview}}
 
                 asesoria.estado = EstadoAsesoria.CANCELADA
                 cupo.estado = EstadoCupo.CANCELADO
@@ -969,8 +1030,29 @@ def build_mcp() -> FastMCP:
                 await uow.session.commit()
 
                 say = "Asesoría cancelada y cupo cancelado."
-                next_hint = (next_hints[0] if len(next_hints) == 1 else next_hints) or None
-                return {
+
+                next_hint = None
+                target = next((r for r in cal_rows if r.calendar_event_id), None)
+                if target and docente_email and docente_refresh_token:
+                    next_hint = {
+                        "next_tool": "event_patch_attendees",
+                        "suggested_args": {
+                            "calendar_id": "primary",
+                            "event_id": target.calendar_event_id,
+                            "attendees_patch": [{"email": docente_email, "responseStatus": "declined"}],
+                            "refresh_token": docente_refresh_token,
+                        }
+                    }
+                else:
+                    if not target:
+                        say += " No encontré evento de calendario asociado."
+                    missing = []
+                    if not docente_email: missing.append("correo del docente")
+                    if not docente_refresh_token: missing.append("vincular Google del docente")
+                    if missing:
+                        say += " Falta " + " y ".join(missing) + " para actualizar tu asistencia en el calendario."
+
+                payload = {
                     "ok": True,
                     "say": say,
                     "data": {
@@ -979,9 +1061,11 @@ def build_mcp() -> FastMCP:
                         "estado_asesoria": "CANCELADA",
                         "estado_cupo": "CANCELADO",
                         "deleted_calendar_event_rows": len(cal_rows),
-                        "next_hint": next_hint,
                     },
                 }
+                if next_hint:
+                    payload["data"]["next_hint"] = next_hint
+                return payload
 
             return {"ok": False, "error": {"code": "MISSING_PARAMS", "message": "Faltan datos para cancelar (revisa asesor, servicio o el rango)"}}
         
@@ -994,8 +1078,6 @@ def build_mcp() -> FastMCP:
         ),
     )
     async def confirm_asesoria(input: ConfirmAsesoriaInput):
-        from datetime import timedelta
-
         try:
             start = input.start.astimezone(TZ_CL) if input.start.tzinfo else input.start.replace(tzinfo=TZ_CL)
             end = None
@@ -1079,18 +1161,24 @@ def build_mcp() -> FastMCP:
                 select(CalendarEventORM).where(CalendarEventORM.asesoria_id == asesoria.id)
             )).scalars().all()
 
-            next_hints = [
-                {
-                    "next_tool": "event_patch_attendees",
-                    "suggested_args": {
-                        "calendar_id": "primary",
-                        "event_id": r.calendar_event_id,
-                        "attendees_patch": [{"email": docente_email, "responseStatus": "accepted"}],
-                        **({"refresh_token": docente_refresh_token} if docente_refresh_token else {}),
-                    }
+            if not input.confirm:
+                preview = {
+                    "asesoria_id": str(asesoria.id),
+                    "cupo_id": str(cupo.id),
+                    "estado_actual": getattr(asesoria.estado, "name", str(asesoria.estado)),
+                    "inicio": start.isoformat(),
+                    "fin": end.isoformat(),
+                    "calendar_event_matches": [
+                        {
+                            "row_id": str(r.id),
+                            "provider": r.provider,
+                            "calendar_event_id": r.calendar_event_id,
+                            "calendar_html_link": r.calendar_html_link,
+                        } for r in cal_rows
+                    ],
                 }
-                for r in cal_rows if r.calendar_event_id and docente_email
-            ] or None
+                say = f"¿Confirmas tu asistencia a la asesoría del {_fmt_local(start)}–{end.astimezone(TZ_CL).strftime('%H:%M')}?"
+                return {"ok": True, "say": say, "data": {"preview": preview}}
 
             if asesoria.estado == EstadoAsesoria.CONFIRMADA:
                 say = "La asesoría ya estaba confirmada."
@@ -1101,51 +1189,53 @@ def build_mcp() -> FastMCP:
                         "asesoria_id": str(asesoria.id),
                         "cupo_id": str(cupo.id),
                         "estado_asesoria": "CONFIRMADA",
-                        "next_hint": (next_hints[0] if next_hints and len(next_hints) == 1 else next_hints)
                     },
                 }
 
             if asesoria.estado not in [EstadoAsesoria.PENDIENTE, EstadoAsesoria.REPROGRAMADA]:
                 return {"ok": False, "error": {"code": "BAD_STATE", "message": f"No se puede confirmar desde estado {asesoria.estado.name}"}}
 
-            preview = {
-                "asesoria_id": str(asesoria.id),
-                "cupo_id": str(cupo.id),
-                "estado_actual": getattr(asesoria.estado, "name", str(asesoria.estado)),
-                "inicio": start.isoformat(),
-                "fin": end.isoformat(),
-                "calendar_event_matches": [
-                    {
-                        "row_id": str(r.id),
-                        "provider": r.provider,
-                        "calendar_event_id": r.calendar_event_id,
-                        "calendar_html_link": r.calendar_html_link,
-                    } for r in cal_rows
-                ],
-            }
-            if not input.confirm:
-                say = f"¿Confirmas tu asistencia a la asesoría del {_fmt_local(start)}–{end.astimezone(TZ_CL).strftime('%H:%M')}?"
-                return {
-                    "ok": True,
-                    "say": say,
-                    "data": {"preview": preview, "next_hint": (next_hints[0] if next_hints and len(next_hints) == 1 else next_hints)}
-                }
-
             asesoria.estado = EstadoAsesoria.CONFIRMADA
             await uow.session.flush()
             await uow.session.commit()
 
             say = "Asistencia confirmada."
-            return {
+
+            next_hint = None
+            if docente_email and docente_refresh_token:
+                target = next((r for r in cal_rows if r.calendar_event_id), None)
+                if target:
+                    next_hint = {
+                        "next_tool": "event_patch_attendees",
+                        "suggested_args": {
+                            "calendar_id": "primary",
+                            "event_id": target.calendar_event_id,
+                            "attendees_patch": [{"email": docente_email, "responseStatus": "accepted"}],
+                            "send_updates": "all",
+                            "refresh_token": docente_refresh_token,
+                        }
+                    }
+                else:
+                    say += " No encontré evento de calendario asociado para marcar asistencia."
+            else:
+                faltante = []
+                if not docente_email: faltante.append("correo del docente")
+                if not docente_refresh_token: faltante.append("vincular Google del docente")
+                if faltante:
+                    say += " Falta " + " y ".join(faltante) + " para actualizar tu asistencia en el calendario."
+
+            payload = {
                 "ok": True,
                 "say": say,
                 "data": {
                     "asesoria_id": str(asesoria.id),
                     "cupo_id": str(cupo.id),
                     "estado_asesoria": "CONFIRMADA",
-                    "next_hint": (next_hints[0] if next_hints and len(next_hints) == 1 else next_hints),
                 },
             }
+            if next_hint:
+                payload["data"]["next_hint"] = next_hint
+            return payload
 
     @app.tool(description="Busca conocimiento institucional/FAQ por similitud semántica (RAG CINAP). Devuelve solo el texto más relevante.")
     async def semantic_search(
@@ -1168,12 +1258,26 @@ def build_mcp() -> FastMCP:
         except Exception as e:
             return {"error": {"code": "HTTP_ERROR", "message": f"{e!s}"}}
 
-        best = data.get("best")
+        best = data.get("best") or {}
+        items = data.get("items") or []
+
+        def _extract_source(best: dict, items: list[dict]) -> Optional[dict]:
+            title = best.get("title")
+            page = best.get("page_no")
+            if not title and items:
+                title = items[0].get("doc_title")
+            if page is None and items:
+                page = items[0].get("page_no")
+            if not title and page is None:
+                return None
+            return {"title": title, "page": page}
+
+        source = _extract_source(best, items)
+
         if best and (best.get("text") or "").strip():
             snippet = (best.get("text") or "").strip()
-            return {"ok": True, "say": snippet}
+            return {"ok": True, "say": snippet, "source": source}
 
-        items = data.get("items") or []
         if not items:
             return {"ok": True, "say": "No encontré resultados para esa consulta."}
 
@@ -1182,6 +1286,10 @@ def build_mcp() -> FastMCP:
         max_len = 700
         if len(body) > max_len:
             body = body[:max_len].rsplit(" ", 1)[0] + "…"
-        return {"ok": True, "say": body}
+
+        if source is None:
+            source = _extract_source({}, [it])
+
+        return {"ok": True, "say": body, "source": source}
 
     return app
