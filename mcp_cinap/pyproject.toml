@@ -1,0 +1,16 @@
+[project]
+name = "mcp-cinap"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "asyncpg>=0.30.0",
+    "cryptography>=43.0.0",
+    "dotenv>=0.9.9",
+    "httpx[http2]>=0.28.1",
+    "mcp[cli]>=1.15.0",
+    "pydantic>=2.11.9",
+    "sqlalchemy>=2.0.43",
+    "tzdata>=2025.2",
+]

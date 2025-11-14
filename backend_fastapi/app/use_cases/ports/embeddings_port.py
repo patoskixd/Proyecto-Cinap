@@ -1,0 +1,6 @@
+from typing import List, Protocol
+
+class EmbeddingsPort(Protocol):
+    async def embed_many(self, texts: List[str]) -> List[List[float]]: ...
+    @property
+    def dim(self) -> int: ...
