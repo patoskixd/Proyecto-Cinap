@@ -975,7 +975,22 @@ def _needs_mcp_tools(text: str) -> bool:
     calendar_words = ["evento", "cita", "reunión", "fecha", "horario", "agenda"]
     has_action = any(a in text_lower for a in action_indicators)
     has_calendar = any(w in text_lower for w in calendar_words)
-    return has_action and has_calendar
+    if has_action and has_calendar:
+        return True
+
+    # Usa el detector dedicado para frases imperativas tipo "reserva una asesoría..."
+    try:
+        cal_intent = _detect_calendar_event_intent(text)
+        if cal_intent.get("is_calendar_event"):
+            try:
+                log.info(f"[needs_mcp] calendar intent signal: {cal_intent}")
+            except Exception:
+                pass
+            return True
+    except Exception:
+        pass
+
+    return False
 #  Helper: adjuntar payload para el renderer de listas 
 def _attach_items_payload_for_direct(text: str, items: list[dict], kind: str) -> str:
     def _first(d: dict, *keys):
@@ -2394,10 +2409,21 @@ async def _process_audio_background(chat_id: int, file_id: str, file_unique_id: 
             return
 
         async with astage("telegram.download"):
-            audio_bytes = await tg_download_file(file_path)
-        if not audio_bytes:
-            await _send_direct_message(chat_id, " Error descargando audio")
-            return
+            audio_bytes = None
+            download_exc = None
+            for i in range(3):
+                try:
+                    audio_bytes = await tg_download_file(file_path)
+                    if audio_bytes:
+                        break
+                except Exception as e:
+                    download_exc = e
+                    log.warning(f"tg_download_file intento {i+1}/3 falló: {e}")
+                    await asyncio.sleep(0.2)
+            if not audio_bytes:
+                log.error(f"No se pudo descargar audio tras reintentos: {download_exc}")
+                await _send_direct_message(chat_id, " Error descargando audio")
+                return
 
         # 4) Validación energética + ASR
         energy_result = _validate_audio_energy(audio_bytes)
