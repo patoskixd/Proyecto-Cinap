@@ -126,3 +126,10 @@ En producción, se recomienda usar un servidor ASGI como **Uvicorn + Gunicorn** 
 - Maneja seguridad mediante **JWT** y control de roles.  
 - Se conecta con el frontend vía CORS y expone un webhook para Telegram.  
 - Genera `GOOGLE_TOKEN_CIPHER_KEY` con `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` y reutiliza el mismo valor en todos los servicios que leen tokens desde la base de datos.
+### Instalaci?n con requirements.txt
+
+Si prefieres instalar rapido con pip, en este servicio basta con:
+
+```bash
+pip install -r requirements.txt
+```
