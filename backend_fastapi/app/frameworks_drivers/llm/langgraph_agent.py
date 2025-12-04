@@ -545,7 +545,6 @@ class LangGraphAgent:
                         pending_exists = await self._confirm_store.peek(thread_id)
 
                         inp = args.get("input") if isinstance(args.get("input"), dict) else {}
-                        pending_exists = await self._confirm_store.peek(thread_id)
 
                         if inp.get("confirm") is True and not pending_exists:
                             inp = {**inp, "confirm": False}
@@ -574,8 +573,26 @@ class LangGraphAgent:
                                         args2 = dict(next_hint.get("suggested_args") or {})
 
                                         c2 = self._client_for_tool("event_find_overlap")
-                                        async with astage("mcp.rpc", extra={"tool": "event_find_overlap", "phase": "preview.immediate"}):
-                                            res2 = await c2.call_tool("event_find_overlap", args2)
+
+                                        async def _run_overlap():
+                                            async with astage("mcp.rpc", extra={"tool": "event_find_overlap", "phase": "preview.immediate"}):
+                                                return await c2.call_tool("event_find_overlap", args2)
+
+                                        overlap_task = asyncio.create_task(_run_overlap())
+
+                                        pending_state_task = None
+                                        if getattr(self, "_confirm_store", None) and thread_id:
+                                            pending_state_task = asyncio.create_task(self._confirm_store.get(thread_id))
+
+                                        pending_state = None
+                                        try:
+                                            res2 = await overlap_task
+                                        finally:
+                                            if pending_state_task:
+                                                try:
+                                                    pending_state = await pending_state_task
+                                                except Exception:
+                                                    pending_state = None
 
                                         attach_key = next_hint.get("attach_result_as") or "calendar_conflicts"
                                         conflicts = []
@@ -586,6 +603,17 @@ class LangGraphAgent:
                                             if not isinstance(conflicts, list):
                                                 conflicts = []
                                         preview_res.setdefault("data", {})[attach_key] = conflicts
+
+                                        if getattr(self, "_confirm_store", None) and thread_id:
+                                            skip_map = {}
+                                            if isinstance(pending_state, dict):
+                                                skip_map = dict(pending_state.get("skip_post_tool_args") or {})
+                                            skip_map["event_find_overlap"] = args2
+
+                                            try:
+                                                await self._confirm_store.patch(thread_id, {"skip_post_tool_args": skip_map})
+                                            except Exception:
+                                                pass
 
                                         if conflicts:
                                             prev_say = (preview_res.get("say") or "").rstrip()
@@ -780,9 +808,8 @@ class LangGraphAgent:
             raise RuntimeError("LangGraphAgent no inicializado")
         
         if getattr(self, "_confirm_store", None) and not is_confirmation(message):
-            pending = await self._confirm_store.get(thread_id)
+            pending = await self._confirm_store.pop(thread_id)
             if pending:
-                await self._confirm_store.pop(thread_id)
                 return "Acción cancelada"
 
         if getattr(self, "_confirm_store", None) and is_confirmation(message):
@@ -847,16 +874,38 @@ class LangGraphAgent:
                     except Exception:
                         post_ops = []
 
+                    skip_post_tool_args: dict[str, dict] = {}
                     try:
+                        raw_skip = pending.get("skip_post_tool_args") or {}
+                        if isinstance(raw_skip, dict):
+                            for tool_name, tool_args in raw_skip.items():
+                                if isinstance(tool_args, dict):
+                                    skip_post_tool_args[tool_name] = dict(tool_args)
+                    except Exception:
+                        skip_post_tool_args = {}
+
+                    try:
+                        def _should_skip_post_op(tname: str, targs: dict) -> bool:
+                            if not tname:
+                                return False
+                            expected = skip_post_tool_args.get(tname)
+                            if not isinstance(expected, dict):
+                                return False
+                            return expected == targs
+
                         def _to_ops(nh):
                             ops = []
                             if isinstance(nh, dict):
                                 if nh.get("next_tool") and nh.get("suggested_args"):
-                                    ops.append({"tool": nh["next_tool"], "args": dict(nh["suggested_args"] or {})})
+                                    cand_args = dict(nh["suggested_args"] or {})
+                                    if not _should_skip_post_op(nh["next_tool"], cand_args):
+                                        ops.append({"tool": nh["next_tool"], "args": cand_args})
                             elif isinstance(nh, list):
                                 for it in nh:
                                     if isinstance(it, dict) and it.get("next_tool") and it.get("suggested_args"):
-                                        ops.append({"tool": it["next_tool"], "args": dict(it["suggested_args"] or {})})
+                                        cand_args = dict(it["suggested_args"] or {})
+                                        if not _should_skip_post_op(it["next_tool"], cand_args):
+                                            ops.append({"tool": it["next_tool"], "args": cand_args})
                             return ops
 
                         confirm_ops = []

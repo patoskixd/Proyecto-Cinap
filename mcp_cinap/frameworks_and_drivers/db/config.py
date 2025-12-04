@@ -15,22 +15,45 @@ class SAUnitOfWork:
 
     async def __aenter__(self):
         self.session = self._sf()
-        from frameworks_and_drivers.db.sa_repos import (
-            SASlotRepository, SAApptRepository,
-            SAAdvisorRepository, SAServiceRepository,
-        )
-        self._slots = SASlotRepository(self.session)
-        self._appts = SAApptRepository(self.session)
-        self._advisors = SAAdvisorRepository(self.session)
-        self._services = SAServiceRepository(self.session)
-        return self
+        try:
+            from frameworks_and_drivers.db.sa_repos import (
+                SASlotRepository, SAApptRepository,
+                SAAdvisorRepository, SAServiceRepository,
+            )
+            self._slots = SASlotRepository(self.session)
+            self._appts = SAApptRepository(self.session)
+            self._advisors = SAAdvisorRepository(self.session)
+            self._services = SAServiceRepository(self.session)
+            return self
+        except Exception:
+            if self.session:
+                try:
+                    await self.session.close()
+                finally:
+                    self.session = None
+            raise
 
     async def __aexit__(self, exc_type, exc, tb):
-        if exc:
-            await self.session.rollback()
-        else:
-            await self.session.commit()
-        await self.session.close()
+        session = self.session
+        self.session = None
+        try:
+            if not session:
+                return
+            try:
+                if exc_type:
+                    await session.rollback()
+                else:
+                    await session.commit()
+            finally:
+                try:
+                    await session.close()
+                except Exception:
+                    pass
+        finally:
+            self._slots = None
+            self._appts = None
+            self._advisors = None
+            self._services = None
 
     @property
     def slots(self): return self._slots

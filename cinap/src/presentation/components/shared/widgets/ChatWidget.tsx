@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { ChatHttpAgent } from "@/infrastructure/chat/chatHttpAgent";
@@ -14,6 +14,14 @@ type QuickAction = {
   label: string;
   template: string;
   description?: string;
+};
+
+type PaginatedItem = {
+  title?: string;
+  subtitle?: string;
+  start?: string;
+  end?: string;
+  meta?: Record<string, any>;
 };
 
 const QUICK_ACTIONS: QuickAction[] = [
@@ -207,6 +215,13 @@ export default function ChatWidget() {
     setTimeout(() => textareaRef.current?.focus(), 0);
   };
 
+  const handlePrefillFromList = useCallback((text: string) => {
+    if (!text) return;
+    setShowActions(false);
+    setInput(text);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isOpenRef.current) {
@@ -263,6 +278,16 @@ export default function ChatWidget() {
   const handleSend = async () => {
     const text = input.trim();
     if (!text || isLoading) return;
+    const hasPlaceholders = /\[agregar [^\]]+\]/i.test(text);
+    if (hasPlaceholders) {
+      const msg = "Completa los campos marcados con [agregar ...] antes de enviar.";
+      const last = messages[messages.length - 1];
+      if (!(last && last.role === "assistant" && last.content === msg)) {
+        addMessage("assistant", msg);
+      }
+      textareaRef.current?.focus();
+      return;
+    }
 
     addMessage("user", text);
     setInput("");
@@ -385,6 +410,7 @@ export default function ChatWidget() {
                   key={m.id}
                   message={m}
                   onQuickSend={sendQuick}
+                  onPrefillInput={handlePrefillFromList}
                   hasUserReplyAfter={messages.slice(i + 1).some(mm => mm.role === "user")}
                 />
               ))}
@@ -478,7 +504,7 @@ export default function ChatWidget() {
                   maxLength={500}
                   placeholder="Escribe tu mensaje..."
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={(e) => { setInput(e.target.value); }}
                   onKeyDown={onKeyDown}
                   className="min-h-[40px] max-h-[120px] w-full resize-none bg-transparent p-2 text-sm text-blue-900 outline-none placeholder:text-blue-400"
                 />
@@ -536,7 +562,13 @@ function PaginatedList({
   items,
   pageSize = 2,
   cardMinH = 90,
-}: { items: any[]; pageSize?: number; cardMinH?: number }) {
+  onSelect,
+}: {
+  items: PaginatedItem[];
+  pageSize?: number;
+  cardMinH?: number;
+  onSelect?: (item: PaginatedItem, index: number) => void;
+}) {
   const [page, setPage] = useState(0);
   const total = items.length;
   const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -547,26 +579,40 @@ function PaginatedList({
   return (
     <div className={classNames("mt-2 text-left mx-auto", "w-[min(220px,80vw)]")}>
       <ul className={classNames("flex flex-col gap-2", "w-full")}>
-        {slice.map((it, idx) => (
-          <li
-            key={`it-${start + idx}`}
-            className="w-full rounded-xl border border-blue-100 bg-white/80 p-3
-                       flex flex-col justify-center text-center shadow-sm
-                       transition-all duration-200"
-            style={{ minHeight: cardMinH }}
-          >
-            <div className="font-medium text-blue-900 leading-snug text-balance break-words">
-              {it.title || "(sin título)"}
-            </div>
-            {it.subtitle && <div className="text-xs text-blue-500 mt-0.5">{it.subtitle}</div>}
-            {(it.start || it.end) && (
-              <div className="text-xs text-blue-500 mt-0.5">
-                {it.start || ""}{(it.start || it.end) ? " — " : ""}{it.end || ""}
+        {slice.map((it, idx) => {
+          const absoluteIndex = start + idx;
+          const clickable = !!onSelect;
+          return (
+            <li
+              key={`it-${absoluteIndex}`}
+              style={{ minHeight: cardMinH }}
+              role={clickable ? "button" : undefined}
+              tabIndex={clickable ? 0 : -1}
+              onClick={() => onSelect?.(it, absoluteIndex)}
+              onKeyDown={(e) => {
+                if (!onSelect) return;
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelect(it, absoluteIndex);
+                }
+              }}
+              className={classNames(
+                "w-full rounded-xl border border-blue-100 bg-white/80 p-3 flex flex-col justify-center text-center shadow-sm transition-all duration-200",
+                clickable && "cursor-pointer hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-200"
+              )}
+            >
+              <div className="font-medium text-blue-900 leading-snug text-balance break-words">
+                {it.title || "(sin título)"}
               </div>
-            )}
-          </li>
-        ))}
-
+              {it.subtitle && <div className="text-xs text-blue-500 mt-0.5">{it.subtitle}</div>}
+              {(it.start || it.end) && (
+                <div className="text-xs text-blue-500 mt-0.5">
+                  {it.start || ""}{(it.start || it.end) ? " - " : ""}{it.end || ""}
+                </div>
+              )}
+            </li>
+          );
+        })}
         {/* Placeholders */}
         {Array.from({ length: missing }).map((_, i) => (
           <li
@@ -677,10 +723,12 @@ function parseCinapSourceMarker(content: string): {
 function MessageBubble({
   message,
   onQuickSend,
+  onPrefillInput,
   hasUserReplyAfter,
 }: {
   message: ChatMessage;
   onQuickSend?: (text: string) => void;
+  onPrefillInput?: (text: string) => void;
   hasUserReplyAfter?: boolean;
 }) {
   const time = useMemo(
@@ -692,13 +740,78 @@ function MessageBubble({
   const { clean: afterList, list } = useMemo(() => parseCinapListMarker(message.content),[message.content]);
   const { clean: afterConfirm, confirm } = useMemo(() => parseCinapConfirmMarker(afterList),[afterList]);
   const { clean, source } = useMemo(() => parseCinapSourceMarker(afterConfirm),[afterConfirm]);
+  const listKind = useMemo(() => (list?.kind || "").toLowerCase(),[list?.kind]);
+  const isReservableList = useMemo(() => {
+    if (!listKind) return false;
+    const allowed = new Set([
+      "list_slots",
+      "slots",
+      "list_availability",
+      "availability",
+      "list_professor_availability",
+      "list_professor_slots",
+    ]);
+    return allowed.has(listKind) || listKind.includes("slot") || listKind.includes("availability");
+  }, [listKind]);
 
   const [decided, setDecided] = useState(false);
-  const handleChoice = useCallback((ans: "sí" | "no") => {
+  const handleChoice = useCallback((ans: "si" | "no") => {
     if (decided || hasUserReplyAfter) return;
     setDecided(true);
     onQuickSend?.(ans);
   }, [decided, hasUserReplyAfter, onQuickSend]);
+
+  const handleSelectItem = useCallback((item: PaginatedItem) => {
+    if (isUser || !isReservableList || !onPrefillInput) return;
+    const normalize = (v: unknown) => {
+      if (typeof v === "string") return v.trim();
+      if (v === null || v === undefined) return "";
+      return String(v).trim();
+    };
+    const titleRaw = normalize(item?.title);
+    const subtitleRaw = normalize(item?.subtitle);
+    const advisor = subtitleRaw || titleRaw;
+    const start = normalize(item?.start);
+    const end = normalize(item?.end);
+    const timeFromStart = (start || "").match(/\d{1,2}:\d{2}/)?.[0] || "";
+    const timeLabel = timeFromStart || end || "";
+    let dateLabel = start;
+    if (timeFromStart && dateLabel.includes(timeFromStart)) {
+      dateLabel = dateLabel.replace(timeFromStart, "").trim();
+    }
+    const fmtDate = (() => {
+      const s = dateLabel || "";
+      const monthNames = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+      const iso = s.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+      if (iso) {
+        const [, y, m, d] = iso;
+        const mi = Number(m) - 1;
+        const month = monthNames[mi] || m;
+        return `${d.padStart(2, "0")} de ${month}${y ? " de " + y : ""}`;
+      }
+      const inv = s.match(/(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+      if (inv) {
+        const [, d, m, y] = inv;
+        const mi = Number(m) - 1;
+        const month = monthNames[mi] || m;
+        return `${d.padStart(2, "0")} de ${month}${y ? " de " + y : ""}`;
+      }
+      return s || "[agregar fecha]";
+    })();
+    const service = (() => {
+      let s = titleRaw || subtitleRaw;
+      const patterns = [
+        /^\s*cupo\s*[—–-]?\s*/i,
+        /^\s*cupo\s*[:—–-]\s*/i,
+        /^\s*cupo\s+/i,
+      ];
+      patterns.forEach((re) => { s = s.replace(re, ""); });
+      s = s.replace(/\bcupo\b\s*/i, "").trim();
+      return s || "[agregar servicio]";
+    })();
+    const text = `Reserva una asesoria con ${advisor || "[agregar nombre]"} de ${service} para el ${fmtDate} las ${timeLabel || "[agregar hora]"}`;
+    onPrefillInput(text);
+  }, [isUser, isReservableList, onPrefillInput]);
 
   const disabled = decided || !!hasUserReplyAfter;
 
@@ -725,12 +838,17 @@ function MessageBubble({
           >
             {clean}
           </ReactMarkdown>
-          {(!isUser && list?.items?.length) ? <PaginatedList items={list.items} /> : null}
+          {(!isUser && list?.items?.length) ? (
+            <PaginatedList
+              items={list.items}
+              onSelect={isReservableList ? handleSelectItem : undefined}
+            />
+          ) : null}
 
           {!isUser && confirm ? (
             <div className="mt-3 flex items-center gap-2 justify-center">
               <button
-                onClick={() => handleChoice("sí")}
+                onClick={() => handleChoice("si")}
                 disabled={disabled}
                 aria-disabled={disabled}
                 className={classNames(
@@ -738,10 +856,10 @@ function MessageBubble({
                   disabled && "opacity-50 pointer-events-none hover:bg-blue-600 hover:translate-y-0"
                 )}
               >
-                Sí
+                Si
               </button>
               <button
-                onClick={() => handleChoice("no")}
+                onClick={() => handleChoice("si")}
                 disabled={disabled}
                 aria-disabled={disabled}
                 className={classNames(
@@ -769,3 +887,13 @@ function MessageBubble({
 function Dot({ className = "" }: { className?: string }) {
   return <span className={classNames("inline-block h-2 w-2 animate-bounce rounded-full bg-blue-500 shadow-sm", className)} />;
 }
+
+
+
+
+
+
+
+
+
+
