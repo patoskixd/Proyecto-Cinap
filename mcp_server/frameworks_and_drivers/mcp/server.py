@@ -6,6 +6,7 @@ from dateutil import parser as dtparser
 
 from interface_adapters.gateways.google.google_auth import GoogleOAuthAdapter
 from interface_adapters.gateways.google.google_event_repo import GoogleCalendarEventRepository
+from interface_adapters.gateways.google.google_mappers import from_google_event
 
 from interface_adapters.presenters.event_presenter import EventOut, present_event, present_list
 from interface_adapters.controllers.mcp_tools import (
@@ -61,6 +62,85 @@ def build_mcp() -> FastMCP:
             r.raise_for_status()
             return r.json()["access_token"]
 
+    def _list_events_fast(
+        *,
+        calendar_id: str,
+        access_token: str,
+        time_min: datetime,
+        time_max: datetime,
+    ) -> List[Dict[str, Any]]:
+        """Consulta directa al endpoint REST para reducir latencia en overlap."""
+        url = f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events"
+        params = {
+            "timeMin": time_min.isoformat(),
+            "timeMax": time_max.isoformat(),
+            "singleEvents": "true",
+            "orderBy": "startTime",
+            "maxResults": 50,
+            "fields": "items(id,summary,start,end,htmlLink)",
+        }
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json",
+        }
+        timeout = httpx.Timeout(12.0, connect=4.0)
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.get(url, params=params, headers=headers)
+            resp.raise_for_status()
+            data = resp.json() or {}
+        return data.get("items") or []
+
+    def _event_payload(
+        *,
+        title: str,
+        start: datetime,
+        end: datetime,
+        description: Optional[str],
+        location: Optional[str],
+        attendees: Optional[List[str]],
+    ) -> Dict[str, Any]:
+        body: Dict[str, Any] = {
+            "summary": title,
+            "start": _rfc3339(start),
+            "end": _rfc3339(end),
+        }
+        if description:
+            body["description"] = description
+        if location:
+            body["location"] = location
+        if attendees:
+            body["attendees"] = [{"email": a} for a in attendees if a]
+        return body
+
+    def _event_create_fast(
+        *,
+        calendar_id: str,
+        access_token: str,
+        title: str,
+        start: datetime,
+        end: datetime,
+        description: Optional[str],
+        location: Optional[str],
+        attendees: Optional[List[str]],
+        send_updates: str,
+    ) -> Dict[str, Any]:
+        url = f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events"
+        params = {"sendUpdates": send_updates or "all"}
+        headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+        payload = _event_payload(
+            title=title,
+            start=start,
+            end=end,
+            description=description,
+            location=location,
+            attendees=attendees,
+        )
+        timeout = httpx.Timeout(12.0, connect=4.0)
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.post(url, params=params, json=payload, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
+
     @mcp.tool(description="Crea un evento en Google Calendar")
     def event_create(
         title: str,
@@ -101,20 +181,35 @@ def build_mcp() -> FastMCP:
             return err_msg("OAUTH_EXCHANGE", f"No pude refrescar el token del asesor: {e}")
 
         cal_id = with_default_calendar_id(calendar_id)
-        req = CreateEventRequest(
-            calendar_id=cal_id,
-            title=title,
-            start=start,
-            end=end,
-            oauth_access_token=access_token,
-            description=description,
-            location=location,
-            attendees=norm_atts,
-            send_updates=(send_updates or "all"),
-        )
-        resp = create_uc.execute(req)
+        created_event = None
+        try:
+            raw = _event_create_fast(
+                calendar_id=cal_id,
+                access_token=access_token,
+                title=title,
+                start=start,
+                end=end,
+                description=description,
+                location=location,
+                attendees=norm_atts,
+                send_updates=(send_updates or "all"),
+            )
+            created_event = from_google_event(raw, calendar_id=cal_id)
+        except Exception:
+            req = CreateEventRequest(
+                calendar_id=cal_id,
+                title=title,
+                start=start,
+                end=end,
+                oauth_access_token=access_token,
+                description=description,
+                location=location,
+                attendees=norm_atts,
+                send_updates=(send_updates or "all"),
+            )
+            created_event = create_uc.execute(req)
 
-        presented = present_event(resp)
+        presented = present_event(created_event)
         say = f"Evento creado en tu calendario."
 
         provider_event_id = presented.id
@@ -245,36 +340,64 @@ def build_mcp() -> FastMCP:
         cal_id = with_default_calendar_id(calendar_id)
         sf, st = ensure_range(start, end)
 
+        events = []
+        use_json_events = False
         try:
+            events = _list_events_fast(calendar_id=cal_id, access_token=access_token, time_min=sf, time_max=st)
+            use_json_events = True
+        except Exception:
             try:
-                req = ListEventsRequest(calendar_id=cal_id, time_min=sf, time_max=st, oauth_access_token=access_token)
-            except TypeError:
-                req = ListEventsRequest(calendar_id=cal_id, time_min=sf, time_max=st)
-            resp = list_uc.execute(req)
-        except Exception as e:
-            return err_msg("GOOGLE_LIST_FAILED", f"No se pudo listar eventos: {e}")
-
-        events = as_items(resp)
+                try:
+                    req = ListEventsRequest(calendar_id=cal_id, time_min=sf, time_max=st, oauth_access_token=access_token)
+                except TypeError:
+                    req = ListEventsRequest(calendar_id=cal_id, time_min=sf, time_max=st)
+                resp = list_uc.execute(req)
+                events = as_items(resp)
+                use_json_events = False
+            except Exception as e:
+                return err_msg("GOOGLE_LIST_FAILED", f"No se pudo listar eventos: {e}")
 
         def overlaps(a_start, a_end, b_start, b_end) -> bool:
             return (a_start < b_end) and (b_start < a_end)
 
         conflicts = []
-        for ev in events:
-            try:
-                evs = ev.start
-                eve = ev.end
-                if overlaps(evs, eve, start, end):
-                    br = event_brief(ev)
-                    conflicts.append({
-                        "id": br.get("id"),
-                        "title": br.get("title"),
-                        "start": br.get("start"),
-                        "end": br.get("end"),
-                        "html_link": getattr(ev, "html_link", None) or br.get("html_link"),
-                    })
-            except Exception:
-                continue
+        if use_json_events:
+            for ev in events:
+                try:
+                    st_raw = ev.get("start", {})
+                    en_raw = ev.get("end", {})
+                    st_iso = st_raw.get("dateTime") or st_raw.get("date")
+                    en_iso = en_raw.get("dateTime") or en_raw.get("date")
+                    if not st_iso or not en_iso:
+                        continue
+                    evs = dtparser.isoparse(st_iso)
+                    eve = dtparser.isoparse(en_iso)
+                    if overlaps(evs, eve, start, end):
+                        conflicts.append({
+                            "id": ev.get("id"),
+                            "title": ev.get("summary"),
+                            "start": evs.isoformat(),
+                            "end": eve.isoformat(),
+                            "html_link": ev.get("htmlLink"),
+                        })
+                except Exception:
+                    continue
+        else:
+            for ev in events:
+                try:
+                    evs = ev.start
+                    eve = ev.end
+                    if overlaps(evs, eve, start, end):
+                        br = event_brief(ev)
+                        conflicts.append({
+                            "id": br.get("id"),
+                            "title": br.get("title"),
+                            "start": br.get("start"),
+                            "end": br.get("end"),
+                            "html_link": getattr(ev, "html_link", None) or br.get("html_link"),
+                        })
+                except Exception:
+                    continue
 
         if not conflicts:
             say = "No encontré eventos que se crucen con ese rango."
