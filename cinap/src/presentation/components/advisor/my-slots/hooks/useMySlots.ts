@@ -15,9 +15,31 @@ export type Filters = {
 };
 
 const repo = new HttpMySlotsRepo();
+const HISTORY_STATUSES: SlotStatus[] = ["cancelado", "expirado", "realizado"];
 
 function campusFromLocation(location: string) {
   return (location || "").split(" / ")[0] || "";
+}
+
+function slotDateValue(slot: MySlot): number | null {
+  const stamp = Date.parse(`${slot.date}T${slot.time}`);
+  return Number.isNaN(stamp) ? null : stamp;
+}
+
+function sortSlotsByDate(items: MySlot[], order: "asc" | "desc"): MySlot[] {
+  const sorted = [...items];
+  sorted.sort((a, b) => {
+    const aTime = slotDateValue(a);
+    const bTime = slotDateValue(b);
+    if (aTime === null || bTime === null) return 0;
+    const diff = aTime - bTime;
+    return order === "asc" ? diff : -diff;
+  });
+  return sorted;
+}
+
+function isHistoryStatus(status: Filters["status"]): status is SlotStatus {
+  return Boolean(status) && HISTORY_STATUSES.includes(status as SlotStatus);
 }
 
 export function useMySlots() {
@@ -64,7 +86,9 @@ export function useMySlots() {
         service: filters.service || undefined,
         campus: filters.campus || undefined,
       });
-      setItems(res.items);
+      const historyMode = isHistoryStatus(filters.status);
+      const orderedItems = sortSlotsByDate(res.items, historyMode ? "desc" : "asc");
+      setItems(orderedItems);
       setPages(res.pages);
       // stats globales 
       const h = Math.floor((res.stats.ocupadas_min || 0) / 60);

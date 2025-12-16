@@ -70,3 +70,10 @@ El servidor MCP implementa las siguientes herramientas:
 
 - Este servicio sigue principios de **Arquitectura Limpia**.  
 - Puede ejecutarse de manera independiente o en conjunto con el **Backend** y el **Frontend**.  
+### Instalaci?n con requirements.txt
+
+Si prefieres instalar rapido con pip, en este servicio basta con:
+
+```bash
+pip install -r requirements.txt
+```

@@ -7,6 +7,7 @@ type JwtClaims = {
   email?: string;
   name?: string;
   role?: string;
+  aud?: string | string[];
   exp?: number;
   iss?: string;
 };
@@ -74,10 +75,29 @@ const NO_STORE_HEADERS = {
   Vary: "Cookie",
 };
 
+function isSecureRequest(req: NextRequest) {
+  const forwardedProto = req.headers.get("x-forwarded-proto");
+  if (forwardedProto) {
+    const first = forwardedProto.split(",")[0]?.trim().toLowerCase();
+    if (first === "https") return true;
+  }
+  return req.nextUrl.protocol === "https:";
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname: rawPathname } = req.nextUrl;
   const pathname = normalizePath(rawPathname);
   const method = req.method.toUpperCase();
+
+  const enforceHttps = (process.env.ENFORCE_HTTPS ?? "true").toLowerCase() !== "false";
+  if (enforceHttps && process.env.NODE_ENV === "production" && !isSecureRequest(req)) {
+    const secureUrl = req.nextUrl.clone();
+    secureUrl.protocol = "https:";
+    if (method === "GET" || method === "HEAD") {
+      return NextResponse.redirect(secureUrl, { status: 308 });
+    }
+    return NextResponse.json({ detail: "HTTPS requerido" }, { status: 400, headers: NO_STORE_HEADERS });
+  }
 
   if (method === "OPTIONS" || isStaticAsset(pathname)) {
     return NextResponse.next();
@@ -219,6 +239,12 @@ function handleForbidden(req: NextRequest, isApiRoute: boolean) {
 
 async function verifyJwt(token: string): Promise<JwtClaims | null> {
   try {
+    const secret = process.env.JWT_SECRET || process.env.APP_JWT_SECRET || "";
+    if (!secret) {
+      console.error("[middleware] JWT_SECRET is not configured; rejecting token.");
+      return null;
+    }
+
     const parts = token.split(".");
     if (parts.length !== 3) return null;
 
@@ -240,14 +266,15 @@ async function verifyJwt(token: string): Promise<JwtClaims | null> {
 
     if (claims.exp && claims.exp * 1000 < Date.now()) return null;
 
-    const expectedIssuer = process.env.JWT_ISSUER;
-    if (expectedIssuer && claims.iss && claims.iss !== expectedIssuer) return null;
+    const expectedIssuer = process.env.JWT_ISSUER || process.env.APP_JWT_ISSUER;
+    if (!claims.iss) return null;
+    if (expectedIssuer && claims.iss !== expectedIssuer) return null;
 
-    const secret =
-      process.env.JWT_SECRET || process.env.APP_JWT_SECRET || process.env.NEXT_PUBLIC_JWT_SECRET || "";
-    if (!secret) {
-      console.warn("[middleware] JWT_SECRET is not configured; signature verification skipped.");
-      return claims;
+    const expectedAudience = process.env.JWT_AUDIENCE || process.env.APP_JWT_AUDIENCE;
+    if (expectedAudience) {
+      const aud = claims.aud;
+      const matches = Array.isArray(aud) ? aud.includes(expectedAudience) : aud === expectedAudience;
+      if (!matches) return null;
     }
 
     const encoder = new TextEncoder();

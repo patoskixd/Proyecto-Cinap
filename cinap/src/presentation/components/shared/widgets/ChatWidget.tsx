@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { ChatHttpAgent } from "@/infrastructure/chat/chatHttpAgent";
@@ -9,6 +9,74 @@ import ReactMarkdown from "react-markdown";
 type Role = "user" | "assistant";
 type ChatMessage = { id: string; role: Role; content: string; createdAt: string };
 type ChatSession = { id: string; messages: ChatMessage[] };
+type QuickAction = {
+  id: string;
+  label: string;
+  template: string;
+  description?: string;
+};
+
+type PaginatedItem = {
+  title?: string;
+  subtitle?: string;
+  start?: string;
+  end?: string;
+  meta?: Record<string, any>;
+};
+
+const QUICK_ACTIONS: QuickAction[] = [
+  {
+    id: "reserve",
+    label: "Agendar asesoría",
+    template:
+      "Reserva una asesoria con [agregar nombre] para [agregar servicio] el [agregar fecha] desde las [agregar hora]",
+    description: "Llega invitación al correo del docente",
+  },
+  {
+    id: "confirm",
+    label: "Confirmar asesoría",
+    template:
+      "confirma mi asistencia a mi asesoria con [agregar nombre] del [agregar fecha] desde las [agregar hora]",
+    description: "Llega confirmación al correo del asesor",
+  },
+  {
+    id: "cancel",
+    label: "Cancelar asesoría",
+    template:
+      "cancela mi asesoria con [agregar nombre] del [agregar fecha] desde las [agregar hora]",
+    description: "Llega cancelación al correo del docente",
+  },
+  {
+    id: "list-availability",
+    label: "Ver cupos disponibles",
+    template: "Muestra cupos disponibles para [agregar servicio] el [agregar fecha]",
+    description: "Consulta de cupos cercanos",
+  },
+  {
+    id: "list-sessions",
+    label: "Listar asesorías",
+    template: "Lista mis asesorias de [agregar periodo]",
+    description: "Pendientes, confirmadas y canceladas",
+  },
+  {
+    id: "list-advisors",
+    label: "Listar asesores",
+    template: "Lista los asesores disponibles para [agregar servicio]",
+    description: "Ver quién puede atender",
+  },
+  {
+    id: "list-services",
+    label: "Listar servicios",
+    template: "Lista los servicios de asesoría disponibles",
+    description: "Descubrir opciones",
+  },
+  {
+    id: "rag-info",
+    label: "Mostrar información",
+    template: "¿Qué dice la documentación sobre [agregar tema]?",
+    description: "Consulta la base documental",
+  },
+];
 
 const genId = () =>
   (typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -42,6 +110,7 @@ export default function ChatWidget() {
   const [unread, setUnread] = useState(0);
   const [seenAt, setSeenAt] = useState<number>(() => Date.now());
   const [input, setInput] = useState("");
+  const [showActions, setShowActions] = useState(false);
 
   const [session, setSession] = useState<ChatSession>(() => ({
     id: genId(),
@@ -58,6 +127,9 @@ export default function ChatWidget() {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const actionMenuRef = useRef<HTMLDivElement | null>(null);
+  const actionButtonRef = useRef<HTMLButtonElement | null>(null);
+  const actionScrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     try {
@@ -136,6 +208,19 @@ export default function ChatWidget() {
       setIsLoading(false);
     }
   };
+  const handleQuickAction = (text: string) => {
+    if (!text) return;
+    setShowActions(false);
+    setInput(text);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  };
+
+  const handlePrefillFromList = useCallback((text: string) => {
+    if (!text) return;
+    setShowActions(false);
+    setInput(text);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -170,9 +255,39 @@ export default function ChatWidget() {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
+  useEffect(() => {
+    if (!showActions) return;
+    const onClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (actionMenuRef.current?.contains(target) || actionButtonRef.current?.contains(target)) {
+        return;
+      }
+      setShowActions(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [showActions]);
+
+  useEffect(() => {
+    if (showActions) {
+      actionScrollRef.current?.scrollTo({ top: 0 });
+    }
+  }, [showActions]);
+
+
   const handleSend = async () => {
     const text = input.trim();
     if (!text || isLoading) return;
+    const hasPlaceholders = /\[agregar [^\]]+\]/i.test(text);
+    if (hasPlaceholders) {
+      const msg = "Completa los campos marcados con [agregar ...] antes de enviar.";
+      const last = messages[messages.length - 1];
+      if (!(last && last.role === "assistant" && last.content === msg)) {
+        addMessage("assistant", msg);
+      }
+      textareaRef.current?.focus();
+      return;
+    }
 
     addMessage("user", text);
     setInput("");
@@ -295,6 +410,7 @@ export default function ChatWidget() {
                   key={m.id}
                   message={m}
                   onQuickSend={sendQuick}
+                  onPrefillInput={handlePrefillFromList}
                   hasUserReplyAfter={messages.slice(i + 1).some(mm => mm.role === "user")}
                 />
               ))}
@@ -312,14 +428,83 @@ export default function ChatWidget() {
 
             {/* Input */}
             <div className="border-t border-blue-200/50 bg-gradient-to-r from-blue-50/50 to-white p-5">
-              <div className={classNames("flex items-end gap-3 rounded-2xl border-2 border-blue-200/50 bg-white p-3 shadow-md backdrop-blur-sm transition-all", "focus-within:border-blue-400 focus-within:shadow-lg focus-within:ring-2 focus-within:ring-blue-200/50")}>
+              <div
+                className={classNames(
+                  "relative flex items-end gap-3 rounded-2xl border-2 border-blue-200/50 bg-white p-3 shadow-md backdrop-blur-sm transition-all",
+                  "focus-within:border-blue-400 focus-within:shadow-lg focus-within:ring-2 focus-within:ring-blue-200/50"
+                )}
+              >
+                <button
+                  ref={actionButtonRef}
+                  type="button"
+                  aria-expanded={showActions}
+                  aria-controls="chat-quick-actions"
+                  onClick={() => setShowActions((prev) => !prev)}
+                  disabled={isLoading}
+                  className={classNames(
+                    "flex h-11 w-11 items-center justify-center rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100 text-blue-700 shadow-sm transition-all",
+                    "hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-200",
+                    "disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm"
+                  )}
+                >
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+                {showActions && (
+                  <div
+                    id="chat-quick-actions"
+                    ref={(node) => {
+                      actionMenuRef.current = node;
+                    }}
+                    className={classNames(
+                      "absolute left-1/2 z-10 w-full max-w-[260px] -translate-x-1/2",
+                      "sm:max-w-[280px] md:max-w-[300px]",
+                      "rounded-3xl border border-blue-100/80 bg-gradient-to-b from-white/95 to-blue-50/80 p-4 text-left shadow-2xl ring-1 ring-blue-200/70",
+                      "backdrop-blur-xl max-h-[360px] md:max-h-[420px] flex flex-col gap-3"
+                    )}
+                    style={{ bottom: "calc(100% + 16px)" }}
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-700">
+                      Acciones rápidas
+                    </p>
+                    <div
+                      ref={actionScrollRef}
+                      className="max-h-[280px] md:max-h-[320px] overflow-y-auto pr-2"
+                    >
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {QUICK_ACTIONS.map((action) => (
+                          <button
+                            key={action.id}
+                            type="button"
+                            onClick={() => handleQuickAction(action.template)}
+                            className={classNames(
+                              "rounded-2xl border border-blue-100/70 bg-white/90 px-3 py-3 text-left text-sm text-blue-900 shadow-sm transition-all",
+                              "hover:-translate-y-0.5 hover:border-blue-200 hover:bg-white hover:shadow-lg",
+                              "focus:outline-none focus:ring-2 focus:ring-blue-200"
+                            )}
+                          >
+                            <span className="block font-semibold">{action.label}</span>
+                            {action.description ? (
+                              <span className="block text-xs text-blue-600">{action.description}</span>
+                            ) : null}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-blue-500 bg-white/85 backdrop-blur-sm rounded-2xl px-3 py-2">
+                      Completa los campos marcados con [agregar ...] antes de enviar.
+                    </p>
+                  </div>
+                )}
                 <textarea
                   ref={textareaRef}
                   rows={1}
                   maxLength={500}
                   placeholder="Escribe tu mensaje..."
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={(e) => { setInput(e.target.value); }}
                   onKeyDown={onKeyDown}
                   className="min-h-[40px] max-h-[120px] w-full resize-none bg-transparent p-2 text-sm text-blue-900 outline-none placeholder:text-blue-400"
                 />
@@ -377,7 +562,13 @@ function PaginatedList({
   items,
   pageSize = 2,
   cardMinH = 90,
-}: { items: any[]; pageSize?: number; cardMinH?: number }) {
+  onSelect,
+}: {
+  items: PaginatedItem[];
+  pageSize?: number;
+  cardMinH?: number;
+  onSelect?: (item: PaginatedItem, index: number) => void;
+}) {
   const [page, setPage] = useState(0);
   const total = items.length;
   const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -388,26 +579,40 @@ function PaginatedList({
   return (
     <div className={classNames("mt-2 text-left mx-auto", "w-[min(220px,80vw)]")}>
       <ul className={classNames("flex flex-col gap-2", "w-full")}>
-        {slice.map((it, idx) => (
-          <li
-            key={`it-${start + idx}`}
-            className="w-full rounded-xl border border-blue-100 bg-white/80 p-3
-                       flex flex-col justify-center text-center shadow-sm
-                       transition-all duration-200"
-            style={{ minHeight: cardMinH }}
-          >
-            <div className="font-medium text-blue-900 leading-snug text-balance break-words">
-              {it.title || "(sin título)"}
-            </div>
-            {it.subtitle && <div className="text-xs text-blue-500 mt-0.5">{it.subtitle}</div>}
-            {(it.start || it.end) && (
-              <div className="text-xs text-blue-500 mt-0.5">
-                {it.start || ""}{(it.start || it.end) ? " — " : ""}{it.end || ""}
+        {slice.map((it, idx) => {
+          const absoluteIndex = start + idx;
+          const clickable = !!onSelect;
+          return (
+            <li
+              key={`it-${absoluteIndex}`}
+              style={{ minHeight: cardMinH }}
+              role={clickable ? "button" : undefined}
+              tabIndex={clickable ? 0 : -1}
+              onClick={() => onSelect?.(it, absoluteIndex)}
+              onKeyDown={(e) => {
+                if (!onSelect) return;
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelect(it, absoluteIndex);
+                }
+              }}
+              className={classNames(
+                "w-full rounded-xl border border-blue-100 bg-white/80 p-3 flex flex-col justify-center text-center shadow-sm transition-all duration-200",
+                clickable && "cursor-pointer hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-200"
+              )}
+            >
+              <div className="font-medium text-blue-900 leading-snug text-balance break-words">
+                {it.title || "(sin título)"}
               </div>
-            )}
-          </li>
-        ))}
-
+              {it.subtitle && <div className="text-xs text-blue-500 mt-0.5">{it.subtitle}</div>}
+              {(it.start || it.end) && (
+                <div className="text-xs text-blue-500 mt-0.5">
+                  {it.start || ""}{(it.start || it.end) ? " - " : ""}{it.end || ""}
+                </div>
+              )}
+            </li>
+          );
+        })}
         {/* Placeholders */}
         {Array.from({ length: missing }).map((_, i) => (
           <li
@@ -518,10 +723,12 @@ function parseCinapSourceMarker(content: string): {
 function MessageBubble({
   message,
   onQuickSend,
+  onPrefillInput,
   hasUserReplyAfter,
 }: {
   message: ChatMessage;
   onQuickSend?: (text: string) => void;
+  onPrefillInput?: (text: string) => void;
   hasUserReplyAfter?: boolean;
 }) {
   const time = useMemo(
@@ -533,13 +740,78 @@ function MessageBubble({
   const { clean: afterList, list } = useMemo(() => parseCinapListMarker(message.content),[message.content]);
   const { clean: afterConfirm, confirm } = useMemo(() => parseCinapConfirmMarker(afterList),[afterList]);
   const { clean, source } = useMemo(() => parseCinapSourceMarker(afterConfirm),[afterConfirm]);
+  const listKind = useMemo(() => (list?.kind || "").toLowerCase(),[list?.kind]);
+  const isReservableList = useMemo(() => {
+    if (!listKind) return false;
+    const allowed = new Set([
+      "list_slots",
+      "slots",
+      "list_availability",
+      "availability",
+      "list_professor_availability",
+      "list_professor_slots",
+    ]);
+    return allowed.has(listKind) || listKind.includes("slot") || listKind.includes("availability");
+  }, [listKind]);
 
   const [decided, setDecided] = useState(false);
-  const handleChoice = useCallback((ans: "sí" | "no") => {
+  const handleChoice = useCallback((ans: "si" | "no") => {
     if (decided || hasUserReplyAfter) return;
     setDecided(true);
     onQuickSend?.(ans);
   }, [decided, hasUserReplyAfter, onQuickSend]);
+
+  const handleSelectItem = useCallback((item: PaginatedItem) => {
+    if (isUser || !isReservableList || !onPrefillInput) return;
+    const normalize = (v: unknown) => {
+      if (typeof v === "string") return v.trim();
+      if (v === null || v === undefined) return "";
+      return String(v).trim();
+    };
+    const titleRaw = normalize(item?.title);
+    const subtitleRaw = normalize(item?.subtitle);
+    const advisor = subtitleRaw || titleRaw;
+    const start = normalize(item?.start);
+    const end = normalize(item?.end);
+    const timeFromStart = (start || "").match(/\d{1,2}:\d{2}/)?.[0] || "";
+    const timeLabel = timeFromStart || end || "";
+    let dateLabel = start;
+    if (timeFromStart && dateLabel.includes(timeFromStart)) {
+      dateLabel = dateLabel.replace(timeFromStart, "").trim();
+    }
+    const fmtDate = (() => {
+      const s = dateLabel || "";
+      const monthNames = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+      const iso = s.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+      if (iso) {
+        const [, y, m, d] = iso;
+        const mi = Number(m) - 1;
+        const month = monthNames[mi] || m;
+        return `${d.padStart(2, "0")} de ${month}${y ? " de " + y : ""}`;
+      }
+      const inv = s.match(/(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+      if (inv) {
+        const [, d, m, y] = inv;
+        const mi = Number(m) - 1;
+        const month = monthNames[mi] || m;
+        return `${d.padStart(2, "0")} de ${month}${y ? " de " + y : ""}`;
+      }
+      return s || "[agregar fecha]";
+    })();
+    const service = (() => {
+      let s = titleRaw || subtitleRaw;
+      const patterns = [
+        /^\s*cupo\s*[—–-]?\s*/i,
+        /^\s*cupo\s*[:—–-]\s*/i,
+        /^\s*cupo\s+/i,
+      ];
+      patterns.forEach((re) => { s = s.replace(re, ""); });
+      s = s.replace(/\bcupo\b\s*/i, "").trim();
+      return s || "[agregar servicio]";
+    })();
+    const text = `Reserva una asesoria con ${advisor || "[agregar nombre]"} de ${service} para el ${fmtDate} las ${timeLabel || "[agregar hora]"}`;
+    onPrefillInput(text);
+  }, [isUser, isReservableList, onPrefillInput]);
 
   const disabled = decided || !!hasUserReplyAfter;
 
@@ -566,12 +838,17 @@ function MessageBubble({
           >
             {clean}
           </ReactMarkdown>
-          {(!isUser && list?.items?.length) ? <PaginatedList items={list.items} /> : null}
+          {(!isUser && list?.items?.length) ? (
+            <PaginatedList
+              items={list.items}
+              onSelect={isReservableList ? handleSelectItem : undefined}
+            />
+          ) : null}
 
           {!isUser && confirm ? (
             <div className="mt-3 flex items-center gap-2 justify-center">
               <button
-                onClick={() => handleChoice("sí")}
+                onClick={() => handleChoice("si")}
                 disabled={disabled}
                 aria-disabled={disabled}
                 className={classNames(
@@ -579,10 +856,10 @@ function MessageBubble({
                   disabled && "opacity-50 pointer-events-none hover:bg-blue-600 hover:translate-y-0"
                 )}
               >
-                Sí
+                Si
               </button>
               <button
-                onClick={() => handleChoice("no")}
+                onClick={() => handleChoice("si")}
                 disabled={disabled}
                 aria-disabled={disabled}
                 className={classNames(
@@ -610,3 +887,13 @@ function MessageBubble({
 function Dot({ className = "" }: { className?: string }) {
   return <span className={classNames("inline-block h-2 w-2 animate-bounce rounded-full bg-blue-500 shadow-sm", className)} />;
 }
+
+
+
+
+
+
+
+
+
+
